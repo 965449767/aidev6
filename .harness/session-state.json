@@ -1,0 +1,28 @@
+{
+  "phase": "phase-e-ui-layout-and-files-redesign",
+  "current_step": "Terminal tab-switch freeze fixed (AndroidView lifecycle root cause). All done.",
+  "completed_phases": [
+    "Phase 0-5: 文件浏览器重设计（手势/视觉/搜索/交互/预览/架构）",
+    "Bugfix: elevation + selection indicator（HyperOS 适配）",
+    "TabChip 手势合并 + LaunchedEffect 避免手势中移除 Composble",
+    "Swipe-up 锁定/解锁功能",
+    "Crash 诊断 v2（ShizukuLogcat 实时监控 + 守护进程）",
+    "TabChip 重组优化：offset/alpha → graphicsLayer 避免每帧重组",
+    "Phase E P0: E01/E03/E04/E05/E06/E07 确认完成",
+    "File manager redesign framework: BrowserHost + dual-pane + project manager skeleton",
+    "Phase E 全量修复：E08-E17（padding 统一、Typography、modifier 修复、错误反馈等）",
+    "Audit Batch 1 (B1-B4): WebView leak, LaunchedEffect polling, readLine NPE, SFTP safe casts",
+    "Audit Batch 2 (B5-B6 + P1): buildFlatList remember, SFtpPanel key, resource leaks, LazyColumn keys, GitState error surfacing",
+    "Audit Batch 3 (P2): redundant null-safety operators, code quality",
+    "Full assembleDebug: BUILD SUCCESSFUL",
+    "Terminal tab-switch freeze fix: AndroidView outside NavHost as permanent overlay, View.INVISIBLE hiding, user-verified no freeze",
+    "Terminal menu redesign: ModalBottomSheet + groups + collapsible theme, remove 6 redundant items, add 4 missing features",
+    "IME completion real-time fix: completionSnapshot as State instead of getter",
+    "Font size drag: long-press drag gesture with dragAccumulator + haptic feedback per step"
+  ],
+  "pending_optional": [
+    "File browser detail implementation (pinch-zoom grid, swipe auto-copy)",
+    "Known issues: LinearProgressIndicator deprecation, test config warnings",
+    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel"
+  ]
+}

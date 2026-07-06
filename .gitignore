@@ -1,0 +1,30 @@
+# Gradle / Android build outputs
+.gradle/
+.kotlin/
+build/
+app/build/
+
+# Local machine configuration
+local.properties
+keystore.properties
+
+# IDE files
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# APK exports
+*.apk
+
+# Temporary files
+*.tmp
+*.bak
+
+# Build counter (per-build version increment)
+app/build-counter.properties

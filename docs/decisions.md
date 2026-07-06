@@ -1,0 +1,144 @@
+# Decision Log
+
+Use this file to record stable project decisions.
+
+## 2026-06-14 - Use ShellActivity as the single terminal entry
+
+### Context
+
+The project previously had both `MainActivity` and `EmbeddedTerminalPage` terminal paths.
+
+### Decision
+
+`ShellActivity` is the launcher and the embedded terminal is the active terminal entry.
+
+### Consequences
+
+- New terminal navigation should route through `AppNav.openTerminal` or `ShellHost.openTerminal`.
+- `MainActivity` was removed; `ShellActivity` is the sole entry point.
+
+## 2026-06-14 - Use `.aidev-rootfs-ready` as Ubuntu readiness marker
+
+### Context
+
+Partial rootfs extraction can leave `etc/os-release` present even when Ubuntu is not usable.
+
+### Decision
+
+Ubuntu is ready only when `home/ubuntu-rootfs/.aidev-rootfs-ready` exists.
+
+### Consequences
+
+- Status cards and bootstrap checks should use the marker.
+- Half-extracted rootfs should not be treated as installed.
+
+## 2026-06-14 - Initialize Standard Project Harness
+
+### Context
+
+Future agent sessions need durable project context, validation rules, and handoff state.
+
+### Decision
+
+Create a Standard Harness with `AGENTS.md`, `docs`, `.harness`, `skills`, and `scripts`.
+
+### Consequences
+
+- Future sessions should start by reading harness state.
+- Completion reports must include concise progress percentage.
+
+## 2026-06-14 - Limit ROM adaptation to Xiaomi HyperOS
+
+### Context
+
+The active target device is Xiaomi 14 Pro on HyperOS 3.0 / Android 16.0.
+
+### Decision
+
+ROM-specific rules should focus on Xiaomi HyperOS unless the user requests additional vendors.
+
+### Consequences
+
+- Do not spend implementation effort on Huawei, OPPO, vivo, or other ROMs by default.
+- HyperOS keep-alive, battery, notification, and permission behavior is the primary compatibility target.
+
+## 2026-06-14 - Git workflow established
+
+### Context
+
+The project directory is now a Git repository (branch `main`). Backup and rollback are handled through Git.
+
+### Decision
+
+- Commits are allowed automatically when a phase completes and validation passes.
+- `git tag`, `git reset`, `git clean`, `git push`, and remote configuration still require explicit user approval.
+- The initial snapshot was created after the project reached a stable documentation baseline.
+
+### Consequences
+
+- `docs/git-workflow.md` defines backup and rollback rules.
+- If Git becomes unavailable, record that limitation instead of pretending Git validation passed.
+- Destructive Git operations always require explicit user approval.
+
+## 2026-06-17 - Introduce AIDevBottomSheet as custom BottomSheet base
+
+### Context
+
+The project does not include AndroidX Material dependency, so standard `BottomSheetDialog` is unavailable. `EmbeddedSettingsPage` previously used inline `MenuItem` data class and `AlertDialog` for menus.
+
+### Decision
+
+Create a pure custom `AIDevBottomSheet` using `Dialog` + `LinearLayout` + `ScrollView`, with drag indicator, title bar, divider, and swipe-to-dismiss. Build `MenuBottomSheet` on top of it with `MenuBottomSheet.MenuItem` nested data class.
+
+### Consequences
+
+- All menu popups in `EmbeddedSettingsPage` now route through `MenuBottomSheet` for consistent UX.
+- `MenuItem` is now a nested class of `MenuBottomSheet`; call sites must use `MenuBottomSheet.MenuItem`.
+- `BackupRestorePage` was removed due to prior file corruption; backup/restore menu items temporarily toast "开发中" until the page is reimplemented.
+
+## 2026-06-22 - Opt out of Edge-to-Edge enforcement (temporary)
+
+### Context
+
+`targetSdk = 36` (Android 16) 触发了系统 Edge-to-Edge 强制执行。`ShellActivity` 未适配 window insets，导致 APP bar 重叠系统状态栏。
+
+### Decision
+
+短期：在 `AppTheme` 中添加 `android:windowOptOutEdgeToEdgeEnforcement = true`，让系统恢复旧版布局行为，`statusBarColor` 生效。
+
+### Consequences
+
+- 问题立即修复，不影响现有功能
+- 长期来看仍需正式迁移到 Edge-to-Edge，计划在 `0.14.x` 实施
+
+## 2026-06-22 - Planned Edge-to-Edge migration (future)
+
+### Context
+
+`windowOptOutEdgeToEdgeEnforcement` 是临时方案。Android 15+ 逐步淘汰旧式状态栏行为，未来 SDK 版本可能移除该标志。
+
+### Decision
+
+在 `0.14.x` 中实施正式迁移，步骤：引入 `androidx.activity:activity` 依赖 → 在 `ShellActivity` 中调用 `enableEdgeToEdge()` → 用 `ViewCompat.setOnApplyWindowInsetsListener` 处理 navHost insets → 移除 opt-out 标志。
+
+### Consequences
+
+- 迁移前需要验证虚拟键盘、底部导航栏、全屏模式的行为
+- 终端页面（`EmbeddedShellPages.kt`）需额外适配 keyboard insets
+
+## 2026-06-17 - Replace AlertDialog menus with MenuBottomSheet in EmbeddedSettingsPage
+
+### Context
+
+All secondary menus in `EmbeddedSettingsPage` were using `AlertDialog.Builder.setItems()`, which is an older Android pattern and does not support item descriptions.
+
+### Decision
+
+Introduce `MenuBottomSheet` (a custom bottom-sheet Dialog using the project's design tokens) and `MenuItem` data class, and migrate all menu methods (`appearanceMenu`, `terminalMenu`, `devMenu`, `aiServerMenu`, `permissionMenu`, `advancedMenu`, `backupRestoreMenu`) to use it.
+
+### Consequences
+
+- `AlertDialog` is still retained for content dialogs (`detail()`, `sliderDialog()`, `themePresetDialog()`, `backgroundModeDialog()`, `devCheckAndRepair()`, etc.) because they need custom views or single-choice items.
+- `MenuBottomSheet` is self-contained and reusable for other pages if needed.
+- Each menu item now has a title and an optional description, improving UX.
+- Future bottom-sheet enhancements should be made in `MenuBottomSheet.kt` to keep `EmbeddedSettingsPage` focused on business logic.
