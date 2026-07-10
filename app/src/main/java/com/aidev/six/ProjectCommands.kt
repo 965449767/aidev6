@@ -9,6 +9,13 @@ import java.io.File
  */
 object ProjectCommands {
 
+    data class TaskTemplate(
+        val name: String,
+        val description: String,
+        val command: String,
+        val tags: List<String> = emptyList(),
+    )
+
     /** 检测项目类型标记 */
     fun detectMarkers(dir: File): List<String> {
         val markers = mutableListOf<String>()
@@ -89,4 +96,31 @@ object ProjectCommands {
             else -> "ls -la"
         }
     } ?: "ls -la"
+
+    fun taskTemplates(dir: File?): List<TaskTemplate> {
+        if (dir == null || !dir.exists()) {
+            return listOf(TaskTemplate("探测项目", "检查当前目录是否存在可识别项目", "pwd && ls -la", listOf("probe")))
+        }
+
+        return when {
+            File(dir, "build.gradle").exists() || File(dir, "build.gradle.kts").exists() -> listOf(
+                TaskTemplate("Gradle 构建", "执行调试构建", buildCommand(dir), listOf("android", "build")),
+                TaskTemplate("Gradle 测试", "执行单测", testCommand(dir), listOf("android", "test")),
+                TaskTemplate("Gradle 健康检查", "列出可用任务", healthCommand(dir), listOf("android", "health")),
+            )
+            File(dir, "package.json").exists() -> listOf(
+                TaskTemplate("安装依赖", "执行 npm install", installCommand(dir), listOf("node", "install")),
+                TaskTemplate("构建前端", "执行生产构建", buildCommand(dir), listOf("node", "build")),
+                TaskTemplate("测试前端", "执行测试", testCommand(dir), listOf("node", "test")),
+            )
+            File(dir, "requirements.txt").exists() || File(dir, "pyproject.toml").exists() -> listOf(
+                TaskTemplate("安装依赖", "安装 Python 依赖", installCommand(dir), listOf("python", "install")),
+                TaskTemplate("运行测试", "执行 pytest", testCommand(dir), listOf("python", "test")),
+            )
+            else -> listOf(
+                TaskTemplate("探测项目", "检查当前目录是否存在可识别项目", "pwd && ls -la", listOf("probe")),
+                TaskTemplate("健康检查", "输出当前目录结构", healthCommand(dir), listOf("probe", "health")),
+            )
+        }
+    }
 }

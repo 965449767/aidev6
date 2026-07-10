@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import com.aidev.six.PathConfig
+import com.aidev.six.ProjectCommands
 import com.aidev.six.agent.AgentTaskDefinition
 import com.aidev.six.agent.AgentTaskRecord
 import com.aidev.six.agent.AgentTaskRunner
@@ -110,20 +111,24 @@ fun ServerPanel(
         Spacer(Modifier.height(8.dp))
 
         AppSectionTitle("Agent 开发任务")
-        AppActionRow("启动 Android 构建任务", "让 Agent 任务引擎执行一次构建任务", onClick = {
-            val definition = AgentTaskDefinition(
-                id = "agent-build-${System.currentTimeMillis()}",
-                name = "Android 构建",
-                description = "执行一次调试构建任务",
-                command = "./gradlew :app:assembleDebug -Dkotlin.compiler.execution.strategy=in-process -Dkotlin.daemon.enabled=false --console=plain",
-                workingDirectory = PathConfig.workspaceDir(context).absolutePath,
-                tags = listOf("android", "build")
-            )
-            taskRunner.runTask(definition, taskStateFile) { record ->
-                taskRecords.removeAll { it.definition.id == record.definition.id }
-                taskRecords.add(0, record)
-            }
-        })
+        val projectTemplates = remember(context) { ProjectCommands.taskTemplates(PathConfig.workspaceDir(context)) }
+        projectTemplates.forEachIndexed { index, template ->
+            AppActionRow(template.name, template.description, onClick = {
+                val definition = AgentTaskDefinition(
+                    id = "agent-task-${System.currentTimeMillis()}",
+                    name = template.name,
+                    description = template.description,
+                    command = template.command,
+                    workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                    tags = template.tags
+                )
+                taskRunner.runTask(definition, taskStateFile) { record ->
+                    taskRecords.removeAll { it.definition.id == record.definition.id }
+                    taskRecords.add(0, record)
+                }
+            })
+            if (index < projectTemplates.lastIndex) HorizontalDivider()
+        }
         HorizontalDivider()
         if (taskRecords.isEmpty()) {
             InfoNote("暂无 Agent 任务记录")
