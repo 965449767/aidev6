@@ -26,7 +26,12 @@ internal class AgentTaskRunner {
             AgentTaskStore.upsertTask(stateFile, task, limit = 12)
             mainHandler.post { onUpdate(task) }
 
-            val process = ProcessBuilder("/system/bin/sh", "-c", definition.command)
+            val shellCommand = if (definition.command.contains("\n")) {
+                definition.command
+            } else {
+                definition.command
+            }
+            val process = ProcessBuilder("/system/bin/sh", "-c", shellCommand)
                 .directory(File(definition.workingDirectory))
                 .redirectErrorStream(true)
                 .start()

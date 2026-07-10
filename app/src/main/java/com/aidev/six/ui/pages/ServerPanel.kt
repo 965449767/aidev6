@@ -6,7 +6,10 @@ import android.os.PowerManager
 import com.aidev.six.PathConfig
 import com.aidev.six.ProjectCommands
 import com.aidev.six.agent.AgentTaskDefinition
+import com.aidev.six.agent.AgentTaskPlan
 import com.aidev.six.agent.AgentTaskRecord
+import com.aidev.six.agent.AgentTaskStep
+import com.aidev.six.agent.AgentTaskTemplate
 import com.aidev.six.agent.AgentTaskRunner
 import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.agent.AgentTaskStore
@@ -129,6 +132,35 @@ fun ServerPanel(
             })
             if (index < projectTemplates.lastIndex) HorizontalDivider()
         }
+        HorizontalDivider()
+        AppActionRow("Android 闭环", "按构建→测试的顺序执行一组开发步骤", onClick = {
+            val plan = AgentTaskPlan.fromTemplate(
+                name = "Android 闭环",
+                description = "构建并验证 Android 项目",
+                template = AgentTaskTemplate(
+                    id = "android-loop-${System.currentTimeMillis()}",
+                    name = "Android 闭环",
+                    description = "构建并验证 Android 项目",
+                    steps = listOf(
+                        AgentTaskStep("构建", "./gradlew assembleDebug"),
+                        AgentTaskStep("测试", "./gradlew test")
+                    )
+                )
+            )
+            val combinedCommand = plan.steps.joinToString(separator = "\n") { it.command }
+            val definition = AgentTaskDefinition(
+                id = plan.id,
+                name = plan.name,
+                description = plan.description,
+                command = combinedCommand,
+                workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                tags = listOf("android", "loop")
+            )
+            taskRunner.runTask(definition, taskStateFile) { record ->
+                taskRecords.removeAll { it.definition.id == record.definition.id }
+                taskRecords.add(0, record)
+            }
+        })
         HorizontalDivider()
         if (taskRecords.isEmpty()) {
             InfoNote("暂无 Agent 任务记录")

@@ -29,6 +29,35 @@ internal data class AgentTaskRecord(
     val lastUpdatedAt: Long = System.currentTimeMillis()
 )
 
+internal data class AgentTaskStep(
+    val name: String,
+    val command: String,
+)
+
+internal data class AgentTaskTemplate(
+    val id: String,
+    val name: String,
+    val description: String,
+    val steps: List<AgentTaskStep> = emptyList(),
+)
+
+internal data class AgentTaskPlan(
+    val id: String,
+    val name: String,
+    val description: String,
+    val steps: List<AgentTaskStep> = emptyList(),
+) {
+    companion object {
+        fun fromTemplate(name: String, description: String, template: AgentTaskTemplate): AgentTaskPlan =
+            AgentTaskPlan(
+                id = template.id,
+                name = name,
+                description = description,
+                steps = template.steps,
+            )
+    }
+}
+
 internal object AgentTaskStore {
 
     private const val FIELD_SEPARATOR = "\u001F"
