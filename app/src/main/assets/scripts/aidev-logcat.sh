@@ -25,7 +25,7 @@ TAG=""
 TAGS=""
 CLEAR=""
 WATCH_CRASH=false
-PACKAGE="com.aidev.four"
+PACKAGE="com.aidev.six"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
       echo "  --tags T1,T2,...  按关键词过滤 (如 Error,Exception)"
       echo "  --watch-crash     监听崩溃日志，检测到后停止"
       echo "  --clear           先清空缓冲区"
-      echo "  包名              要查看的应用包名 (默认 com.aidev.four)"
+      echo "  包名              要查看的应用包名 (默认 com.aidev.six)"
       exit 0 ;;
     *) PACKAGE="$1"; shift ;;
   esac

@@ -17,5 +17,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "aidev4"
+rootProject.name = "aidev6"
 include(":app")

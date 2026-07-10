@@ -1,7 +1,9 @@
 {
-  "phase": "phase-e-ui-layout-and-files-redesign",
-  "current_step": "Terminal tab-switch freeze fixed (AndroidView lifecycle root cause). All done.",
+  "phase": "refactor-dual-rootfs-self-evolution-loop",
+  "current_step": "P0-P6 全部完成并通过验证（shell 63 passed / unit tests passed / assembleDebug SUCCESSFUL / harness_check passed）。双 PRoot rootfs + 自我进化闭环已落地。",
+  "active_plan": "docs/refactor-dual-rootfs-plan.md",
   "completed_phases": [
+    "重构计划已批准并落盘 docs/refactor-dual-rootfs-plan.md（双 PRoot rootfs + 自我进化闭环）",
     "Phase 0-5: 文件浏览器重设计（手势/视觉/搜索/交互/预览/架构）",
     "Bugfix: elevation + selection indicator（HyperOS 适配）",
     "TabChip 手势合并 + LaunchedEffect 避免手势中移除 Composble",
@@ -23,6 +25,7 @@
   "pending_optional": [
     "File browser detail implementation (pinch-zoom grid, swipe auto-copy)",
     "Known issues: LinearProgressIndicator deprecation, test config warnings",
-    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel"
+    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel",
+    "重构：双 PRoot rootfs + 自我进化闭环（P0-P6 完成，详见 docs/refactor-dual-rootfs-plan.md）"
   ]
 }

@@ -127,16 +127,7 @@ plugins {
 }
 EOF
 
-# ─── gradle.properties（基础设置 + 宿主继承项） ───
-cat > gradle.properties <<EOF
-org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-android.useAndroidX=true
-kotlin.code.style=official
-android.nonTransitiveRClass=true
-$(echo "$HOST_PROPS_EXTRA")
-EOF
-
-# ─── local.properties (SDK 路径探测) ───
+# ─── SDK 探测（local.properties 与 aapt2 覆盖共用） ───
 SDK_DIR=""
 if [ -d "/Android/platforms" ]; then
     SDK_DIR="/Android"
@@ -148,9 +139,32 @@ elif [ -f "$PROJECT_ROOT/local.properties" ]; then
     SDK_DIR=$(grep "^sdk.dir\|^sdk" "$PROJECT_ROOT/local.properties" 2>/dev/null | head -1 | cut -d= -f2 || true)
 fi
 
+# 自动挑选最新 build-tools，注入 aapt2 覆盖：
+# arm64 上 AGP 自带的 aapt2 是 x86_64，会 Daemon startup failed；
+# 本环境用 qemu 包装的 ARM 版 aapt2，必须显式覆盖才能编译资源。
+AAPT2_OVERRIDE=""
+if [ -n "$SDK_DIR" ] && [ -d "$SDK_DIR/build-tools" ]; then
+    BT_VER=$(ls -1 "$SDK_DIR/build-tools" 2>/dev/null | grep -E '^[0-9]+(\.[0-9]+)+$' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+    if [ -n "$BT_VER" ] && [ -e "$SDK_DIR/build-tools/$BT_VER/aapt2" ]; then
+        AAPT2_OVERRIDE="$SDK_DIR/build-tools/$BT_VER/aapt2"
+    fi
+fi
+
+# ─── gradle.properties（基础设置 + 宿主继承项 + aapt2 覆盖） ───
+cat > gradle.properties <<EOF
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+$(echo "$HOST_PROPS_EXTRA")
+$([ -n "$AAPT2_OVERRIDE" ] && echo "android.aapt2FromMavenOverride=$AAPT2_OVERRIDE")
+EOF
+
+# ─── local.properties (SDK 路径) ───
 if [ -n "$SDK_DIR" ]; then
     echo "sdk.dir=$SDK_DIR" > local.properties
     echo "  SDK:       $SDK_DIR"
+    [ -n "$AAPT2_OVERRIDE" ] && echo "  aapt2:     $AAPT2_OVERRIDE"
 else
     echo "  警告: 未找到 Android SDK，需要手动创建 local.properties"
     echo "         echo 'sdk.dir=/Android' > local.properties"
@@ -263,6 +277,24 @@ EOF
 mkdir -p app/src/main/res/layout
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/mipmap-hdpi
+mkdir -p app/src/main/res/mipmap-anydpi-v26
+mkdir -p app/src/main/res/drawable
+
+# 自适应启动图标（避免 manifest 引用 mipmap/ic_launcher 缺失导致资源链接失败）
+cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'IC_FG_EOF'
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#6200EE" android:pathData="M0,0h108v108h-108z"/>
+</vector>
+IC_FG_EOF
+
+cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'IC_LA_EOF'
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@android:color/white"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+IC_LA_EOF
 
 cat > app/src/main/res/layout/activity_main.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>

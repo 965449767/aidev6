@@ -2,6 +2,8 @@ import java.io.File
 import java.io.FileInputStream
 import java.net.URL
 import java.security.MessageDigest
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.Properties
 
 fun git(vararg args: String): String {
@@ -26,6 +28,7 @@ fun readBuildCount(): Int {
 }
 
 val buildCount = readBuildCount()
+val buildTimeHHmm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmm"))
 
 fun File.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -51,16 +54,16 @@ plugins {
 }
 
 android {
-    namespace = "com.aidev.four"
+    namespace = "com.aidev.six"
     compileSdk = 36
     buildToolsVersion = "36.1.0"
 
     defaultConfig {
-        applicationId = "com.aidev.four"
+        applicationId = "com.aidev.six"
         minSdk = 26
         targetSdk = 36
         versionCode = buildCount
-        versionName = "1.0.0-${git("rev-parse", "--short", "HEAD")}.b$buildCount"
+        versionName = "1.0.0-t$buildTimeHHmm.b$buildCount"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }

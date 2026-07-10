@@ -5,41 +5,37 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- subtle depth glow -->
     <path
-        android:fillColor="#1E1B4B"
-        android:pathData="M14,14h80a10,10 0 0 1 10 10v60a10,10 0 0 1 -10 10H14a10,10 0 0 1 -10 -10V24a10,10 0 0 1 10 -10z" />
+        android:fillColor="#0F2E22"
+        android:fillAlpha="0.65"
+        android:pathData="M54,2a52,52 0 1,0 0.001,0z" />
 
-    <group>
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#A855F7"
-            android:strokeWidth="8"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M32,78L44,28L56,78" />
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#A855F7"
-            android:strokeWidth="5"
-            android:strokeLineCap="round"
-            android:pathData="M36,62L52,62" />
-    </group>
+    <!-- terminal panel -->
+    <path
+        android:fillColor="#EAF7EE"
+        android:strokeColor="#00E676"
+        android:strokeWidth="3"
+        android:strokeLineJoin="round"
+        android:pathData="M30,40 a8,8 0 0 1 8,-8 h32 a8,8 0 0 1 8,8 v32 a8,8 0 0 1 -8,8 h-32 a8,8 0 0 1 -8,-8 z" />
 
-    <group>
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#A855F7"
-            android:strokeWidth="8"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M66,28L66,78" />
-        <path
-            android:fillColor="@android:color/transparent"
-            android:strokeColor="#A855F7"
-            android:strokeWidth="8"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M66,28Q84,28 84,42Q84,54 66,54" />
-    </group>
+    <!-- prompt ">" -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#00C853"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M44,50 L54,58 L44,66" />
+
+    <!-- blinking cursor -->
+    <path
+        android:fillColor="#00C853"
+        android:pathData="M60,50 h4 v16 h-4 z" />
+
+    <!-- AI spark -->
+    <path
+        android:fillColor="#69F0AE"
+        android:pathData="M82,22 C82,27.6 87.6,30 90,30 C87.6,30 82,32.4 82,38 C82,32.4 76.4,30 74,30 C76.4,30 82,27.6 82,22 Z" />
 
 </vector>

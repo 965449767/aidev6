@@ -759,7 +759,7 @@
           "cmd": "rm -rf ~/.local/share/Trash/*",
           "desc": "永久删除回收站中的所有文件，释放磁盘空间（不可恢复）",
           "tags": ["文件管理", "回收站", "清理", "存储"],
-          "usage": "  rm -rf ~/.local/share/Trash/*                     # 清空 Ubuntu 容器内的回收站\n  rm -rf /data/data/com.aidev.four/files/home/.trash/*   # 清空文件管理器回收站（Android shell）\n  ls -la ~/.local/share/Trash/files/                      # 预览回收站内容\n  ls -la ~/.local/share/Trash/info/                       # 查看原始路径信息",
+          "usage": "  rm -rf ~/.local/share/Trash/*                     # 清空 Ubuntu 容器内的回收站\n  rm -rf /data/data/com.aidev.six/files/home/.trash/*   # 清空文件管理器回收站（Android shell）\n  ls -la ~/.local/share/Trash/files/                      # 预览回收站内容\n  ls -la ~/.local/share/Trash/info/                       # 查看原始路径信息",
           "permissions": "无特殊权限要求。需在对应环境中执行。",
           "notes": "删除后无法恢复，请确认回收站中无重要文件。回收站目录结构：files/ 存放实际文件，info/ 存放原始路径和删除时间信息。文件管理器的回收站目录位置取决于 app 数据目录。"
         }

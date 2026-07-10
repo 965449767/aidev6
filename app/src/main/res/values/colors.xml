@@ -3,6 +3,6 @@
     <color name="bg_surface">#000000</color>
     <color name="text_primary">#FFFFFF</color>
     <color name="text_secondary">#CCCCCC</color>
-    <color name="primary">#FF5555</color>
+    <color name="primary">#00E676</color>
     <color name="danger">#FF5555</color>
 </resources>

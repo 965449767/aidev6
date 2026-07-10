@@ -4,7 +4,7 @@
 set -eo pipefail
 
 SHIZUKU="aidev-shizuku"
-PKG="${AIDEV_PKG:-com.aidev.four}"
+PKG="${AIDEV_PKG:-com.aidev.six}"
 
 usage() {
     echo "用法: aidev-dumpsys [子命令]"

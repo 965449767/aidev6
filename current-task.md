@@ -1,4 +1,11 @@
-# 当前任务：Phase E — UI Layout Audit & Fixes
+# 当前任务：双 PRoot rootfs + AI 自我进化闭环（重构）
+
+> ⚠️ 长线重构任务。完整计划与阶段清单见 **`docs/refactor-dual-rootfs-plan.md`**，harness 状态见 `.harness/session-state.json`。
+> 各阶段顺序：P0(地基) → P1(双宇宙+workspace) → P2(编译+文件桥) → P3(安装+拉起) → P4(logcat→MCP) → P5(UI) → P6(验证)。
+
+---
+
+# （历史）当前任务：Phase E — UI Layout Audit & Fixes
 
 ## 已完成
 参见之前的 `current-task.md`，涵盖 Phase A~D（Features、Stub Filling、Cleanup、State Splitting）。

@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <permission
-        android:name="com.aidev.four.permission.IPC"
+        android:name="com.aidev.six.permission.IPC"
         android:protectionLevel="signature" />
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -83,12 +83,12 @@
         <receiver
             android:name=".SysCommandReceiver"
             android:exported="true"
-            android:permission="com.aidev.four.permission.IPC">
+            android:permission="com.aidev.six.permission.IPC">
             <intent-filter>
-                <action android:name="com.aidev.four.internal.NOTIFY" />
-                <action android:name="com.aidev.four.internal.CLIP" />
-                <action android:name="com.aidev.four.internal.VOLUME" />
-                <action android:name="com.aidev.four.internal.BRIGHTNESS" />
+                <action android:name="com.aidev.six.internal.NOTIFY" />
+                <action android:name="com.aidev.six.internal.CLIP" />
+                <action android:name="com.aidev.six.internal.VOLUME" />
+                <action android:name="com.aidev.six.internal.BRIGHTNESS" />
             </intent-filter>
         </receiver>
 
