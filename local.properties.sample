@@ -1,0 +1,6 @@
+# Copy this file to local.properties and adjust the SDK path for your machine.
+# Example:
+# sdk.dir=/home/username/Android/Sdk
+# OR set ANDROID_HOME or ANDROID_SDK_ROOT instead of local.properties.
+
+sdk.dir=/Android

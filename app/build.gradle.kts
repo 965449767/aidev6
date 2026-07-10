@@ -1,10 +1,15 @@
 import java.io.File
 import java.io.FileInputStream
-import java.net.URL
+import java.net.URI
 import java.security.MessageDigest
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
 
 fun git(vararg args: String): String {
     return try {
@@ -16,19 +21,30 @@ fun git(vararg args: String): String {
     } catch (_: Exception) { "" }
 }
 
-fun readBuildCount(): Int {
-    val file = File("app/build-counter.properties")
-    if (!file.parentFile.exists()) file.parentFile.mkdirs()
-    val props = Properties()
-    if (file.exists()) file.inputStream().use { props.load(it) }
-    val count = (props.getProperty("count", "0").toIntOrNull() ?: 0) + 1
-    props.setProperty("count", count.toString())
-    file.outputStream().use { props.store(it, "Build counter - auto incremented on each build") }
-    return count
+fun gitCount(): Int? {
+    return try {
+        git("rev-list", "--count", "HEAD").toIntOrNull()
+    } catch (_: Exception) {
+        null
+    }
 }
 
-val buildCount = readBuildCount()
-val buildTimeHHmm = LocalTime.now().format(DateTimeFormatter.ofPattern("HHmm"))
+fun gitDescribe(): String {
+    return try {
+        val description = git("describe", "--tags", "--dirty", "--always")
+        description.ifBlank { "local" }
+    } catch (_: Exception) {
+        "local"
+    }
+}
+
+val buildCount = gitCount() ?: 1
+
+// Allow CI or local build scripts to override generated version values.
+// Example: ./gradlew :app:assembleDebug -PversionCode=100 -PversionName=1.0.0
+val versionCodeOverride = findProperty("versionCode")?.toString()?.toIntOrNull()
+val versionNameOverride = findProperty("versionName")?.toString()
+val generatedVersionName = "1.0.0-${gitDescribe()}"
 
 fun File.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -47,12 +63,6 @@ val keystoreProps = rootProject.file("keystore.properties").takeIf { it.isFile }
     Properties().apply { load(FileInputStream(it)) }
 }
 
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
-}
-
 android {
     namespace = "com.aidev.six"
     compileSdk = 36
@@ -62,15 +72,14 @@ android {
         applicationId = "com.aidev.six"
         minSdk = 26
         targetSdk = 36
-        versionCode = buildCount
-        versionName = "1.0.0-t$buildTimeHHmm.b$buildCount"
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
+        versionCode = versionCodeOverride ?: buildCount
+        versionName = versionNameOverride ?: generatedVersionName
     }
 
     packaging {
         jniLibs {
+            // Retain legacy JNI packaging for the existing arm64 native libraries.
+            // Remove this option if the project migrates to the default Android Gradle plugin packaging.
             useLegacyPackaging = true
         }
     }
@@ -113,7 +122,6 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-
 }
 
 composeCompiler {
@@ -126,7 +134,7 @@ tasks.register("downloadCurlMusl") {
     val targetFile = file("$targetDir/curl")
     val sha256File = file("$targetDir/curl.sha256")
     val version = "8.21.0"
-    val archiveUrl = URL("https://github.com/stunnel/static-curl/releases/download/$version/curl-linux-aarch64-musl-$version.tar.xz")
+    val archiveUrl = URI("https://github.com/stunnel/static-curl/releases/download/$version/curl-linux-aarch64-musl-$version.tar.xz").toURL()
     val archiveFile = file("$temporaryDir/curl-musl.tar.xz")
 
     doLast {
@@ -171,9 +179,16 @@ tasks.register("downloadCurlMusl") {
     }
 }
 
-tasks.named("preBuild") {
-    dependsOn("downloadCurlMusl")
+val shouldDownloadCurlMusl = findProperty("downloadCurlMusl")?.toString()?.toBoolean() ?: false
+if (shouldDownloadCurlMusl) {
+    tasks.named("preBuild") {
+        dependsOn("downloadCurlMusl")
+    }
 }
+
+// `downloadCurlMusl` is an optional asset preparation task.
+// Enable it with -PdownloadCurlMusl=true when your environment needs the bundled curl binary.
+// This avoids forcing a network-dependent download on every Gradle build.
 
 dependencies {
     implementation("com.github.termux.termux-app:terminal-view:v0.118.3")

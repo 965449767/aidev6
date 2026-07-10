@@ -17,9 +17,9 @@ abstract class BridgeService(private val tag: String) {
 
     val isRunning: Boolean get() = scope != null
 
-    fun start(context: Context, homeDir: File) {
+    fun start(context: Context?, homeDir: File) {
         if (scope != null) return
-        appCtx = context.applicationContext
+        appCtx = context?.applicationContext ?: context
         onStart(homeDir)
         AIDevLogger.i(tag, "start polling")
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

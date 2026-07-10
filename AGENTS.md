@@ -10,10 +10,10 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 
 - Gradle 9.1.0 / AGP 9.0.1 / Kotlin 2.0.21 / Java 17
 - Aliyun Maven mirrors (`settings.gradle.kts`), no VPN needed
-- AGP 9 opt-outs: `android.builtInKotlin=false`, `android.newDsl=false`
+- Modern AGP setup with built-in Kotlin and new DSL-compatible configuration
 - Debug APK → `app/build/outputs/apk/debug/app-debug.apk`, auto-copied to `/sdcard/AIDev/`
 - Build counter auto-increments in `app/build-counter.properties`
-- `preBuild` downloads static curl-musl for arm64 into `assets/tools/`
+- Optional `downloadCurlMusl` task downloads static curl-musl for arm64 into `assets/tools/`
 
 ## Testing (run in order)
 

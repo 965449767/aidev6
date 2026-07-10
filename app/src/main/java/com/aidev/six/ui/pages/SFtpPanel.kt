@@ -379,7 +379,7 @@ private fun SftpTransferQueue(modifier: Modifier = Modifier) {
             ListItem(
                 headlineContent = { Text(if (task.direction == TransferDirection.UPLOAD) "↑ ${task.localPath}" else "↓ ${task.remotePath}") },
                 supportingContent = {
-                    LinearProgressIndicator(progress = { task.progress }, modifier = Modifier.fillMaxWidth().height(4.dp))
+                    LinearProgressIndicator(progress = task.progress, modifier = Modifier.fillMaxWidth().height(4.dp))
                 },
                 trailingContent = {
                     Text(when (task.status) {

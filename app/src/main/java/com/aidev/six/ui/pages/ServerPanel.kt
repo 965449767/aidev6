@@ -4,17 +4,24 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import com.aidev.six.PathConfig
+import com.aidev.six.agent.AgentTaskDefinition
+import com.aidev.six.agent.AgentTaskRecord
+import com.aidev.six.agent.AgentTaskRunner
+import com.aidev.six.agent.AgentTaskStatus
+import com.aidev.six.agent.AgentTaskStore
 import com.aidev.six.navigation.DialogType
 import com.aidev.six.navigation.LocalDialogManager
 import com.aidev.six.ui.components.AppActionRow
 import com.aidev.six.ui.components.AppSectionHeader
 import com.aidev.six.ui.components.AppSectionTitle
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +29,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -42,6 +52,16 @@ fun ServerPanel(
     val taskCount = remember { taskCount(context) }
     val ubuntuInstalled = remember { ubuntuInstalled(context) }
     val opencodeInstalled = remember { opencodeInstalled(context) }
+
+    val taskStateFile = remember(context) { File(PathConfig.tasksDir(context), "agent-tasks.json") }
+    val taskRunner = remember { AgentTaskRunner() }
+    val taskRecords = remember { mutableStateListOf<AgentTaskRecord>() }
+    val selectedTaskId = remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(taskStateFile) {
+        taskRecords.clear()
+        taskRecords.addAll(AgentTaskStore.loadState(taskStateFile))
+    }
 
     Column(
         modifier = modifier
@@ -86,6 +106,47 @@ fun ServerPanel(
         }
         HorizontalDivider()
         AppActionRow("OpenCode 日志", "查看 OpenCode 任务输出", onClick = { onExecuteCommand("aidev-agent-log") })
+
+        Spacer(Modifier.height(8.dp))
+
+        AppSectionTitle("Agent 开发任务")
+        AppActionRow("启动 Android 构建任务", "让 Agent 任务引擎执行一次构建任务", onClick = {
+            val definition = AgentTaskDefinition(
+                id = "agent-build-${System.currentTimeMillis()}",
+                name = "Android 构建",
+                description = "执行一次调试构建任务",
+                command = "./gradlew :app:assembleDebug -Dkotlin.compiler.execution.strategy=in-process -Dkotlin.daemon.enabled=false --console=plain",
+                workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                tags = listOf("android", "build")
+            )
+            taskRunner.runTask(definition, taskStateFile) { record ->
+                taskRecords.removeAll { it.definition.id == record.definition.id }
+                taskRecords.add(0, record)
+            }
+        })
+        HorizontalDivider()
+        if (taskRecords.isEmpty()) {
+            InfoNote("暂无 Agent 任务记录")
+        } else {
+            taskRecords.forEach { record ->
+                AgentTaskRow(
+                    task = record,
+                    isSelected = selectedTaskId.value == record.definition.id,
+                    onToggle = { selectedTaskId.value = if (selectedTaskId.value == record.definition.id) null else record.definition.id },
+                    onRetry = {
+                        val definition = record.definition.copy(id = "agent-retry-${System.currentTimeMillis()}")
+                        taskRunner.runTask(definition, taskStateFile) { task ->
+                            taskRecords.removeAll { it.definition.id == task.definition.id }
+                            taskRecords.add(0, task)
+                        }
+                    },
+                    onCancel = {
+                        taskRunner.cancelTask(record.definition.id)
+                    },
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
 
@@ -171,6 +232,79 @@ private fun submitBuildRequest(context: Context, project: String) {
         put("autoLaunch", true)
     }
     runCatching { File(dir, "req-$id.json").writeText(json.toString()) }
+}
+
+@Composable
+private fun AgentTaskRow(
+    task: AgentTaskRecord,
+    isSelected: Boolean,
+    onToggle: () -> Unit,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(task.definition.name, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    text = when (task.status) {
+                        AgentTaskStatus.PENDING -> "待执行"
+                        AgentTaskStatus.RUNNING -> "执行中"
+                        AgentTaskStatus.SUCCEEDED -> "已完成"
+                        AgentTaskStatus.FAILED -> "失败"
+                        AgentTaskStatus.CANCELLED -> "已取消"
+                    },
+                    color = when (task.status) {
+                        AgentTaskStatus.SUCCEEDED -> MaterialTheme.colorScheme.secondary
+                        AgentTaskStatus.FAILED -> MaterialTheme.colorScheme.error
+                        AgentTaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                Text(
+                    text = if (isSelected) "收起" else "详情",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clickable(onClick = onToggle),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "重试",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clickable(onClick = onRetry),
+                )
+            }
+        }
+        if (task.definition.description.isNotBlank()) {
+            Text(task.definition.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        if (isSelected) {
+            Spacer(Modifier.height(4.dp))
+            Text(task.log.ifBlank { "暂无输出" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (task.status == AgentTaskStatus.RUNNING) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "取消",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clickable(onClick = onCancel),
+                )
+            }
+            if (task.exitCode >= 0) {
+                Spacer(Modifier.height(4.dp))
+                Text("exit=$${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }
 
 @Composable
