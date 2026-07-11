@@ -1,131 +1,164 @@
 #!/usr/bin/env bash
-# aidev-self-evolution —— 自我进化闭环「反向驱动 宇宙A」侧参考实现（Phase G）
+# aidev-self-evolution —— 自我进化闭环「宇宙 A 自动驾驶守护进程」（Phase G 守护化）
 #
-# 它扮演「宇宙 A（OpenCode）的自动驾驶员」：
-#   1) 监听 App 写出的崩溃回流文件：home/workspace/.aidev-loop/crash-<id>.json
-#   2) 若 crashed=true 且 fix_applied=false，把崩溃堆栈喂给 OpenCode 让它改码
-#   3) OpenCode 改完源码后，写 home/.aidev-build-bridge/req-<id>.json 触发下一轮
-#      「宇宙B 编译 → Shizuku 安装 → 自动拉起 → 抓崩溃」
-#   4) 把 fix_applied=true + 修复说明回填进崩溃文件，避免重复修同一份
+# 它常驻在宇宙 A（OpenCode 宿主），扮演"自动修码工"：
+#   1) 周期扫描 App 写出的崩溃回流：home/workspace/.aidev-loop/crash-<id>.json
+#   2) 对每个 crashed=true 且 fix_applied=false 的文件，把堆栈喂给 OpenCode 改码
+#   3) 改完后把文件 fix_applied 置 true（防重复修），并写 req-<id>.json 触发下一轮构建
+#   4) App 侧若开了「自我进化自治模式」开关，会自行再构建；否则本守护也会触发
 #
-# 这是个参考实现：真实环境里也可由 OpenCode 自己定期读该目录并直接改码，
-# 不必依赖本脚本。它证明「崩溃 → 改码 → 重建」文件契约是闭合的。
+# 与 App 自治开关配合 = 完整无人值守闭环：崩溃 → 自动改码 → 自动重建 → 再验证。
 #
 # 用法：
-#   aidev-self-evolution [--max-iter N] [--once] [--project MyAndroidProject]
-#     --once       处理一轮（一个未修复崩溃）后退出
-#     --max-iter N 最多自动迭代 N 轮（防失控，默认 5）
+#   aidev-self-evolution --daemon          后台常驻（写 pid 文件 + 日志）
+#   aidev-self-evolution --stop            停止后台守护
+#   aidev-self-evolution status            查看守护状态
+#   aidev-self-evolution --once            前台跑一轮就退出（调试用）
+#   aidev-self-evolution --max-iter N      最多驱动 N 轮后退出（默认随守护一直跑）
+#
+# 前置：宇宙 A 里先起 OpenCode 服务（推荐常驻）：
+#   opencode serve --port 4096 &
+# 脚本默认通过 http://127.0.0.1:4096 附着；可用 OPENCODE_URL 覆盖，
+# 或设 OPENCODE_CMD 为其它非交互调用方式（如直接 `opencode` 的批处理形态）。
 
 set -uo pipefail
 
-MAX_ITER=5
+MAX_ITER=0            # 0 = 无限（守护）
 ONCE=0
+DAEMON=0
+STOP=0
+SHOW_STATUS=0
 PROJECT="MyAndroidProject"
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --daemon) DAEMON=1 ;;
+    --stop) STOP=1 ;;
+    --status) SHOW_STATUS=1 ;;
+    status) SHOW_STATUS=1 ;;
     --once) ONCE=1 ;;
-    --max-iter) MAX_ITER="${2:-$MAX_ITER}"; shift ;;
+    --max-iter) MAX_ITER="${2:-0}"; shift ;;
     --project) PROJECT="${2:-$PROJECT}"; shift ;;
-    *) log "忽略未知参数: $1" ;;
+    *) echo "忽略未知参数: $1" ;;
   esac
   shift
 done
 
-# 共享工作区（与 App 的 PathConfig.workspaceDir 对应，在宇宙A/宇宙B 中挂载为同一份）
 WORKSPACE="${AIDEV_WORKSPACE:-$HOME/workspace}"
 LOOP_DIR="$WORKSPACE/.aidev-loop"
 BRIDGE_DIR="$HOME/.aidev-build-bridge"
+PID_FILE="$HOME/.aidev-self-evolution.pid"
+LOG_FILE="${AIDEV_SELF_EVOLUTION_LOG:-$HOME/.aidev-self-evolution.log}"
+OPENCODE_URL="${OPENCODE_URL:-http://127.0.0.1:4096}"
+OPENCODE_CMD="${OPENCODE_CMD:-opencode run --attach $OPENCODE_URL}"
 
-# 找 OpenCode 可执行（按环境调整）
-OPENCODE="${OPENCODE_BIN:-opencode}"
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
-log() { echo "[self-evolution $(date +%H:%M:%S)] $*"; }
+ensure_dirs() { mkdir -p "$LOOP_DIR" "$BRIDGE_DIR"; }
 
-ensure_dirs() {
-  mkdir -p "$LOOP_DIR" "$BRIDGE_DIR"
+# ---- 守护进程管理 ----
+is_running() { [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; }
+
+do_status() {
+  if is_running; then echo "运行中 (pid $(cat "$PID_FILE"))，日志: $LOG_FILE"; else echo "未运行"; fi
 }
 
-next_crash() {
-  # 返回第一个 crashed 且未修复的崩溃文件；没有则空
-  for f in "$LOOP_DIR"/crash-*.json; do
-    [ -e "$f" ] || continue
-    local crashed fix
-    crashed=$(grep -o '"crashed"[[:space:]]*:[[:space:]]*\(true\|false\)' "$f" | grep -o 'true' || true)
-    fix=$(grep -o '"fix_applied"[[:space:]]*:[[:space:]]*\(true\|false\)' "$f" | grep -o 'true' || true)
-    if [ "$crashed" = "true" ] && [ -z "$fix" ]; then
-      echo "$f"; return 0
-    fi
-  done
-  return 1
+do_stop() {
+  if is_running; then
+    kill "$(cat "$PID_FILE")" 2>/dev/null && echo "已停止"
+    rm -f "$PID_FILE"
+  else
+    echo "未在运行"; rm -f "$PID_FILE"
+  fi
 }
 
-mark_fixed() {
-  local f="$1" note="$2"
-  # 简单回填：把 fix_applied 改为 true，并追加修复说明
+daemonize() {
+  if is_running; then echo "已经在运行 (pid $(cat "$PID_FILE"))"; exit 0; fi
+  nohup "$0" ${MAX_ITER:+"--max-iter" "$MAX_ITER"} --project "$PROJECT" >>"$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  echo "已启动守护 (pid $(cat "$PID_FILE"))，日志: $LOG_FILE"
+  exit 0
+}
+
+# ---- 核心：处理一个崩溃文件 ----
+fix_crash() {
+  local f="$1"
+  local pkg stack project reply
+  pkg=$(grep -o '"package"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"[[:space:]]*,?$//')
+  project=$(grep -o '"project"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"[[:space:]]*,?$//')
+  project="${project:-$PROJECT}"
+  stack=$(grep -A60 '"stack"' "$f" | sed -n '2,60p')
+
+  log "处理崩溃回流: $f (包 $pkg, 项目 $project)"
+
+  local prompt="项目源码在 $WORKSPACE/$project。下面是一份运行期崩溃回流（已自动安装拉起并抓到）：
+
+$stack
+
+请定位根因并直接修改源码修复它；改完后不要手动构建。改完回复一行：已修复: <一句话说明>。"
+
+  reply=$($OPENCODE_CMD "$prompt" 2>&1)
+  local rc=$?
+  if [ $rc -ne 0 ]; then
+    log "OpenCode 调用失败(rc=$rc)，本轮跳过。请确认 OpenCode 服务已起($OPENCODE_URL)。"
+    return 1
+  fi
+  log "OpenCode 回复: $(echo "$reply" | tail -1)"
+
+  # 回填：标记已修复 + 备注，防重复修同一份
   sed -i 's/"fix_applied"[[:space:]]*:[[:space:]]*false/"fix_applied": true/' "$f" 2>/dev/null || true
-  printf '\n// fix_note: %s\n' "$note" >> "$f"
-}
+  printf '\n// fix_note: %s\n' "$(echo "$reply" | tail -1)" >> "$f"
 
-trigger_rebuild() {
+  # 触发下一轮构建（与 App 自治开关互补；即便开关关着也驱动闭环）
   local id="se-$(date +%s%3N)"
-  local req="$BRIDGE_DIR/req-$id.json"
-  cat > "$req" <<JSON
+  cat > "$BRIDGE_DIR/req-$id.json" <<JSON
 {
   "id": "$id",
-  "project": "$PROJECT",
+  "project": "$project",
   "flavor": "debug",
   "autoInstall": true,
   "autoLaunch": true,
   "triggeredBy": "self-evolution"
 }
 JSON
-  log "已写重建请求 $req（等待宇宙B 编译→安装→拉起→抓崩溃）"
-}
-
-drive_one() {
-  local f; f=$(next_crash) || { log "没有待修复崩溃，跳过"; return 1; }
-  log "发现崩溃回流: $f"
-  local pkg stack
-  pkg=$(grep -o '"package"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" | head -1 | sed 's/.*:"//;s/"//')
-  stack=$(grep -A40 '"stack"' "$f" | sed -n '2,40p')
-
-  if ! command -v "$OPENCODE" >/dev/null 2>&1; then
-    log "未找到 $OPENCODE，跳过自动改码。契约文件已就位，可由 OpenCode 手动读取 $f"
-    return 1
-  fi
-
-  log "把崩溃喂给 $OPENCODE 修复项目 $PROJECT（包 $pkg）…"
-  local prompt
-  prompt="项目源码在 $WORKSPACE/$PROJECT。下面是一份崩溃回流（已自动安装拉起并抓到）：
-
-$stack
-
-请定位根因并直接修改源码修复它；改完后不要手动构建。改完回复『已修复: <一句话说明>』。"
-  local reply
-  reply=$("$OPENCODE" --print "$prompt" 2>&1) || { log "OpenCode 调用失败"; return 1; }
-
-  # 回填修复说明并触发下一轮构建
-  mark_fixed "$f" "$reply"
-  trigger_rebuild
-  log "本轮驱动完成，等待下一轮崩溃回流闭合循环。"
+  log "已写重建请求 $BRIDGE_DIR/req-$id.json"
   return 0
 }
 
-main() {
+# ---- 主循环 ----
+main_loop() {
   ensure_dirs
   local iter=0
-  while [ "$iter" -lt "$MAX_ITER" ]; do
-    if drive_one; then
-      iter=$((iter+1))
-    else
-      [ "$ONCE" = 1 ] && break
-      log "空闲，5s 后重试（Ctrl-C 退出）"
-      sleep 5
+  while :; do
+    if [ "$MAX_ITER" -gt 0 ] && [ "$iter" -ge "$MAX_ITER" ]; then
+      log "已达最大轮数 $MAX_ITER，退出。"; break
     fi
-    [ "$ONCE" = 1 ] && break
+    local pending
+    pending=$(ls -1 "$LOOP_DIR"/crash-*.json 2>/dev/null | while read -r cf; do
+      local crashed fixed
+      crashed=$(grep -o '"crashed"[[:space:]]*:[[:space:]]*true' "$cf" || true)
+      fixed=$(grep -o '"fix_applied"[[:space:]]*:[[:space:]]*true' "$cf" || true)
+      [ -n "$crashed" ] && [ -z "$fixed" ] && echo "$cf"
+    done)
+    if [ -n "$pending" ]; then
+      while IFS= read -r cf; do
+        [ -z "$cf" ] && continue
+        fix_crash "$cf" && iter=$((iter+1))
+      done <<< "$pending"
+    else
+      [ "$ONCE" = 1 ] && { log "没有待修复崩溃，--once 退出。"; break; }
+    fi
+    [ "$ONCE" = 1 ] && { log "一轮完毕，--once 退出。"; break; }
+    [ -n "$pending" ] && log "本轮待修复: $(echo "$pending" | wc -l) 个"
+    sleep 5
   done
-  log "结束（已驱动 $iter 轮）。"
+  log "守护循环结束。"
 }
 
-main "$@"
+# ---- 入口 ----
+if [ "$STOP" = 1 ]; then do_stop; exit 0; fi
+if [ "$SHOW_STATUS" = 1 ]; then do_status; exit 0; fi
+if [ "$DAEMON" = 1 ]; then daemonize; exit 0; fi
+
+log "启动 aidev-self-evolution (mode=$([ "$DAEMON" = 1 ] && echo daemon || echo foreground), max-iter=${MAX_ITER:-inf}, opencode=$OPENCODE_URL)"
+main_loop

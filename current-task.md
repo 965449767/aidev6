@@ -384,3 +384,20 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 
 ### 边界
 - App 只"自动再构建"，改码仍由宇宙 A（OpenCode / aidev-self-evolution）完成；开关让"崩溃→重建"自动转，配合常驻 OpenCode 即无人值守闭环。
+
+---
+
+## 守护进程（Phase G 追加·续，2026-07-11）
+
+把 `aidev-self-evolution` 从"一次跑一轮"升级为常驻守护，补齐"自动改码"那一半。
+
+### 改动（scripts/aidev-self-evolution）
+- 加 `--daemon` / `--stop` / `status`：nohup 后台常驻 + pid 文件 + 日志；`daemonize` 后 `exit 0` 避免父进程残留。
+- 主循环由"一次"改为常驻：每 5s 扫描 `.aidev-loop/crash-*.json`，对 `crashed=true & fix_applied=false` 的逐个调 `opencode run --attach <url>` 改码。
+- 改码后把崩溃文件 `fix_applied` 置 true（防重复修）+ 写 `req-<id>.json` 触发下一轮；OpenCode 失败则跳过等重试。
+- 参数：`OPENCODE_URL`（默认 4096）、`OPENCODE_CMD`（可覆盖调用方式）、`AIDEV_WORKSPACE`、`--max-iter`、`--once` 调试。
+- 修复早期实现的两个 bug：包名/项目名提取 sed 错误（导致 req json 字段错乱）；`status` 子命令未匹配。
+
+### 验证
+- 用 fake-OpenCode 跑通：守护扫描→调改码→标记 fix_applied→写重建请求；`--daemon` 启停、`status` 正常；pid 进程 stop 后确已退出。
+- 文档 `docs/self-evolution-loop.md` 第 7、8 节补全守护用法与双触发说明。

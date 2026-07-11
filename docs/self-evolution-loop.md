@@ -106,3 +106,38 @@ key `self_evolution_autonomous`）。
 
 > 注意：App 只负责"自动再构建"，**改码仍由宇宙 A（OpenCode）完成**。自治开关让"崩溃→重建"自动转，
 > 配合常驻的 OpenCode（或 `aidev-self-evolution` 脚本）即可实现无人值守的"改码→验证"循环。
+
+## 7. 守护进程（`aidev-self-evolution --daemon`）
+
+关掉守护、只开 App 自治开关，闭环会"同一份坏代码反复重编"（见上）。**守护进程才是"自动改码"的那一半**。
+
+在宇宙 A（OpenCode 宿主）里：
+
+```bash
+# 1) 先起 OpenCode 服务（常驻，避免每次冷启动）
+opencode serve --port 4096 &
+
+# 2) 启动自我进化守护（后台常驻，读崩溃→调 OpenCode 改码→触发重建）
+aidev-self-evolution --daemon
+
+# 查看状态 / 停止
+aidev-self-evolution status
+aidev-self-evolution --stop
+```
+
+守护每 5s 扫描 `home/workspace/.aidev-loop/crash-*.json`：
+- 发现 `crashed=true` 且 `fix_applied=false` → 把堆栈喂给 `opencode run --attach http://127.0.0.1:4096` 改码
+- 改完把该文件 `fix_applied` 置 `true`（防重复修）+ 写 `req-<id>.json` 触发下一轮构建
+- 改码失败（OpenCode 服务没起）则跳过，等下一轮重试
+
+**与 App 自治开关配合 = 完整无人值守闭环**：崩溃 → 守护自动改码 → App 开关（或守护自身）自动重建 → 拉起 → 再抓崩溃 → … 直到不崩。
+
+> 双触发说明：守护和 App 自治开关都会写 `req-<id>.json`。同一份崩溃：若守护先修（置 `fix_applied=true`），App 侧因 `fix_applied=true` 不再自动重建；若 App 先重建，守护修完也会触发。不会死循环，因为 `fix_applied` 是收敛点。
+
+> 调试：`aidev-self-evolution --once` 前台跑一轮；`OPENCODE_CMD` 可覆盖为其它非交互调用；`OPENCODE_URL` 覆盖服务地址；`AIDEV_WORKSPACE` 覆盖工作区根。
+
+## 8. 现状与边界（守护化后）
+
+- App 侧：自治开关（A 系列）让"崩溃→重建"自动转；守护进程（本节约 7）让"崩溃→改码"自动转。
+- 两者齐备 = 无人值守自进化闭环；只开其一 = 半自动（人在环或空转重编）。
+- 真机端到端需设备 + Shizuku + 常驻 OpenCode 实测；本环境已用 fake-OpenCode 验证守护"扫描→改码→标记→触发重建→启停"全链路。
