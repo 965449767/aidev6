@@ -24,7 +24,7 @@
 
 **时序 / 健壮性**
 - B5 崩溃回流靠固定 `delay(8000)` 只抓一次（BuildBridgeService.kt:138）→ App 启动慢或 8s 后崩溃则漏抓。
-- B9 `parseCrash` 用「Exception/Error」关键字兜底易误报，`raw.takeLast(2000)` 可能截断关键栈（CrashReportBridgeService.kt:88）。
+- B9 `parseCrash` 用「Exception/Error」关键字兜底易误报，`raw.takeLast(2000)` 可能截断关键栈（CrashReportBridgeService.kt:88）。**✅ 已解（v41/2026-07-12）**：改用 `-b crash` 缓冲区 + 按 `Process:<pkg>` 定位崩溃块 + 去自污染，真机验证抓到真实堆栈。详见 error-journal「D4 崩溃回流」。
 
 **架构一致性**
 - B7 两套「任务」并存且互不相干：新 Agent 任务系统（AgentTaskRunner，跑宿主 sh）与 BuildBridge（跑宇宙B PRoot），ServerPanel 里是两个独立列表 → F04 需统一视图。

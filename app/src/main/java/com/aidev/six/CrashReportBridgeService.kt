@@ -59,10 +59,8 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
 
         val report = kotlin.runCatching {
             suspendCancellableCoroutine<CrashReport> { cont ->
-                ShizukuLogcat.fetchLog(
-                    packageName = pkg,
+                ShizukuLogcat.fetchCrashLog(
                     lines = lines,
-                    filters = listOf("FATAL EXCEPTION", "AndroidRuntime", "Exception", "Error", "crash", "ANR"),
                     callback = { res ->
                         res.onSuccess { raw -> cont.resume(parseCrash(pkg, raw)) }
                         res.onFailure { e -> cont.resume(CrashReport(pkg, emptyList(), "logcat 抓取失败: ${e.message}", "")) }
@@ -85,18 +83,57 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         finish(ctx, processingFile, true, msg, outFile.name)
     }
 
+    /**
+     * 从 logcat 中提取目标包的崩溃堆栈。
+     * 关键点：① 剔除本工具自身日志（ShizukuLogcat 自污染）；② 定位 FATAL EXCEPTION 且其后
+     * "Process: <pkg>" 与目标包匹配的块（有多个崩溃时取最后一个=最新）；③ 只收 AndroidRuntime 行，
+     * 遇到无关日志即停，避免混入系统噪声。
+     */
     private fun parseCrash(pkg: String, raw: String): CrashReport {
-        val lines = raw.lineSequence().toList()
-        val idx = lines.indexOfFirst { it.contains("FATAL EXCEPTION") }
-        if (idx < 0) {
-            // 退而求其次：查找第一个 Exception/Error 行
-            val alt = lines.indexOfFirst { it.contains("Exception") || it.contains("Error") }
-            if (alt < 0) return CrashReport(pkg, emptyList(), "未检测到崩溃", raw.takeLast(2000))
-            val block = lines.subList(alt, minOf(alt + 60, lines.size))
-            return CrashReport(pkg, block.map { it.trim() }, block.firstOrNull()?.trim() ?: "crash", raw.takeLast(2000))
+        val lines = raw.lineSequence()
+            .filterNot { it.contains("ShizukuLogcat") || it.contains("---MAIN---") }
+            .toList()
+
+        // 所有 FATAL EXCEPTION 位置
+        val fatalIdxs = lines.indices.filter { lines[it].contains("FATAL EXCEPTION") }
+        // 优先选块内 Process: <pkg> 匹配的；否则取最后一个 FATAL
+        val chosen = fatalIdxs.lastOrNull { start ->
+            lines.subList(start, minOf(start + 4, lines.size)).any { it.contains("Process: $pkg") }
+        } ?: fatalIdxs.lastOrNull()
+
+        if (chosen != null) {
+            val block = collectCrashBlock(lines, chosen)
+            val header = block.firstOrNull { it.contains("Exception") || it.contains("Error") }
+                ?: block.firstOrNull() ?: "FATAL EXCEPTION"
+            return CrashReport(pkg, block, header.trim(), block.joinToString("\n").takeLast(4000))
         }
-        val block = lines.subList(idx, minOf(idx + 80, lines.size))
-        return CrashReport(pkg, block.map { it.trim() }, block.firstOrNull()?.trim() ?: "FATAL EXCEPTION", raw.takeLast(2000))
+
+        // 兜底：无 FATAL，找该包相关的 Exception/Error 行
+        val alt = lines.indexOfFirst {
+            (it.contains("Exception") || it.contains("Error")) && it.contains("AndroidRuntime")
+        }
+        if (alt < 0) return CrashReport(pkg, emptyList(), "未检测到崩溃", raw.takeLast(2000))
+        val block = collectCrashBlock(lines, alt)
+        return CrashReport(pkg, block, block.firstOrNull()?.trim() ?: "crash", block.joinToString("\n").takeLast(4000))
+    }
+
+    /** 从 FATAL 行起，收集连续的 AndroidRuntime 堆栈行（threadtime 格式每行都含 "AndroidRuntime:"）。 */
+    private fun collectCrashBlock(lines: List<String>, start: Int): List<String> {
+        val out = ArrayList<String>()
+        var i = start
+        var gap = 0
+        while (i < lines.size && out.size < 120) {
+            val line = lines[i]
+            if (line.contains("AndroidRuntime")) {
+                out.add(line.substringAfter("AndroidRuntime:", line).trim().ifBlank { line.trim() })
+                gap = 0
+            } else if (out.isNotEmpty()) {
+                // 允许极少量穿插，连续 2 行非 AndroidRuntime 视为堆栈结束
+                if (++gap >= 2) break
+            }
+            i++
+        }
+        return out
     }
 
     private fun buildReportJson(report: CrashReport): String {

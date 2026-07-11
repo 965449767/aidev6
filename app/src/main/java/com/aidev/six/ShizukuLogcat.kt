@@ -109,6 +109,29 @@ object ShizukuLogcat {
         }
     }
 
+    /**
+     * 专用崩溃抓取：优先读 crash 缓冲区（进程崩溃后依然留存 FATAL EXCEPTION，无需 --pid），
+     * 再拼上 main 缓冲区作补充。不使用会被 logcat 误当 tag:priority 的 filters，交由调用方解析。
+     */
+    fun fetchCrashLog(lines: Int = 2000, callback: (Result<String>) -> Unit) {
+        ioScope.launch {
+            try {
+                val n = lines.coerceIn(200, 5000)
+                val cmd = "logcat -d -v threadtime -b crash -t $n 2>/dev/null; " +
+                    "echo '---MAIN---'; logcat -d -v threadtime -b main -t $n 2>/dev/null"
+                val result = if (isAvailable()) {
+                    tryFetchViaShizuku(cmd).recoverCatching { tryFetchViaRuntime(cmd).getOrThrow() }
+                } else {
+                    tryFetchViaRuntime(cmd)
+                }
+                callback(result)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                callback(Result.failure(e))
+            }
+        }
+    }
+
     private suspend fun tryFetchViaShizuku(cmd: String): Result<String> = withContext(Dispatchers.IO) {
         val method = newProcessMethod
         if (method == null) return@withContext Result.failure(RuntimeException("Shizuku newProcess 方法不可用"))
