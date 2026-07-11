@@ -32,7 +32,9 @@ class DevEnvironmentChecker(
 
         checks.add(CheckItem("AIDev Home", home.exists(), null))
         checks.add(CheckItem("Ubuntu rootfs", rootfs.exists(), null))
-        checks.add(CheckItem("PRoot 依赖", File(home, "proot-lib/libtalloc.so.2").exists(), null))
+        val prootOk = File(com.aidev.six.PathConfig.nativeLibDir(activity), "libproot.so").exists() &&
+            File(com.aidev.six.PathConfig.prootLibDir(activity), "libtalloc.so.2").exists()
+        checks.add(CheckItem("PRoot 依赖", prootOk, null))
 
         val devTools = listOf("node" to "Node.js", "python3" to "Python3", "git" to "Git", "java" to "JDK", "npm" to "npm")
         val missingTools = mutableListOf<String>()

@@ -73,7 +73,19 @@ fun ServerPanel(
 
     LaunchedEffect(taskStateFile) {
         taskRecords.clear()
-        taskRecords.addAll(AgentTaskStore.loadState(taskStateFile))
+        // 冷启动时，磁盘上残留的 RUNNING 记录说明上次构建被应用重启打断（无活跃追踪线程），
+        // 标记为失败并给出可重试提示，避免永久卡在"执行中"。
+        val loaded = AgentTaskStore.loadState(taskStateFile).map { rec ->
+            if (rec.status == AgentTaskStatus.RUNNING) {
+                rec.copy(
+                    status = AgentTaskStatus.FAILED,
+                    exitCode = -1,
+                    finishedAt = System.currentTimeMillis(),
+                    log = rec.log + "\n\n✖ 应用重启导致构建被中断，请点击「重试」重新提交。"
+                )
+            } else rec
+        }
+        taskRecords.addAll(loaded)
     }
 
     Column(
@@ -170,16 +182,54 @@ fun ServerPanel(
         if (taskRecords.isEmpty()) {
             InfoNote("暂无 Agent 任务记录")
         } else {
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                Text(
+                    "任务记录 ${taskRecords.size} 条",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "清空全部",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clickable {
+                        taskRecords.clear()
+                        selectedTaskId.value = null
+                        AgentTaskStore.clearTasks(taskStateFile)
+                    },
+                )
+            }
             taskRecords.forEach { record ->
                 AgentTaskRow(
                     task = record,
                     isSelected = selectedTaskId.value == record.definition.id,
                     onToggle = { selectedTaskId.value = if (selectedTaskId.value == record.definition.id) null else record.definition.id },
+                    onDelete = {
+                        taskRecords.removeAll { it.definition.id == record.definition.id }
+                        if (selectedTaskId.value == record.definition.id) selectedTaskId.value = null
+                        AgentTaskStore.removeTask(taskStateFile, record.definition.id)
+                    },
                     onRetry = {
-                        val definition = record.definition.copy(id = "agent-retry-${System.currentTimeMillis()}")
-                        taskRunner.runTask(definition, taskStateFile) { task ->
-                            taskRecords.removeAll { it.definition.id == task.definition.id }
-                            taskRecords.add(0, task)
+                        // 构建/自进化任务由 BuildRequestTracker（文件桥）驱动，不能用 taskRunner 跑 shell，
+                        // 否则点击无反应。按标签路由到正确的执行器。
+                        if (record.definition.tags.any { it == "build" || it == "self-evolution" }) {
+                            buildTracker.submit(
+                                context = context,
+                                project = "MyAndroidProject",
+                                stateFile = taskStateFile,
+                                autonomous = PreferencesManager(context).selfEvolutionAutonomous,
+                                onUpdate = upsertRecord
+                            )
+                        } else {
+                            val definition = record.definition.copy(id = "agent-retry-${System.currentTimeMillis()}")
+                            taskRunner.runTask(definition, taskStateFile) { task ->
+                                taskRecords.removeAll { it.definition.id == task.definition.id }
+                                taskRecords.add(0, task)
+                            }
                         }
                     },
                     onCancel = {
@@ -306,6 +356,7 @@ private fun AgentTaskRow(
     task: AgentTaskRecord,
     isSelected: Boolean,
     onToggle: () -> Unit,
+    onDelete: () -> Unit,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -313,6 +364,7 @@ private fun AgentTaskRow(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onToggle)
             .padding(vertical = 4.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -334,20 +386,38 @@ private fun AgentTaskRow(
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
+                if (task.status == AgentTaskStatus.RUNNING) {
+                    val currentPhase = task.steps.firstOrNull { it.status == AgentTaskStatus.RUNNING }?.name
+                        ?: task.steps.lastOrNull { it.status == AgentTaskStatus.SUCCEEDED }?.name
+                    if (!currentPhase.isNullOrBlank()) {
+                        Text(
+                            text = "当前阶段：$currentPhase",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
             }
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 Text(
                     text = if (isSelected) "收起" else "详情",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.clickable(onClick = onToggle),
+                    modifier = Modifier.clickable(onClick = onToggle).padding(6.dp),
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = "重试",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.clickable(onClick = onRetry),
+                    modifier = Modifier.clickable(onClick = onRetry).padding(6.dp),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "删除",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.clickable(onClick = onDelete).padding(6.dp),
                 )
             }
         }

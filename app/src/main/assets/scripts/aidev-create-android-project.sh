@@ -385,7 +385,7 @@ if [ ! -f "$JARFILE" ]; then
     exit 1
 fi
 
-exec java -jar "$JARFILE" "$@"
+exec java -classpath "$JARFILE" org.gradle.wrapper.GradleWrapperMain "$@"
 GRADLEW_SCRIPT
 
 chmod +x gradlew

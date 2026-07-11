@@ -98,6 +98,17 @@ internal object AgentTaskStore {
         return trimmed
     }
 
+    fun removeTask(file: File, id: String): List<AgentTaskRecord> {
+        val remaining = loadState(file).filterNot { it.definition.id == id }
+        saveState(file, remaining)
+        return remaining
+    }
+
+    fun clearTasks(file: File): List<AgentTaskRecord> {
+        saveState(file, emptyList())
+        return emptyList()
+    }
+
     private fun serializeTask(task: AgentTaskRecord): String {
         return buildString {
             append(encode(task.definition.id))

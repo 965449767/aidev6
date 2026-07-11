@@ -99,7 +99,7 @@ object TerminalThemeManager {
 
     fun apply(session: TerminalSession, preset: TerminalThemePreset) {
         try {
-            val emu = session.javaClass.getMethod("getEmulator").invoke(session)
+            val emu = session.javaClass.getMethod("getEmulator").invoke(session) ?: return
             val colors = emu.javaClass.getField("mColors").get(emu)
             val currentColors = colors.javaClass.getField("mCurrentColors").get(colors) as IntArray
             for (i in 0 until 16) {

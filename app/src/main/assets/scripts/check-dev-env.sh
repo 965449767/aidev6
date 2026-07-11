@@ -6,8 +6,8 @@ echo "== 系统 =="
 grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"' || true
 uname -m
 echo
-echo "== 命令检测 =="
-for c in curl wget git unzip zip tar xz node npm python3 pip3 java gcc g++ make cmake ninja openssl ssh htop lsof watch jq nc ip dig go rustc cargo cargo-ndk ndk-build sdkmanager apkanalyzer tinyproxy aidev-clean aidev-proxy opencode; do
+echo "== 核心命令检测 =="
+for c in curl wget git unzip zip tar xz node npm python3 pip3 openssl ssh htop lsof watch jq nc ip dig tinyproxy aidev-clean aidev-proxy opencode; do
   if command -v "$c" >/dev/null 2>&1; then
     v="$($c --version 2>/dev/null | head -1)"
     [ -z "$v" ] && v="$(command -v "$c")"
@@ -17,8 +17,19 @@ for c in curl wget git unzip zip tar xz node npm python3 pip3 java gcc g++ make 
   fi
 done
 echo
-echo "== dpkg 包检测 =="
-for p in ca-certificates curl wget git unzip zip tar xz-utils nano vim less procps coreutils findutils build-essential python3 python3-pip openjdk-17-jdk nodejs npm cmake ninja-build openssl openssh-client htop lsof watch jq netcat-openbsd golang iproute2 dnsutils tinyproxy; do
+echo "== 可选层命令（按需，缺失属正常）=="
+for c in gcc g++ make cmake ninja java go rustc cargo cargo-ndk ndk-build sdkmanager apkanalyzer; do
+  if command -v "$c" >/dev/null 2>&1; then
+    v="$($c --version 2>/dev/null | head -1)"
+    [ -z "$v" ] && v="$(command -v "$c")"
+    printf "  %-10s ✓ %s\n" "$c" "$v"
+  else
+    printf "  %-10s - 未装（setup-dev-env --build/--android/--rust）\n" "$c"
+  fi
+done
+echo
+echo "== 核心 dpkg 包检测 =="
+for p in ca-certificates curl wget git unzip zip tar xz-utils nano vim less procps coreutils findutils python3 python3-pip nodejs npm openssl openssh-client htop lsof jq netcat-openbsd iproute2 dnsutils tinyproxy; do
   if dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then
     printf "  %-22s ✓ 已安装\n" "$p"
   else

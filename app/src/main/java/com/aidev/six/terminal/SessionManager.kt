@@ -148,7 +148,7 @@ class SessionManager(
         val entry = File(home, ".aidev_shell_entry")
         val nativeDir = activity?.applicationInfo?.nativeLibraryDir ?: ""
         val aidevBin = File(home, "dev-env/bin").absolutePath
-        val prootLibDir = File(home, "proot-lib").absolutePath
+        val extraLibDir = activity?.let { com.aidev.six.PathConfig.prootLibDir(it).absolutePath } ?: ""
         val env = arrayOf(
             "TERM=xterm-256color", "COLORTERM=truecolor",
             "HOME=${home.absolutePath}", "PWD=${home.absolutePath}",
@@ -158,7 +158,7 @@ class SessionManager(
             "AIDEV_PROOT_LOADER=$nativeDir/libproot_loader.so",
             "PROOT_LOADER=$nativeDir/libproot_loader.so",
             "PROOT_TMP_DIR=${File(activity?.cacheDir, "proot_tmp").apply { mkdirs() }.absolutePath}",
-            "LD_LIBRARY_PATH=$prootLibDir:$nativeDir",
+            "LD_LIBRARY_PATH=$extraLibDir:$nativeDir",
             "ENV=${rc.absolutePath}", "PATH=$aidevBin:/system/bin:/system/xbin"
         )
         return TerminalSession("/system/bin/sh", homeDir?.absolutePath ?: "/data/data/com.aidev.six/files/home",

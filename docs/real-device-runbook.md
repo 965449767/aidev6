@@ -7,10 +7,14 @@
 
 ## 第 1 步：装 App 到手机
 
-电脑侧出包（本环境已验证产物存在：`app/build/outputs/apk/debug/app-debug.apk`，约 19.7MB）：
-```bash
-./gradlew assembleDebug -Pandroid.aapt2FromMavenOverride=/host-home/android-sdk/build-tools/34.0.0/aapt2 --no-daemon
-```
+ 电脑侧出包（本环境已验证产物存在：`app/build/outputs/apk/debug/app-debug.apk`，约 19MB）：
+ ```bash
+ # 本环境实测可用的 aapt2 覆盖路径（注意：非 /host-home/…）
+ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+ ./gradlew assembleDebug -Pandroid.aapt2FromMavenOverride=/Android/build-tools/34.0.0/aapt2 --no-daemon
+ ```
+ > ⚠️ 产物校验**不要**直接用 `aidev-apk-info`：该工具有 3 个解析 bug（包名误显 `16`、Native ABI 空、Debuggable 误报「否」）。
+ > 真值用 `aapt2 dump badging app-debug.apk` 确认：包名 `com.aidev.six.dev`、含 `lib/arm64-v8a/*.so`、`application-debuggable`。
 
 **装到手机（二选一，均经 Shizuku 静默安装）：**
 ```bash
@@ -82,8 +86,14 @@ println(s!!.length)   // 必崩 NullPointerException
 - **崩溃文件一直 fix_applied=false**：说明守护没改到——查 OpenCode 服务是否真起、守护日志报错。
 - **App 侧不自动重建**：确认"自我进化自治模式"开关已开；且崩溃文件 `fix_applied=false`（已修则不会重建）。
 
-## 本环境已验证（无需真机）
+## 本环境已验证（无需真机，2026-07-11）
 - `testDebugUnitTest` + `assembleDebug` 绿灯。
 - `bash scripts/verify-self-evolution.sh`：fake OpenCode 模拟完整闭环，断言契约闭合。
-- `aidev-self-evolution` 守护对**真实 opencode**（本环境 v1.17.18）跑通"崩溃→改码→标记→触发重建"（见 Phase H H12）。
-- 真机端到端（Shizuku 安装/拉起 + logcat 抓崩溃）仍需上面 1–6 步在设备上实测。
+- `bash scripts/harness_check.sh`：Harness check passed（文档/结构完好）。
+- A3 复核：宇宙B 项目 `./gradlew assembleDebug -Paapt2FromMavenOverride=/Android/build-tools/34.0.0/aapt2` → BUILD SUCCESSFUL。
+- A1 复核：APK 真值（aapt2）包名 `com.aidev.six.dev`、含 arm64-v8a、debuggable=true、权限齐全。
+- H12（守护对**真实** opencode v1.17.18）仍待办：本环境仅 fake OpenCode 验证全链路。
+- 真机端到端（Shizuku 安装/拉起 + logcat 抓崩溃 + 自治收敛）仍需上面 1–6 步在设备上实测。
+
+> 任务拆解详见 `current-task.md` 的 **组 A–G（24 个原子任务）**，本手册第 1–6 步对应：
+> 第1步=B组+C组；第2步=D组（人工触发闭环）；第3步=E1/E2；第4步=E3/E4；第5步=F1；第6步=F2–F5。

@@ -134,7 +134,7 @@ fun EdgeSwipePanel(
             }
         }
 
-        if (enabled && !imeActive) {
+        if (enabled && !imeActive && currentPanel == null) {
             EdgeGestureZone(
                 modifier = Modifier
                     .align(Alignment.CenterStart)

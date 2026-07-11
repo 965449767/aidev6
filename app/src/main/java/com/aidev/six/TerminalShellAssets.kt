@@ -23,7 +23,11 @@ object TerminalShellAssets {
         val rootfs = File(home, "ubuntu-rootfs")
 
         // 第一类：生成脚本（含核心入口 aidev-ubuntu-core），无条件写，且必须先于 .aidevrc
-        installAidevCommandScripts(home)
+        installAidevCommandScripts(
+            home,
+            PathConfig.nativeLibDir(activity).absolutePath,
+            PathConfig.prootLibDir(activity).absolutePath
+        )
         // 校验核心入口已生成，避免"有 .aidevrc 提示符却无 aidev-ubuntu-core 命令"的半残状态
         val core = File(home, "dev-env/bin/aidev-ubuntu-core")
         if (!core.isFile || core.length() == 0L) {
@@ -36,7 +40,10 @@ object TerminalShellAssets {
         // 第二类：大文件用 versionCode 门控（rootfs 相关，失败不致命，不连累核心环境）
         val deployMarker = File(home, ".asset-deploy-code")
         val currentCode = getVersionCode(activity)
-        val needsDeploy = !deployMarker.exists() || deployMarker.readText().trim() != currentCode.toString()
+        // libtalloc.so.2 符号链接缺失（首装/被清）时无视版本门控重建
+        val prootLinkMissing = !File(PathConfig.prootLibDir(activity), "libtalloc.so.2").exists()
+        val needsDeploy = prootLinkMissing ||
+            !deployMarker.exists() || deployMarker.readText().trim() != currentCode.toString()
         if (needsDeploy) {
             runCatching {
                 installProotSupportLibraries(activity)
@@ -68,22 +75,39 @@ object TerminalShellAssets {
         }
     }
 
+    /**
+     * proot 可执行体 + 依赖 .so 已随 APK 解包到 nativeLibraryDir（唯一 exec 允许区），无需再拷贝。
+     * 此处仅补一个版本化 soname 符号链接：libtalloc.so.2 -> nativeLibDir/libtalloc.so
+     * （libtalloc.so.2 无法作为 lib*.so 被系统解包，见 PathConfig.prootLibDir）。
+     */
     private fun installProotSupportLibraries(activity: Activity) {
-        val outDir = File(activity.filesDir, "home/proot-lib").apply { mkdirs() }
-        listOf("libtalloc.so.2", "libandroid-shmem.so").forEach { name ->
+        val linkDir = PathConfig.prootLibDir(activity).apply { mkdirs() }
+        val nativeDir = PathConfig.nativeLibDir(activity)
+        val link = File(linkDir, "libtalloc.so.2")
+        val target = File(nativeDir, "libtalloc.so")
+        runCatching {
+            if (link.exists() || isSymlink(link)) link.delete()
+            android.system.Os.symlink(target.absolutePath, link.absolutePath)
+        }.onFailure {
+            Log.e("TerminalShellAssets", "installProotSupportLibraries: symlink libtalloc.so.2 failed", it)
+            // 兜底：符号链接失败则退化为读拷贝（部分文件系统不支持 symlink）
             runCatching {
-                activity.assets.open("proot-libs/arm64-v8a/$name").use { input ->
-                    File(outDir, name).outputStream().use { output -> input.copyTo(output) }
+                target.inputStream().use { input ->
+                    link.outputStream().use { output -> input.copyTo(output) }
                 }
-                File(outDir, name).setReadable(true, false)
-            }.onFailure { Log.e("TerminalShellAssets", "installProotSupportLibraries: $name failed", it) }
+                link.setReadable(true, false)
+            }
         }
     }
 
-    private fun installAidevCommandScripts(home: File) {
+    private fun isSymlink(f: File): Boolean = runCatching {
+        f.absolutePath != f.canonicalPath
+    }.getOrDefault(false)
+
+    private fun installAidevCommandScripts(home: File, nativeDir: String, prootExtraLibsPath: String) {
         val bin = File(home, "dev-env/bin").apply { mkdirs() }
         val core = File(bin, "aidev-ubuntu-core")
-        core.writeText(UbuntuBootstrapScripts.aidevUbuntuCommandScript(home.absolutePath))
+        core.writeText(UbuntuBootstrapScripts.aidevUbuntuCommandScript(home.absolutePath, nativeDir, prootExtraLibsPath))
         core.setReadable(true, false)
         listOf("ubuntu", "install-ubuntu", "aidev-auto-bootstrap", "aidev-doctor").forEach { name ->
             val out = File(bin, name)
@@ -142,8 +166,7 @@ object TerminalShellAssets {
         val cmdsDir = File(rootfs, "root/.config/opencode/commands").apply { mkdirs() }
         listOf(
             "aidev-build", "aidev-build-request", "aidev-crash-report", "aidev-apk-info", "aidev-create-android-project",
-            "aidev-gen", "aidev-error-why", "aidev-logcat", "aidev-index",
-            "aidev-anr", "aidev-tombstone", "aidev-crash-why", "aidev-dumpsys"
+            "aidev-gen", "aidev-error-why", "aidev-logcat", "aidev-index"
         ).forEach { name ->
             runCatching {
                 activity.assets.open("config/opencode/commands/$name.md").use { input ->
@@ -155,24 +178,32 @@ object TerminalShellAssets {
 
     private fun writeCanonicalRc(activity: Activity, home: File, rc: File) {
         val nativeDir = activity.applicationInfo.nativeLibraryDir
+        val prootExtraLibs = PathConfig.prootLibDir(activity).absolutePath
         val v = getVersionCode(activity)
         rc.writeText(
             """
             # AIDev canonical shell rc. 自动生成，请不要在这里保存个人配置。
             AIDEV_VERSION="$v"
-            AIDEV_HOME="${home.absolutePath}"
+            # 宿主(宇宙H) AIDEV_HOME 为 App 私有绝对路径；在 proot 内(宇宙A/B)宿主 home 绑定于 /host-home。
+            # 本 rc 会被 rootfs 的 .bashrc 通过 `. /host-home/.aidevrc` 复用，故须按位置解析，避免命令指向不存在的宿主路径。
+            if [ -d /host-home ]; then AIDEV_HOME="/host-home"; else AIDEV_HOME="${home.absolutePath}"; fi
             AIDEV_BIN="${'$'}AIDEV_HOME/dev-env/bin"
             AIDEV_ROOTFS="${'$'}AIDEV_HOME/ubuntu-rootfs"
             AIDEV_COMPILER_ROOTFS="${'$'}AIDEV_HOME/compiler_rootfs"
             AIDEV_WORKSPACE="${'$'}AIDEV_HOME/workspace"
             AIDEV_NATIVE="$nativeDir"
-            AIDEV_PROOT="${'$'}AIDEV_NATIVE/libproot.so"
-            AIDEV_PROOT_LOADER="${'$'}AIDEV_NATIVE/libproot_loader.so"
+            # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区）
+            AIDEV_PROOT_LIBS="$nativeDir"
+            # libtalloc.so.2 版本化 soname 的符号链接目录（加入 LD_LIBRARY_PATH）
+            AIDEV_PROOT_EXTRA_LIBS="$prootExtraLibs"
+            AIDEV_PROOT="${'$'}AIDEV_PROOT_LIBS/libproot.so"
+            AIDEV_PROOT_LOADER="${'$'}AIDEV_PROOT_LIBS/libproot_loader.so"
             PROOT_LOADER="${'$'}AIDEV_PROOT_LOADER"
             PROOT_TMP_DIR="${'$'}AIDEV_HOME/proot-tmp"
+            LD_LIBRARY_PATH="${'$'}AIDEV_PROOT_EXTRA_LIBS:${'$'}AIDEV_NATIVE${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
             ANDROID_SDK_ROOT="${'$'}AIDEV_HOME/android-sdk"
             GRADLE_USER_HOME="${'$'}AIDEV_HOME/gradle-cache"
-            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR
+            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
             export ANDROID_SDK_ROOT GRADLE_USER_HOME
             export LANG=C.UTF-8
             export LC_ALL=C.UTF-8
@@ -475,8 +506,8 @@ EOF
         )
     }
 
-    private fun writeGradleInitScripts(home: File, rootfs: File) {
-        val scripts = mapOf(
+    /** ARM64 QEMU 下 aapt2 包装 / APK 拷贝 / 性能调优的 Gradle init 脚本内容。 */
+    fun gradleInitScripts(): Map<String, String> = mapOf(
             "wrap-native.gradle" to """
                 // AIDev: Auto-wrap aapt2 for ARM64 QEMU environment
                 def arch = System.getProperty("os.arch", "")
@@ -537,10 +568,24 @@ EOF
             """.trimIndent()
         )
 
+    /** 把 init 脚本写入指定 GRADLE_USER_HOME 的 init.d（Gradle 设置 GRADLE_USER_HOME 后只读此目录）。 */
+    fun installGradleUserHomeInit(gradleUserHome: File) {
+        val initDir = File(gradleUserHome, "init.d").apply { mkdirs() }
+        gradleInitScripts().forEach { (name, content) ->
+            File(initDir, name).writeText(content + "\n")
+        }
+    }
+
+    private fun writeGradleInitScripts(home: File, rootfs: File) {
+        val scripts = gradleInitScripts()
+
         val androidDir = File(home, "gradle-init.d").apply { mkdirs() }
         scripts.forEach { (name, content) ->
             File(androidDir, name).writeText(content + "\n")
         }
+
+        // 关键：构建用 GRADLE_USER_HOME=home/gradle-cache，Gradle 只读其 init.d
+        installGradleUserHomeInit(File(home, "gradle-cache"))
 
         if (rootfs.isDirectory) {
             val ubuntuDir = File(rootfs, "root/.gradle/init.d").apply { mkdirs() }

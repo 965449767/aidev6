@@ -1,8 +1,10 @@
 {
-  "phase": "phase-f-self-evolution-loop-e2e-observable",
-  "current_step": "Phase H 验证：本环境全过（单测+构建+闭环契约模拟）。真机/Shizuku 验证列为待办冻结。Phase F/G 全部工程任务完成。",
+  "phase": "phase-h-real-device-closed-loop",
+  "current_step": "真机宇宙B assembleDebug 打通（自带 x86_64 sysroot+qemu 跑动态 aapt2）；修安装/拉起 fire-and-forget 假成功；修测试项目与宿主同包名（改 com.example.myandroidproject）。v39 已装并运行。下一步：真机 D 组手动闭环验证。",
   "active_plan": "current-task.md",
   "completed_phases": [
+    "Phase H: 真机宇宙B 编译打通（x86_64 sysroot+qemu 跑动态 aapt2，processDebugResources 通过，出 APK，v37）",
+    "Phase H: 安装/拉起结果校验（executeCommand 替代 fire-and-forget，v38）+ 测试项目独立包名 com.example.myandroidproject（v39）",
     "Phase H: 验证（本环境单测/构建/闭环契约模拟通过；真机待办冻结）",
     "Phase G: 反向驱动宇宙A 文件契约 + 自治开关 + 常驻守护",
     "Phase G: 反向驱动宇宙A 文件契约（崩溃回流写共享工作区 + requestRebuild + 契约文档 + aidev-self-evolution 脚本）",

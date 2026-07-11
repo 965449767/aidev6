@@ -436,11 +436,103 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 - [ ] H13 跑 `scripts/harness_check.sh` 确认文档/结构完好
 
 ### H 需真机 / Shizuku（用户实测，冻结为待办，非漏做）
-- [ ] H14 装 App 到手机（Shizuku 静默装 debug APK），底部上滑进「服务器中心」
-      - 本环境已验证前置：APK 产物存在(19.7MB)、权限齐全(Shizuku/IPC/安装/通知/电池免优化/开机)、`aidev-install --silent` 可用、Shizuku 桥接通道正常；仅"推到真机+执行安装"需真机
-- [ ] H15 宇宙B 构建验证：点"提交构建请求"，4 阶段（准备→编译→安装→拉起）跑通
-- [ ] H16 起 OpenCode serve（宇宙A）+ `aidev-self-evolution --daemon`，确认 status 运行中
-- [ ] H17 开"自我进化自治模式"开关 + 造必崩改动 → 观察自动 崩→改码→重建 收敛
+
+> 以下把 H14–H17 拆成 **A–G 七组、共 24 个原子任务**，每组可独立勾验；全部完成即闭环跑通。
+> 冻结判据不变：默认冻结，仅当真实断点/误报/中断率实测偏高才解冻动工。
+
+#### 组 A — 开发机侧产物准备（无需真机，可现在做）
+- [x] A1 产物校验（2026-07-11）：APK 19MB / 包名 `com.aidev.six.dev` / 含 `lib/arm64-v8a/*.so` / `application-debuggable=true` / 权限齐全（Shizuku/IPC/安装/通知/电池免优化/开机）。
+        - ⚠️ 注：`aidev-apk-info` 有 3 个解析 bug（见下方"已知工具缺陷"），**勿直接信其输出**，以 `aapt2 dump badging` 真值为准。
+        - 产物路径：`app/build/outputs/apk/debug/app-debug.apk`（已存在，无需重 build）
+- [x] A2 APK 就位（2026-07-11）：本机同设备无需"推送"，APK 位于 `app/build/outputs/apk/debug/app-debug.apk`（19MB）
+- [x] A3 宇宙B 项目复核（2026-07-11）：`~/workspace/MyAndroidProject/gradlew` 存在 + `mipmap/ic_launcher*` 资源就位；
+        `./gradlew assembleDebug -Paapt2FromMavenOverride=/Android/build-tools/34.0.0/aapt2` → **BUILD SUCCESSFUL**（45s，包名 com.aidev.six.dev 可覆盖安装）
+
+#### 组 B — 推包 + Shizuku 静默安装（需真机 + 桥接）
+- [x] B1 桥接通道确认（2026-07-11）：`aidev-shizuku status` / `aidev-install --status` 均显示"桥接通道正常"
+- [x] B2 推送 APK：`aidev-install` 内部复制到 `/sdcard/aidev-install-tmp.apk` 完成
+- [x] B3 Shizuku 静默安装（2026-07-11）：`aidev-install --silent` → 升级到 **versionCode=14 / `1.0.0-b14-7524e87-dirty`**
+- [x] B4 安装校验（2026-07-11）：`dumpsys package com.aidev.six.dev` → versionCode=14，升级成功
+
+#### 组 C — 首次启动与保活（真机）
+- [ ] C1 启动 App；若 Shizuku 授权弹窗则授予（aidev6 包）
+- [ ] C2 App 加电池免优化：设置→应用→aidev6→ battery → Unrestricted
+- [ ] C3 宇宙A 宿主进程（OpenCode）同样加电池免优化，避免被 HyperOS 杀
+- [ ] C4 确认手机端 Shizuku 服务运行且 aidev6 已获授权（C1 成功即证）
+
+#### 组 D — 人工触发一次闭环（验证 4 阶段可见性）
+- [ ] D1 底部上滑进「服务器中心」，确认入口与第三指示点正常
+- [ ] D2 点"提交构建请求"，任务流出现 RUNNING：观察 4 阶段（准备宇宙B→编译→安装→拉起）实时日志与进度
+- [ ] D3 确认 APK 被覆盖安装并自动拉起（手机跳到 aidev6 / 新进程；看 `am start` 生效）
+- [ ] D4 若崩溃：确认「崩溃回流 <pkg>」任务记录出现 + `home/workspace/.aidev-loop/crash-*.json` 写出（契约 G01 生效）
+- [ ] D5 任一阶段 failed → 回 H15 根因清单（目录嵌套/图标/ aapt2 覆盖）逐项排查，修完重跑 D2
+
+#### 组 E — 宇宙A 常驻（开发机/宿主终端）
+- [~] E1 宿主 OpenCode 服务：`opencode serve --port 4096 &`（v1.17.18，pid 15127，端口监听正常）。
+        ⚠️ 这只是"宇宙A 宿主"就位，**不等于验证通过**；且需与 aidev6 沙箱工作区路径一致才生效（见下方"重大修正"）。
+- [~] E2 端口监听确认：`curl :4096` 返回 HTML。同上，仅宿主侧就绪。
+- [ ] E3 起守护：`aidev-self-evolution --daemon`（**未启动**；先停了——需先确认 aidev6 环境就绪 + D 组手动闭环跑通，且守护会自动改码需你确认）
+- [ ] E4 `aidev-self-evolution status` 确认运行中（当前：未运行）
+
+#### ⚠️ 2026-07-11 重大修正（实机验证前置未满足）
+- 设备存在多个 aidev 包：`com.aidev.six.dev`（新 aidev6，无环境）、`com.aidev.five.dev`（前台运行、已带 ubuntu-rootfs）、
+  `com.aidev.terminal(.dev)`、`com.aidev.opencode`、`com.aidev.four.dev`。
+- 新 aidev6(`com.aidev.six.dev`) 沙箱**未初始化**：无 ubuntu-rootfs / JDK / gradlew / workspace 项目（即 F01 的 B8 "install-compiler 首次静默"尚未发生）。
+- 之前我在**本 agent PRoot(`/root/workspace`)** 编的项目，aidev6 沙箱里没有 → 宇宙B 编译会失败在"准备宇宙B"。
+- 结论：A2/B1–B4（装 App）已完成，但**闭环验证（D/F 组）尚未开始**，须先让 aidev6 初始化环境并在其沙箱内建好项目。
+- 待澄清/执行：① 用户打开 aidev6 让其初始化环境（可能需下载 rootfs / install-compiler，耗时较长）；
+  ② 在 aidev6 沙箱 workspace 内创建/放置 MyAndroidProject；③ 再走 D 组手动闭环。
+- 宿主 opencode serve 仍保留作 宇宙A；但 `AIDEV_WORKSPACE` 须指向 aidev6 实际共享工作区（未必是 `/root/workspace`），否则契约对不上。
+- **新增阻塞点（已查代码确认）**：
+  1. **Android SDK 无自动安装**：`BuildBridgeService` 硬编码 `ANDROID_SDK_ROOT=/host-home/android-sdk`，无下载逻辑；全新 aidev6 该目录大概率为空 → 编译必败。
+     **已定方案 (b) sdkmanager 安装**（用户 2026-07-11 选定）：命令已写入 `docs/aidev6-init-runbook.md` 步骤 3（cmdline-tools + `platforms;android-36` + `build-tools;36.1.0` + `platform-tools`，清华镜像）。备选 (a) 复制 five.dev / (c) 改指向 `/Android`。
+  2. **宇宙A OpenCode 拓扑错位**：自进化的 宇宙A 必须跑在 aidev6 沙箱 `home/ubuntu-rootfs` 内、读写同一 `home/workspace`；外置 agent 环境的 `opencode serve` 无效（已停掉我误起的那个）。
+  3. 宇宙B 编译器与项目模板在首次"提交构建请求"时由 `ensureCompilerRootfs` + `scaffoldProject` **自动**补齐（含正确 mipmap 图标，H15 bug 在 App 内脚手架已修），但首次最长 ~20 分钟静默（长尾 B8）。
+- **操作手册**：`docs/aidev6-init-runbook.md`（手机端初始化分步 + 风险 + 与 A–G 对应）。本环境仅能查机制，无法代做设备侧初始化。
+
+#### 🐞 实机暴露并修复的 bug（2026-07-11）
+- **症状**：aidev6 终端跑 `setup-dev-env` 报 `proot 不存在：/data/app/.../com.aidev.six.dev-.../lib/arm64/libproot.so`。
+- **根因**：`libproot.so`/`libproot_loader.so` 仅作为 jniLibs 原生库，指望系统按 `extractNativeLibs=true` 解包到 `nativeLibraryDir` 后当可执行文件被 shell 调起；但 Android 16 上未解包（且原生库默认不可执行），脚本找不到。
+- **修复**：与 `libtalloc`/`libandroid-shmem` 同机制——把 `libproot.so`/`libproot_loader.so`/`libproot_loader32.so` 作为 assets 打包，`installProotSupportLibraries` 启动时拷到 `home/proot-lib` 并 `setExecutable(true)`；`AIDEV_PROOT`/`AIDEV_PROOT_LOADER`/`PROOT_LOADER` 及 `ProotLauncher`/`SessionManager` 全部改用 `home/proot-lib`。
+- **验证**：`assembleDebug` BUILD SUCCESSFUL（versionCode→15），已静默重装到设备；待用户重开 aidev6 进终端重试 `setup-dev-env` 确认 proot 就位。
+ - 二次修复（2026-07-11）：exec 时 `Permission denied` —— proot 库已就位但缺 +x 位（Kotlin `setExecutable` 在 Android 静默失效）；
+   本机 `files/home` 经 five.dev logcat 证明确可执行二进制（SELinux 对 app_data_file 的 exec 为 granted），故非 noexec/SELinux 问题。
+   修法：引导脚本 exec proot 前加 `chmod 755 $AIDEV_PROOT $AIDEV_PROOT_LOADER` 兜底；重装 v16 验证。
+ - 三次修复（2026-07-11，外部 AI 建议 code_cache）：v17 实机仍 `Permission denied` —— 本机对 code_cache 同样 W^X 拒绝 exec，方案作废。
+ - **四次修复（2026-07-11，已定论并实机验证解包位置）**：唯一可靠可执行区 = **`nativeLibraryDir`**（APK `lib/<abi>/lib*.so` 由系统解包，label=apk_data_file 允许 exec）。
+   proot DT_NEEDED = libtalloc.so.2 + libandroid-shmem.so + libc.so。libandroid-shmem.so 正常解包；libtalloc.so.2 版本化 soname 不解包 → 以 `libtalloc.so` 放 jniLibs，运行时在 `filesDir/home/proot-lib` 建符号链接 `libtalloc.so.2 -> nativeLibraryDir/libtalloc.so` 并入 LD_LIBRARY_PATH。
+   已改：jniLibs 加 libtalloc.so+libandroid-shmem.so、删 assets/proot-libs；PathConfig.nativeLibDir(可执行)+prootLibDir(符号链接);TerminalShellAssets(建符号链接+rc LD_LIBRARY_PATH)、UbuntuBootstrapScripts(参数改 nativeDir+extraLibs、去 chmod)、ProotLauncher、SessionManager、DevEnvironmentChecker 同步。
+   验证：`assembleDebug` SUCCESSFUL（**versionCode 18**），Kotlin 编译+63 shell 测试过；unzip 确认 5 库全在 lib/arm64-v8a；Shizuku 静默装 v18，实机 `ls nativeLibraryDir` 确认 5 库均 `-rwxr-xr-x`。APK → `/sdcard/AIDev/aidev6-v18-proot-nativelib.apk`。
+   **✅ 实机终验通过**：重启 aidev6 跑 `ubuntu` 成功进宇宙A（`aidev[A]:/root#`）。PRoot 阻塞点彻底解除，D/F 组闭环验证可继续。
+ - ⚠️ 构建须加 `-Pandroid.aapt2FromMavenOverride=/host-home/android-sdk/build-tools/34.0.0/aapt2`（36.1.0 的 aapt2 在 qemu 下损坏）。
+ - 详见 `docs/error-journal.md`（已补）。
+
+#### 组 F — 自治闭环验证（真机 + 宇宙A 联动）
+- [ ] F1 手机「服务器中心」开"自我进化自治模式"开关（PreferencesManager.selfEvolutionAutonomous）
+- [ ] F2 在 `home/workspace/MyAndroidProject` 留必崩 bug（如 `Application.onCreate` 抛异常 / `Main.kt:12` 空指针）
+- [ ] F3 触发一轮：点提交 或 等守护/开关自动触发；观察 崩→守护改码(fix_applied=true)→App 自动重建→拉起→再抓
+- [ ] F4 观察收敛：直到 `fix_applied=true` 后不再崩溃，或达 `MAX_AUTO_ITERATIONS=10` 上限停（防失控）
+- [ ] F5 日志对照：守护 log（`~/.aidev-self-evolution.log`）与 App 任务流一致；无重复空转重编
+
+#### 组 G — 收尾与回写
+- [x] G1 跑 `scripts/harness_check.sh` 确认文档/结构完好（H13 落地，2026-07-11 Harness check passed）
+- [x] G2 写 `docs/real-device-runbook.md`：把 A–F 实测细节固化成照抄手册（H11 落地，2026-07-11 已修正 aapt2 路径 + aidev-apk-info bug 警示 + A–G 对照）
+- [ ] G3 回写 current-task.md：把 H14–H17 / A–G 标记完成；若实测出现断点则对应解冻并记 error-journal
+
+#### 历史 H 条目映射（保留可追溯）
+- [x] H15 宇宙B 构建根因已定位并修复（2026-07-11）：目录嵌套 + 缺 launcher 图标 + aapt2 覆盖；开发机 `./gradlew assembleDebug` BUILD SUCCESSFUL，包名 `com.aidev.six.dev`。⏳ 待真机 D2 复核 4 阶段。
+- [ ] H14 = 组 B + 组 C（装 App + 进服务器中心）
+- [ ] H16 = 组 E（OpenCode serve + 守护）
+- [ ] H17 = 组 F（自治开关 + 造崩 + 收敛观察）
+
+### 已知工具缺陷（待修，非 aidev6 仓库内）
+- `aidev-create-android-project`：① 输出目录多套一级子目录（`<out>/<name>/` 而非 `<out>/`）；
+   ② 生成模板缺 `mipmap/ic_launcher` 自适应图标资源，导致 `processDebugResources` aapt2 链接失败。
+   影响：每次新建项目都需手动纠目录 + 补图标。下次重建项目前需先修此脚本或手动补。
+- `aidev-apk-info`：3 个解析 bug，真机步骤 A1 校验**不可直接信其输出**，需以 `aapt2 dump badging` 为准：
+   ① 包名误解析为 `platformBuildVersionName`（`16`）而非 `name='com.aidev.six.dev'`；
+   ② Native ABI 显示空（实际 APK 含 `lib/arm64-v8a/*.so`）；
+   ③ Debuggable 误报「否」（实际 `application-debuggable` 存在=true）。
 
 ### 判据
 以上 H14–H17 待办"默认冻结"，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
@@ -453,3 +545,32 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 5. 手机「服务器中心」开"自我进化自治模式"开关
 6. 在 `home/workspace/MyAndroidProject` 留个必崩 bug → 点提交 → 看它自己 崩→改码→重建 直到不崩
 坑：编译慢别急；把 App 和 OpenCode 加电池免优化；Shizuku 断了重连；守护没反应看 `~/.aidev-self-evolution.log`。
+
+---
+
+## Phase H 续 — 真机宇宙B 编译打通 + 安装/拉起纠错（2026-07-11，本轮）
+
+### 成果
+- **宇宙B `assembleDebug` 在真机跑通到出 APK**：突破点是 aapt2 跨架构运行。开发机可用的 aapt2 其实是「QEMU_LD_PREFIX + 显式 x86_64 loader 跑 aapt2.real」的包装脚本；把整套 x86_64 sysroot（`aapt2.real` + 9 个 glibc 库）+ `qemu-x86_64-static` 打进 APK，`BuildBridgeService.ensureX86Aapt2()` 部署并生成同款包装，override 指向它。`processDebugResources` 通过。
+- **修安装/拉起「假成功」**：`installAndLaunch` 由 `executeFireAndForget` 改 `suspend`+`executeCommand`，检查 exit/`Failure`/`Error` 如实上报；`finish` 文案区分「已安装/未完成」并始终导出 `last-build.log`。
+- **修测试项目与宿主同包名（本末倒置）**：脚手架 + 磁盘上 `MyAndroidProject` 的 `com.aidev.six.dev` 全改为 `com.example.myandroidproject`，装测试 App 不再顶掉 aidev6。
+
+### 版本轨迹
+- v30 便携 JDK17 → v31 gradlew classpath 启动 → v32 仓库健壮化 → v33 gradle init.d → v34 aapt2 `-P` override → v35 proot `-q`（错，回退）→ v36 aapt2 包装+探针（定位缺 x86_64 loader）→ v37 x86_64 sysroot（编译打通）→ v38 安装结果校验 → **v39 独立包名修复**（当前，`1.0.0-b39`，已装并运行）。
+
+### 关键教训（详见 docs/error-journal.md）
+1. Google 的 aapt2 是动态 x86_64，需自带 x86_64 loader+glibc；proot 禁用全局 `-q`（会把原生 arm64 也套 qemu）；aapt2 override 必须走 `-P` 而非 `System.setProperty`。
+2. install/launch 不可 fire-and-forget，必须拿 exit code，否则全程假成功。
+3. 测试项目绝不能与宿主同包名；修 bug 要治根因（改包名），别在错误前提上加「自动卸载重装」这类会自毁的智能重试。
+
+### 修改文件（本轮）
+| 文件 | 改动 |
+|------|------|
+| `BuildBridgeService.kt` | `ensureX86Aapt2()` 替代 `ensureQemu/writeAapt2Wrapper/detectAapt2Override`；`installAndLaunch` 改 suspend+结果校验；`finish` 始终导出日志；脚手架包名改 `com.example.myandroidproject` |
+| `assets/tools/x86_64/` | 新增 `aapt2.real` + `lib/`（9 个 glibc） |
+| `assets/tools/qemu-x86_64-static` | AArch64 静态 qemu |
+| `/root/workspace/MyAndroidProject` | build.gradle.kts + MainActivity 改独立包名 |
+
+### 待续（真机）
+- D 组手动闭环：v39 已装，下一步在「服务器中心」提交构建，确认 4 阶段（准备→编译→安装→拉起）+ 探针 `AAPT2_PROBE_EXIT=0` + 真实安装/拉起 `com.example.myandroidproject`。
+- 之后 F 组自治闭环（造崩 → 守护改码 → 重建收敛）。

@@ -1,109 +1,156 @@
 #!/bin/bash
 set +e
 export DEBIAN_FRONTEND=noninteractive
+
+show_help() {
+  cat <<'EOF'
+AIDev 开发环境配置（分层 / 按需安装）
+
+用法: setup-dev-env [选项]
+
+默认（无选项）：只装核心层——基础工具 + python3 + nodejs/npm（约 350MB）。
+可选层（按需追加）：
+  --build     原生构建工具：build-essential cmake ninja-build（约 250MB）
+  --android   Android SDK：cmdline-tools + platform-tools + platforms;android-36
+              + build-tools;36.1.0 + build-tools;34.0.0 + headless JDK（约 700MB）
+  --ndk       Android NDK 27（约 1.8GB，隐含 --android）
+  --rust      rustup + Android targets + cargo-ndk（约 1.5GB）
+  --all       安装以上全部
+  -h|--help   显示本帮助
+
+说明：Android/NDK/Rust 属于「宇宙B（编译器）」职责，宇宙A（OpenCode/AI 主机）
+通常无需安装。仅在你要在宇宙A 内本地编译时才追加对应选项。
+EOF
+}
+
+WANT_BUILD=0; WANT_ANDROID=0; WANT_NDK=0; WANT_RUST=0
+for arg in "$@"; do
+  case "$arg" in
+    --build) WANT_BUILD=1 ;;
+    --android) WANT_ANDROID=1 ;;
+    --ndk) WANT_NDK=1; WANT_ANDROID=1 ;;
+    --rust) WANT_RUST=1 ;;
+    --all) WANT_BUILD=1; WANT_ANDROID=1; WANT_NDK=1; WANT_RUST=1 ;;
+    -h|--help) show_help; exit 0 ;;
+    *) echo "未知选项: $arg（-h 查看帮助）" ;;
+  esac
+done
+
 echo "AIDev 开发环境配置"
-echo "原则：先检测，缺什么装什么"
+echo "原则：先检测，缺什么装什么；重工具链按需（-h 查看选项）"
 echo
-base_packages=(ca-certificates curl wget git unzip zip tar xz-utils nano vim less procps coreutils findutils build-essential python3 python3-pip openjdk-17-jdk cmake ninja-build openssl openssh-client htop lsof watch jq netcat-openbsd golang iproute2 dnsutils tinyproxy)
-js_packages=(nodejs npm)
-missing_base=()
-for p in "${base_packages[@]}"; do
+
+# ---- 组装本次要检测/安装的 apt 包清单 ----
+core_packages=(ca-certificates curl wget git unzip zip tar xz-utils nano vim less procps coreutils findutils python3 python3-pip nodejs npm openssl openssh-client htop lsof jq netcat-openbsd iproute2 dnsutils tinyproxy)
+apt_packages=("${core_packages[@]}")
+[ "$WANT_BUILD" = 1 ] && apt_packages+=(build-essential cmake ninja-build)
+[ "$WANT_ANDROID" = 1 ] && apt_packages+=(openjdk-17-jdk-headless)
+
+missing=()
+for p in "${apt_packages[@]}"; do
   if ! dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then
-    missing_base+=("$p")
+    missing+=("$p")
   fi
 done
-missing_js=()
-for p in "${js_packages[@]}"; do
-  if ! dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then
-    missing_js+=("$p")
-  fi
-done
-echo "[1/6] 当前检测结果"
-if [ "${#missing_base[@]}" -eq 0 ]; then
-  echo "  基础层：已全部安装。"
+
+echo "[1/4] apt 包检测"
+if [ "${#missing[@]}" -eq 0 ]; then
+  echo "  已全部安装。"
 else
-  echo "  基础层缺失：${missing_base[*]}"
-fi
-if [ "${#missing_js[@]}" -eq 0 ]; then
-  echo "  JS 层：已全部安装。"
-else
-  echo "  JS 层缺失：${missing_js[*]}"
-fi
-if [ "${#missing_base[@]}" -gt 0 ] || [ "${#missing_js[@]}" -gt 0 ]; then
-  echo "[2/6] 更新 apt 索引..."
+  echo "  缺失：${missing[*]}"
+  echo "[2/4] 更新 apt 索引并安装..."
   apt-get update
-else
-  echo "[2/4] 无需更新"
-fi
-if [ "${#missing_base[@]}" -gt 0 ]; then
-  echo "[3/6] 安装基础层缺失包..."
-  apt-get install -y --no-install-recommends "${missing_base[@]}" || {
-    echo "基础层安装失败，尝试修复后重试..."
+  apt-get install -y --no-install-recommends "${missing[@]}" || {
+    echo "  安装失败，尝试修复后重试..."
     repair-dev-env
-    apt-get install -y --no-install-recommends "${missing_base[@]}" || {
-      echo "基础层安装失败。请运行 check-dev-env 查看状态。"
+    apt-get install -y --no-install-recommends "${missing[@]}" || {
+      echo "  安装失败。请运行 check-dev-env 查看状态。"
       exit 1
     }
   }
-else
-  echo "[3/6] 基础层无需安装"
-fi
-if [ "${#missing_js[@]}" -gt 0 ]; then
-  echo "[4/6] 安装 JS 层 nodejs/npm..."
-  apt-get install -y --no-install-recommends "${missing_js[@]}" || {
-    echo "JS 层安装遇到问题，尝试修复后重试..."
-    repair-dev-env
-    apt-get install -y --no-install-recommends "${missing_js[@]}" || {
-      echo "JS 层 nodejs/npm 仍未完全配置。"
-    }
-  }
-else
-  echo "[4/6] JS 层无需安装"
 fi
 echo
-echo "[5/6] Android SDK 工具..."
+
+# ---- Android SDK（仅 --android / --ndk）----
 SDK_DIR="${AIDEV_HOME:-$HOME}/android-sdk"
 CMDLINE_TOOLS="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
-if [ ! -f "$CMDLINE_TOOLS" ]; then
+if [ "$WANT_ANDROID" = 1 ]; then
+  echo "[3/4] Android SDK..."
+  if [ ! -f "$CMDLINE_TOOLS" ]; then
     echo "  下载 cmdline-tools..."
     mkdir -p "$SDK_DIR"
-    CMDLINE_URL="https://mirrors.ustc.edu.cn/android/repository/commandlinetools-linux-11076708_latest.zip"
-    curl -L "$CMDLINE_URL" -o /tmp/cmdline-tools.zip 2>/dev/null && \
-    unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools && \
-    mkdir -p "$SDK_DIR/cmdline-tools" && \
-    mv /tmp/cmdline-tools/cmdline-tools "$SDK_DIR/cmdline-tools/latest" && \
-    rm -rf /tmp/cmdline-tools /tmp/cmdline-tools.zip && \
-    echo "  cmdline-tools 已安装" || echo "  cmdline-tools 下载失败（可手动下载）"
-fi
-if [ -f "$CMDLINE_TOOLS" ]; then
-    NDK_DIR="$SDK_DIR/ndk/27.0.12077973"
-    if [ ! -d "$NDK_DIR" ]; then
-        echo "  安装 NDK 27.0.12077973（约 1-2GB，可能需要较长时间）..."
-        yes | "$CMDLINE_TOOLS" "ndk;27.0.12077973" 2>/dev/null && \
-        echo "  NDK 已安装" || echo "  NDK 安装失败（可手动重试：sdkmanager ndk;27.0.12077973）"
+    rm -f /tmp/cmdline-tools.zip
+    # 多源尝试：腾讯云镜像（国内快）→ Google 官方兜底。-f 让 HTTP 错误直接失败，避免把 404 页面存成 zip
+    CMDLINE_URLS="https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+    dl_ok=0
+    for url in $CMDLINE_URLS; do
+      echo "    尝试: $url"
+      if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "$url" -o /tmp/cmdline-tools.zip && \
+         unzip -tq /tmp/cmdline-tools.zip >/dev/null 2>&1; then
+        dl_ok=1; break
+      fi
+      echo "    此源失败，换下一个..."
+      rm -f /tmp/cmdline-tools.zip
+    done
+    if [ "$dl_ok" = 1 ]; then
+      rm -rf /tmp/cmdline-tools
+      unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools && \
+      mkdir -p "$SDK_DIR/cmdline-tools" && \
+      rm -rf "$SDK_DIR/cmdline-tools/latest" && \
+      mv /tmp/cmdline-tools/cmdline-tools "$SDK_DIR/cmdline-tools/latest" && \
+      rm -rf /tmp/cmdline-tools /tmp/cmdline-tools.zip && \
+      echo "  cmdline-tools 已安装" || echo "  cmdline-tools 解压安装失败"
     else
-        echo "  NDK 已存在"
+      echo "  cmdline-tools 下载失败（所有源均不可用，请检查网络后重试）"
     fi
+  else
+    echo "  cmdline-tools 已存在"
+  fi
+  if [ -f "$CMDLINE_TOOLS" ]; then
+    yes | "$CMDLINE_TOOLS" --licenses >/dev/null 2>&1
+    for pkg in "platform-tools" "platforms;android-36" "build-tools;36.1.0" "build-tools;34.0.0"; do
+      echo "  安装 $pkg ..."
+      yes | "$CMDLINE_TOOLS" "$pkg" >/dev/null 2>&1 && echo "    ✓" || echo "    ✗（可手动重试：sdkmanager \"$pkg\"）"
+    done
+  fi
+  echo
 fi
-echo
-echo "[6/6] Rust 工具链..."
-if ! command -v rustup >/dev/null 2>&1; then
+
+# ---- Android NDK（仅 --ndk）----
+if [ "$WANT_NDK" = 1 ] && [ -f "$CMDLINE_TOOLS" ]; then
+  NDK_DIR="$SDK_DIR/ndk/27.0.12077973"
+  echo "[3b/4] Android NDK 27（约 1.8GB，耗时较长）..."
+  if [ ! -d "$NDK_DIR" ]; then
+    yes | "$CMDLINE_TOOLS" "ndk;27.0.12077973" 2>/dev/null && \
+    echo "  NDK 已安装" || echo "  NDK 安装失败（可手动重试：sdkmanager \"ndk;27.0.12077973\"）"
+  else
+    echo "  NDK 已存在"
+  fi
+  echo
+fi
+
+# ---- Rust 工具链（仅 --rust）----
+if [ "$WANT_RUST" = 1 ]; then
+  echo "[4/4] Rust 工具链..."
+  if ! command -v rustup >/dev/null 2>&1; then
     echo "  安装 rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>/dev/null && \
     echo "  rustup 已安装" || echo "  rustup 安装失败（可手动安装）"
-fi
-if command -v rustup >/dev/null 2>&1; then
+  fi
+  if command -v rustup >/dev/null 2>&1; then
     . "$HOME/.cargo/env" 2>/dev/null || true
     for target in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android; do
-        if ! rustup target list --installed 2>/dev/null | grep -q "$target"; then
-            echo "  添加 Android target: $target"
-            rustup target add "$target" 2>/dev/null
-        fi
+      if ! rustup target list --installed 2>/dev/null | grep -q "$target"; then
+        echo "  添加 Android target: $target"
+        rustup target add "$target" 2>/dev/null
+      fi
     done
     if ! command -v cargo-ndk >/dev/null 2>&1; then
-        echo "  安装 cargo-ndk..."
-        cargo install cargo-ndk 2>/dev/null && echo "  cargo-ndk 已安装" || true
+      echo "  安装 cargo-ndk..."
+      cargo install cargo-ndk 2>/dev/null && echo "  cargo-ndk 已安装" || true
     fi
+  fi
+  echo
 fi
-echo
+
 echo "配置完成。建议运行：check-dev-env"

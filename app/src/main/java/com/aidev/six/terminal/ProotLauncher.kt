@@ -26,18 +26,22 @@ object ProotLauncher {
         val binds: List<ProotBind> = emptyList(),
         val env: Map<String, String> = emptyMap(),
         val timeoutSec: Long = 30,
-        val redirectErrorStream: Boolean = false
+        val redirectErrorStream: Boolean = false,
+        /** 若非空，proot 以 `-q <qemuPath>` 通过 QEMU 运行异构(x86_64)程序，如 aapt2。传宿主机绝对路径。 */
+        val qemuPath: String? = null
     )
 
     private const val COMMON_PATH =
         "PATH=/host-home/dev-env/bin:/system/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
     fun buildCommand(ctx: Context, command: String, opts: Options): String {
-        val nativeDir = ctx.applicationInfo.nativeLibraryDir
+        val nativeDir = com.aidev.six.PathConfig.nativeLibDir(ctx).absolutePath
         val proot = File(nativeDir, "libproot.so").absolutePath
         val aidevHome = File(ctx.filesDir, "home").absolutePath
         val sb = StringBuilder()
-        sb.append("$proot --link2symlink -0 -r ${opts.rootfs} ")
+        sb.append("$proot --link2symlink -0 ")
+        if (!opts.qemuPath.isNullOrBlank()) sb.append("-q ${opts.qemuPath} ")
+        sb.append("-r ${opts.rootfs} ")
         sb.append("-b /dev -b /proc -b /sys -b /system/bin -b /system/etc ")
         sb.append("-b /system/framework -b /sdcard -b /storage ")
         for (b in opts.binds) {
@@ -59,13 +63,13 @@ object ProotLauncher {
     }
 
     private fun setupEnv(ctx: Context, pb: ProcessBuilder, opts: Options) {
-        val nativeDir = ctx.applicationInfo.nativeLibraryDir
-        val prootLibDir = File(ctx.filesDir, "home/proot-lib").absolutePath
+        val nativeDir = com.aidev.six.PathConfig.nativeLibDir(ctx).absolutePath
+        val extraLibDir = com.aidev.six.PathConfig.prootLibDir(ctx).absolutePath
         val prootTmpDir = File(ctx.cacheDir, "proot_tmp").apply { mkdirs() }.absolutePath
         val env = pb.environment()
         env["PROOT_LOADER"] = File(nativeDir, "libproot_loader.so").absolutePath
         env["PROOT_TMP_DIR"] = prootTmpDir
-        env["LD_LIBRARY_PATH"] = "$prootLibDir:$nativeDir"
+        env["LD_LIBRARY_PATH"] = "$extraLibDir:$nativeDir"
         if (opts.redirectErrorStream) pb.redirectErrorStream(true)
     }
 

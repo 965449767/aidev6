@@ -308,7 +308,7 @@ object UbuntuBootstrapScripts {
         }
     }
 
-    fun aidevUbuntuCommandScript(homePath: String): String =
+    fun aidevUbuntuCommandScript(homePath: String, nativeDir: String, prootExtraLibsPath: String): String =
         """
         #!/system/bin/sh
         set -u
@@ -321,12 +321,26 @@ object UbuntuBootstrapScripts {
         AIDEV_ROOTFS="${'$'}{AIDEV_ROOTFS:-${'$'}AIDEV_HOME/ubuntu-rootfs}"
         AIDEV_COMPILER_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS:-${'$'}AIDEV_HOME/compiler_rootfs}"
         AIDEV_WORKSPACE="${'$'}{AIDEV_WORKSPACE:-${'$'}AIDEV_HOME/workspace}"
-        AIDEV_NATIVE="${'$'}{AIDEV_NATIVE:-}"
-        AIDEV_PROOT="${'$'}{AIDEV_PROOT:-${'$'}AIDEV_NATIVE/libproot.so}"
-        AIDEV_PROOT_LOADER="${'$'}{AIDEV_PROOT_LOADER:-${'$'}AIDEV_NATIVE/libproot_loader.so}"
+        AIDEV_NATIVE="${'$'}{AIDEV_NATIVE:-$nativeDir}"
+        # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区；filesDir/cacheDir/code_cache 均被 W^X 拒绝）
+        AIDEV_PROOT_LIBS="${'$'}{AIDEV_PROOT_LIBS:-$nativeDir}"
+        # libtalloc.so.2 版本化 soname 符号链接目录
+        AIDEV_PROOT_EXTRA_LIBS="${'$'}{AIDEV_PROOT_EXTRA_LIBS:-$prootExtraLibsPath}"
+        AIDEV_PROOT="${'$'}{AIDEV_PROOT:-${'$'}AIDEV_PROOT_LIBS/libproot.so}"
+        AIDEV_PROOT_LOADER="${'$'}{AIDEV_PROOT_LOADER:-${'$'}AIDEV_PROOT_LIBS/libproot_loader.so}"
         PROOT_LOADER="${'$'}AIDEV_PROOT_LOADER"
+        # proot 及其依赖 libtalloc.so.2 / libandroid-shmem.so 的动态链接搜索路径
+        LD_LIBRARY_PATH="${'$'}AIDEV_PROOT_EXTRA_LIBS:${'$'}AIDEV_PROOT_LIBS${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
         PROOT_TMP_DIR="${'$'}{PROOT_TMP_DIR:-${'$'}AIDEV_HOME/proot-tmp}"
-        export AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR
+        export AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
+
+        # 是否已在 rootfs 内（宇宙A/B）。此时宿主 home 绑定为 /host-home 或 AIDEV_REALM 非 H；
+        # 不能再嵌套 proot，命令应就地执行。
+        if [ -d /host-home ] || [ "${'$'}{AIDEV_REALM:-H}" != "H" ]; then
+          AIDEV_IN_ROOTFS=1
+        else
+          AIDEV_IN_ROOTFS=0
+        fi
 
         ubuntu_url="${'$'}{AIDEV_UBUNTU_URL:-https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04.4/release/ubuntu-base-24.04.4-base-arm64.tar.gz}"
 
@@ -588,12 +602,16 @@ AIDEV_BASHRC_AGENT_EOF
         }
 
         proot_common_env() {
-          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=${'$'}{1:-H} ANDROID_SDK_ROOT=/host-home/android-sdk GRADLE_USER_HOME=/host-home/gradle-cache PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
+          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=${'$'}{1:-H} ANDROID_SDK_ROOT=/host-home/android-sdk GRADLE_USER_HOME=/host-home/gradle-cache PATH=/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
         }
 
         # 在编译器 rootfs 中通过 PRoot 运行一次性命令
         run_compiler_cmd() {
           _cmd="${'$'}*"
+          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
+            echo "已在 rootfs 内，无法从此处进入宇宙B（编译器）。请退出到宿主(宇宙H)后再执行。" >&2
+            return 1
+          fi
           eval "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_COMPILER_ROOTFS" \
             $(proot_common_binds) \
             -w /root /usr/bin/env -i \
@@ -601,6 +619,10 @@ AIDEV_BASHRC_AGENT_EOF
         }
 
         enter_ubuntu() {
+          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
+            printf '已在宇宙 A（OpenCode），无需重复进入。\n'
+            return 0
+          fi
           printf '\033[32m已进入宇宙 A（OpenCode）\033[0m\n'
           has_ubuntu || install_ubuntu --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_ROOTFS"
@@ -617,6 +639,10 @@ AIDEV_BASHRC_AGENT_EOF
         }
 
         run_ubuntu_command() {
+          # 已在宇宙A 内：直接就地执行，避免嵌套 proot 及指向宿主绝对路径失败
+          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
+            exec /bin/sh -lc "${'$'}*"
+          fi
           has_ubuntu || install_ubuntu --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_ROOTFS"
           ensure_ubuntu_helpers
@@ -634,6 +660,10 @@ AIDEV_BASHRC_AGENT_EOF
         }
 
         enter_compiler_rootfs() {
+          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
+            echo "已在 rootfs 内，无法从此处进入宇宙B（编译器）。请退出到宿主(宇宙H)后再执行 compiler。" >&2
+            return 1
+          fi
           printf '\033[33m已进入宇宙 B（编译器）\033[0m\n'
           has_compiler || install_compiler_rootfs --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_COMPILER_ROOTFS"
@@ -744,7 +774,7 @@ AIDEV_PWD_HOOK_EOF
           install-compiler) install_compiler_rootfs "${'$'}@" ;;
           aidev-ensure-envs) ensure_all_rootfs ;;
           aidev-doctor) aidev_doctor_android ;;
-          setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" ;;
+          setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" "${'$'}@" ;;
           opencode-check) run_ubuntu_command "/usr/local/bin/opencode-check" ;;
           opencode-install|setup-opencode) run_ubuntu_command "/usr/local/bin/setup-opencode" ;;
           aidev-build) run_ubuntu_command "/usr/local/bin/aidev-build" ;;

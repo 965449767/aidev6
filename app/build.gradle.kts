@@ -38,13 +38,24 @@ fun gitDescribe(): String {
     }
 }
 
-val buildCount = gitCount() ?: 1
+// Build counter persisted across builds so every APK gets a unique, monotonic version
+// (lets Shizuku pm install upgrade correctly and tells rebuilds apart in the self-evolution loop).
+// Seed from git commit count so existing installs (versionCode = gitCount) still upgrade.
+val buildCounterFile = file("build-counter.properties")
+val buildCounterSeed = gitCount() ?: 1
+val buildCounterLast = runCatching {
+    if (buildCounterFile.isFile) {
+        Properties().apply { load(FileInputStream(buildCounterFile)) }
+            .getProperty("buildCount")?.toIntOrNull()
+    } else null
+}.getOrNull() ?: buildCounterSeed
+val buildNumber = buildCounterLast + 1
 
 // Allow CI or local build scripts to override generated version values.
 // Example: ./gradlew :app:assembleDebug -PversionCode=100 -PversionName=1.0.0
 val versionCodeOverride = findProperty("versionCode")?.toString()?.toIntOrNull()
 val versionNameOverride = findProperty("versionName")?.toString()
-val generatedVersionName = "1.0.0-${gitDescribe()}"
+val generatedVersionName = "1.0.0-b$buildNumber-${gitDescribe()}"
 
 fun File.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -72,7 +83,7 @@ android {
         applicationId = "com.aidev.six"
         minSdk = 26
         targetSdk = 36
-        versionCode = versionCodeOverride ?: buildCount
+        versionCode = versionCodeOverride ?: buildNumber
         versionName = versionNameOverride ?: generatedVersionName
     }
 
@@ -227,3 +238,17 @@ dependencies {
 
 // Shell tests: run directly via "bash app/src/test/sh/run.sh"
 // Gradle integration skipped — ProcessBuilder hangs under QEMU arm64
+
+// Persist the build counter only after a successful assembleDebug so failed
+// builds don't consume a version number.
+afterEvaluate {
+    tasks.named("assembleDebug") {
+        doLast {
+            buildCounterFile.writer().use { w ->
+                Properties().apply { setProperty("buildCount", buildNumber.toString()) }
+                    .store(w, "Auto-incremented per assembleDebug")
+            }
+            logger.lifecycle("→ build counter -> $buildNumber  (versionName $generatedVersionName)")
+        }
+    }
+}
