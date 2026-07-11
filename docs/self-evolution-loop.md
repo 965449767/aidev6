@@ -92,3 +92,17 @@
   `requestRebuild` 触发下一轮（G03）、本契约（G04）、参考脚本（G05）。
 - 未在 App 内做"自动无限循环"：是否全自动由宇宙 A 侧（脚本/OpenCode）决定，App 只负责把契约文件摆好。
 - 真机端到端（改码→自动构建运行→崩溃回流→OpenCode 改码→再构建）需设备+Shizuku 实测，本环境仅做了文件契约与单测覆盖。
+
+## 6. 「自我进化自治开关」（App 内一键自治）
+
+`服务器中心` 新增开关 **自我进化自治模式**（`PreferencesManager.selfEvolutionAutonomous`，
+key `self_evolution_autonomous`）。
+
+- **关（默认）**：崩溃回流仅显示任务记录，下一轮构建需用户或宇宙 A（OpenCode / `aidev-self-evolution`）主动触发。
+- **开**：`BuildRequestTracker` 在抓到崩溃后，若 `fix_applied=false`（宇宙 A 还没修），
+  自动调用 `requestRebuild` 触发下一轮「宇宙B 编译 → 安装 → 拉起 → 抓崩溃」，形成自动循环。
+  - 收敛条件：`fix_applied=true`（宇宙 A 已改码并重建）即停止；或达到 `MAX_AUTO_ITERATIONS=10` 上限防失控。
+  - 开关通过 `submit(autonomous=)` 透传到 `watchCrashReport`，自动触发的下一轮同样是自治态。
+
+> 注意：App 只负责"自动再构建"，**改码仍由宇宙 A（OpenCode）完成**。自治开关让"崩溃→重建"自动转，
+> 配合常驻的 OpenCode（或 `aidev-self-evolution` 脚本）即可实现无人值守的"改码→验证"循环。

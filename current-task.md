@@ -367,3 +367,20 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 ### 边界
 - 未在 App 内做「自动无限循环」：是否全自动由宇宙 A 侧（脚本/OpenCode）决定，App 只负责把契约文件摆好。
 - 真机端到端需设备 + Shizuku 实测（本环境仅文件契约 + 单测覆盖）。
+
+---
+
+## 自治开关（Phase G 追加，2026-07-11）
+
+在「服务器中心」增加「自我进化自治模式」开关，用户一键开启后闭环自转。
+
+### 实现
+- A01 `Constants.PrefKeys.SELF_EVOLUTION_AUTONOMOUS` + `PreferencesManager.selfEvolutionAutonomous`（默认关）。
+- A02 `BuildRequestTracker`：`submit(autonomous=)` 透传到 `watchCrashReport`；自治模式下崩溃 `fix_applied=false` 时
+      自动 `requestRebuild` 触发下一轮，靠 `fix_applied=true` 或 `MAX_AUTO_ITERATIONS=10` 收敛（防失控）。`watchCrashReport`/`publishCrashRecord` 改 `internal` 便于单测。
+- A03 `ServerPanel` 加 Switch（读取/写入偏好），提交构建请求时传 `autonomous = autonomousOn.value`。
+- A04 单测：`autonomousWatchTriggersRebuildOnUnfixedCrash` / `autonomousWatchStopsWhenCrashFixed` / `manualWatchDoesNotAutoRebuild`。
+- A05 文档：`docs/self-evolution-loop.md` 第 6 节 + `decisions.md` Phase G 决策。
+
+### 边界
+- App 只"自动再构建"，改码仍由宇宙 A（OpenCode / aidev-self-evolution）完成；开关让"崩溃→重建"自动转，配合常驻 OpenCode 即无人值守闭环。

@@ -35,6 +35,7 @@ internal class BuildRequestTracker {
         stateFile: File,
         autoInstall: Boolean = true,
         autoLaunch: Boolean = true,
+        autonomous: Boolean = false,
         onUpdate: (AgentTaskRecord) -> Unit,
     ) {
         val appCtx = context.applicationContext
@@ -118,7 +119,7 @@ internal class BuildRequestTracker {
                     )
                     // 闭环最后一环：若成功安装并拉起，等待崩溃回流报告并作为独立任务呈现（F04）
                     if (success && logText.contains("已拉起")) {
-                        watchCrashReport(home, startedAt, stateFile, onUpdate)
+                        watchCrashReport(home, startedAt, stateFile, autonomous, onUpdate)
                     }
                     return@execute
                 }
@@ -141,27 +142,48 @@ internal class BuildRequestTracker {
      * 构建拉起后，等待 CrashReportBridge 生成的崩溃回流报告（.aidev-mcp/crash-*.json），
      * 并作为独立任务记录呈现在同一任务流中，闭合「运行 → 崩溃 → 回流」这一环（F04）。
      */
-    private fun watchCrashReport(
+    /**
+     * 构建拉起后，等待 CrashReportBridge 生成的崩溃回流报告（.aidev-mcp/crash-*.json），
+     * 并作为独立任务记录呈现在同一任务流中，闭合「运行 → 崩溃 → 回流」这一环（F04）。
+     *
+     * 自治模式（[autonomous]=true，即「自我进化自治开关」开启）：若崩溃未被宇宙 A 修复
+     * （`fix_applied=false`），自动触发下一轮构建，形成「崩溃 → 改码 → 重建」自动循环，
+     * 直到 fix_applied=true（已修）或达到 [MAX_AUTO_ITERATIONS] 上限（防失控）。
+     */
+    internal fun watchCrashReport(
         home: File,
         buildStartedAt: Long,
         stateFile: File,
+        autonomous: Boolean,
         onUpdate: (AgentTaskRecord) -> Unit,
     ) {
         val mcpDir = File(home, ".aidev-mcp")
-        val deadline = System.currentTimeMillis() + 60_000L
-        while (System.currentTimeMillis() < deadline) {
+        var rebuildAt = buildStartedAt
+        var iterations = 0
+        while (System.currentTimeMillis() - buildStartedAt < 60_000L) {
             val fresh = mcpDir.listFiles { f ->
-                f.name.startsWith("crash-") && f.name.endsWith(".json") && f.lastModified() >= buildStartedAt
+                f.name.startsWith("crash-") && f.name.endsWith(".json") && f.lastModified() >= rebuildAt
             }?.maxByOrNull { it.lastModified() }
-            if (fresh != null) {
-                publishCrashRecord(fresh, stateFile, onUpdate)
-                return
+            if (fresh == null) {
+                Thread.sleep(1000)
+                continue
             }
-            Thread.sleep(1000)
+            publishCrashRecord(fresh, stateFile, onUpdate)
+            val fixed = runCatching { JSONObject(fresh.readText()).optBoolean("fix_applied", false) }.getOrDefault(false)
+            // 已修复、或非自治、或已达上限 → 闭环收敛，停止
+            if (!autonomous || fixed || iterations >= MAX_AUTO_ITERATIONS) return
+            iterations++
+            // 自治：崩溃未修复 → 自动触发下一轮「宇宙B 编译 → 安装 → 拉起 → 抓崩溃」
+            requestRebuild(appContext ?: return, "MyAndroidProject", stateFile, autonomous, onUpdate)
+            rebuildAt = System.currentTimeMillis()
         }
     }
 
-    private fun publishCrashRecord(reportFile: File, stateFile: File, onUpdate: (AgentTaskRecord) -> Unit) {
+    private companion object {
+        const val MAX_AUTO_ITERATIONS = 10
+    }
+
+    internal fun publishCrashRecord(reportFile: File, stateFile: File, onUpdate: (AgentTaskRecord) -> Unit) {
         val json = runCatching { JSONObject(reportFile.readText()) }.getOrNull() ?: return
         val pkg = json.optString("package", "?")
         val fatal = json.optString("fatal", "")
@@ -236,9 +258,10 @@ internal class BuildRequestTracker {
         context: Context,
         project: String = "MyAndroidProject",
         stateFile: File,
+        autonomous: Boolean = false,
         onUpdate: (AgentTaskRecord) -> Unit,
     ) {
-        submit(context, project, stateFile, autoInstall = true, autoLaunch = true, onUpdate = onUpdate)
+        submit(context, project, stateFile, autoInstall = true, autoLaunch = true, autonomous = autonomous, onUpdate = onUpdate)
     }
 
     private data class Phase(val name: String, val markers: List<String>)

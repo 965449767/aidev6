@@ -15,7 +15,7 @@ class BuildRequestTrackerTest {
     private fun tempStateFile(): File = File.createTempFile("agent-tasks", ".json").apply { deleteOnExit() }
 
     private fun mockContextWithFilesDir(): Pair<android.content.Context, File> {
-        val filesDir = File.createTempFile("ctx-files", "").apply { deleteOnExit() }.also { it.delete(); it.mkdirs() }
+        val filesDir = File(System.getProperty("java.io.tmpdir"), "ctx-files-${System.nanoTime()}-${Math.random().hashCode()}").apply { deleteOnExit(); mkdirs() }
         val ctx = mock(android.content.Context::class.java)
         `when`(ctx.filesDir).thenReturn(filesDir)
         `when`(ctx.applicationContext).thenReturn(ctx)
@@ -23,19 +23,8 @@ class BuildRequestTrackerTest {
     }
 
     private fun invokePublish(tracker: BuildRequestTracker, report: File, stateFile: File): AgentTaskRecord {
-        val m = tracker.javaClass.getDeclaredMethod(
-            "publishCrashRecord",
-            File::class.java,
-            File::class.java,
-            Function1::class.java
-        ).apply { isAccessible = true }
         lateinit var captured: AgentTaskRecord
-        try {
-            m.invoke(tracker, report, stateFile, { r: AgentTaskRecord -> captured = r })
-        } catch (e: java.lang.reflect.InvocationTargetException) {
-            e.cause?.printStackTrace()
-            throw e.cause ?: e
-        }
+        tracker.publishCrashRecord(report, stateFile) { r -> captured = r }
         return captured
     }
 
@@ -127,5 +116,82 @@ class BuildRequestTrackerTest {
         }
         assertTrue(req != null, "requestRebuild 应在 build-bridge 写出 req-<id>.json 触发下一轮构建")
         assertTrue(recorded.isNotEmpty(), "requestRebuild 应插入一条 RUNNING 任务记录")
+    }
+
+    @Test
+    fun autonomousWatchTriggersRebuildOnUnfixedCrash() {
+        val (ctx, filesDir) = mockContextWithFilesDir()
+        val tracker = BuildRequestTracker()
+        tracker.javaClass.getDeclaredField("appContext").apply { isAccessible = true }.set(tracker, ctx)
+
+        val mcpDir = File(filesDir, "home/.aidev-mcp").apply { mkdirs() }
+        val crash = File(mcpDir, "crash-loop.json").apply {
+            writeText(JSONObject().apply {
+                put("package", "com.example.app")
+                put("time", System.currentTimeMillis())
+                put("fatal", "FATAL")
+                put("stack", org.json.JSONArray().apply { put("java.lang.RuntimeException: boom") })
+                put("fix_applied", false)
+            }.toString())
+        }
+        val bridgeDir = File(filesDir, "home/.aidev-build-bridge").apply { mkdirs() }
+        bridgeDir.listFiles()?.forEach { it.delete() }
+
+        invokeWatch(tracker, filesDir, crash, autonomous = true)
+        val triggered = bridgeDir.listFiles()?.firstOrNull { it.name.startsWith("req-") }
+        assertTrue(triggered != null, "自治模式：未修复崩溃应自动触发下一轮构建")
+    }
+
+    @Test
+    fun autonomousWatchStopsWhenCrashFixed() {
+        val (ctx, filesDir) = mockContextWithFilesDir()
+        val tracker = BuildRequestTracker()
+        tracker.javaClass.getDeclaredField("appContext").apply { isAccessible = true }.set(tracker, ctx)
+
+        val mcpDir = File(filesDir, "home/.aidev-mcp").apply { mkdirs() }
+        val crash = File(mcpDir, "crash-fixed.json").apply {
+            writeText(JSONObject().apply {
+                put("package", "com.example.app")
+                put("time", System.currentTimeMillis())
+                put("fatal", "")
+                put("stack", org.json.JSONArray())
+                put("fix_applied", true)
+            }.toString())
+        }
+        val bridgeDir = File(filesDir, "home/.aidev-build-bridge").apply { mkdirs() }
+        bridgeDir.listFiles()?.forEach { it.delete() }
+
+        invokeWatch(tracker, filesDir, crash, autonomous = true)
+        val triggered = bridgeDir.listFiles()?.firstOrNull { it.name.startsWith("req-") }
+        assertTrue(triggered == null, "已修复（fix_applied=true）不应再触发构建，闭环收敛")
+    }
+
+    @Test
+    fun manualWatchDoesNotAutoRebuild() {
+        val (ctx, filesDir) = mockContextWithFilesDir()
+        val tracker = BuildRequestTracker()
+        tracker.javaClass.getDeclaredField("appContext").apply { isAccessible = true }.set(tracker, ctx)
+
+        val mcpDir = File(filesDir, "home/.aidev-mcp").apply { mkdirs() }
+        val crash = File(mcpDir, "crash-manual.json").apply {
+            writeText(JSONObject().apply {
+                put("package", "com.example.app")
+                put("time", System.currentTimeMillis())
+                put("fatal", "FATAL")
+                put("stack", org.json.JSONArray().apply { put("boom") })
+                put("fix_applied", false)
+            }.toString())
+        }
+        val bridgeDir = File(filesDir, "home/.aidev-build-bridge").apply { mkdirs() }
+        bridgeDir.listFiles()?.forEach { it.delete() }
+
+        invokeWatch(tracker, filesDir, crash, autonomous = false)
+        val triggered = bridgeDir.listFiles()?.firstOrNull { it.name.startsWith("req-") }
+        assertTrue(triggered == null, "手动模式：崩溃后不应自动触发下一轮构建（需用户/宇宙A 决策）")
+    }
+
+    private fun invokeWatch(tracker: BuildRequestTracker, filesDir: File, crashFile: File, autonomous: Boolean) {
+        val home = File(filesDir, "home")
+        tracker.watchCrashReport(home, crashFile.lastModified(), tempStateFile(), autonomous) {}
     }
 }

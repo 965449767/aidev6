@@ -32,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import java.io.File
+import com.aidev.six.PreferencesManager
 
 @Composable
 fun ServerPanel(
@@ -204,6 +206,7 @@ fun ServerPanel(
             InfoNote("最近构建: $buildResult")
         }
         val crashState = remember { mutableStateOf(lastCrashSummary(context)) }
+    val autonomousOn = remember { mutableStateOf(PreferencesManager(context).selfEvolutionAutonomous) }
         // 提交后轮询 tracker 的最新崩溃回流（F04：闭环回流实时可见）
         LaunchedEffect(Unit) {
             while (true) {
@@ -217,11 +220,33 @@ fun ServerPanel(
             InfoNote("最近崩溃回流: ${crashState.value}")
         }
         Spacer(Modifier.height(8.dp))
+        Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("自我进化自治模式", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "开启后崩溃自动触发下一轮构建（需宇宙 A 自动改码），闭环自转",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = autonomousOn.value,
+                onCheckedChange = {
+                    autonomousOn.value = it
+                    PreferencesManager(context).selfEvolutionAutonomous = it
+                }
+            )
+        }
         AppActionRow("提交构建请求", "在宇宙 B 编译默认项目并安装/拉起", onClick = {
             buildTracker.submit(
                 context = context,
                 project = "MyAndroidProject",
                 stateFile = taskStateFile,
+                autonomous = autonomousOn.value,
                 onUpdate = upsertRecord
             )
         })

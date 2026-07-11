@@ -63,6 +63,7 @@ object Constants {
         const val PROJECT_MODE = "project_mode"
         const val PROJECT_VIEW_TAB = "project_view_tab"
         const val LAST_TAB = "last_tab"
+        const val SELF_EVOLUTION_AUTONOMOUS = "self_evolution_autonomous"
     }
 
     // OpenCode HTTP API
