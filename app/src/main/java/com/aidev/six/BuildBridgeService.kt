@@ -750,14 +750,21 @@ include(":app")"""
         }
         append("→ 已安装 ${dst.name}${if (pkg != null) " ($pkg)" else ""}")
         if (autoLaunch && pkg != null) {
-            val lr = ShizukuLogcat.executeCommand(
-                "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $pkg"
-            )
+            // 新装 App 处于 stopped 状态，`am start -p` 默认排除 stopped 包会解析失败；
+            // 先解析出 launcher 组件再 `am start -n`（含 FLAG_INCLUDE_STOPPED_PACKAGES），失败回退 monkey。
+            val comp = ShizukuLogcat.executeCommand(
+                "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg | tail -1"
+            ).stdout.trim().lines().lastOrNull()?.trim().orEmpty()
+            val lr = if (comp.contains("/")) {
+                ShizukuLogcat.executeCommand("am start -n $comp")
+            } else {
+                ShizukuLogcat.executeCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+            }
             val lout = (lr.stdout + "\n" + lr.stderr).trim()
-            if (lr.exitCode != 0 || lout.contains("Error", ignoreCase = true)) {
+            if (lr.exitCode != 0 || lout.contains("Error:", ignoreCase = true) || lout.contains("No activities", ignoreCase = true)) {
                 append("✗ 拉起失败 (exit=${lr.exitCode}): ${lout.take(300)}")
             } else {
-                append("→ 已拉起 $pkg")
+                append("→ 已拉起 $pkg${if (comp.contains("/")) " ($comp)" else ""}")
             }
         }
         return pkg
