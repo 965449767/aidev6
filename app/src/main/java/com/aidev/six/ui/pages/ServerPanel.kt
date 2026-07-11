@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -291,6 +294,98 @@ fun ServerPanel(
                 }
             )
         }
+
+        Spacer(Modifier.height(8.dp))
+
+        // 改码模型选择：额度耗尽时 opencode 会静默空返回（不报错），无法自动识别，
+        // 故让用户看对话内容自行判断，并在此手动切换模型。
+        val modelExpanded = remember { mutableStateOf(false) }
+        val selectedModel = remember { mutableStateOf(PreferencesManager(context).selfEvolutionModel) }
+        Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("改码模型", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "宇宙 A 用哪个免费模型改码；额度耗尽请看下方对话后切换",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Box {
+                Text(
+                    text = selectedModel.value.removePrefix("opencode/") + " ▾",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { modelExpanded.value = true }
+                        .padding(8.dp)
+                )
+                DropdownMenu(
+                    expanded = modelExpanded.value,
+                    onDismissRequest = { modelExpanded.value = false }
+                ) {
+                    com.aidev.six.Constants.SELF_EVOLUTION_MODELS.forEach { model ->
+                        DropdownMenuItem(
+                            text = { Text(model.removePrefix("opencode/")) },
+                            onClick = {
+                                selectedModel.value = model
+                                PreferencesManager(context).selfEvolutionModel = model
+                                writeSelfEvolutionModel(context, model)
+                                modelExpanded.value = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        // 首次进入即把当前选择落盘，保证守护读得到
+        LaunchedEffect(Unit) { writeSelfEvolutionModel(context, selectedModel.value) }
+
+        // 改码对话实时查看：守护把 opencode 每轮改码的完整对话写共享盘，这里滚动展示。
+        val convExpanded = remember { mutableStateOf(false) }
+        val convLog = remember { mutableStateOf(readConversationLog(context)) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                val latest = readConversationLog(context)
+                if (latest != convLog.value) convLog.value = latest
+                delay(1500)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable { convExpanded.value = !convExpanded.value }.padding(vertical = 4.dp)
+        ) {
+            Text(
+                "改码对话",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (convLog.value.isBlank()) "暂无" else if (convExpanded.value) "收起" else "展开",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        if (convExpanded.value) {
+            Text(
+                text = convLog.value.ifBlank { "尚无改码对话。触发一次崩溃并运行 aidev-self-evolution 后，这里会显示 OpenCode 的提示与回复；若某模型只显示空回复即为额度耗尽，请上方切换模型。" },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .verticalScroll(rememberScrollState())
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
         AppActionRow("提交构建请求", "在宇宙 B 编译默认项目并安装/拉起", onClick = {
             buildTracker.submit(
                 context = context,
@@ -339,6 +434,23 @@ private fun lastBuildResult(context: Context): String {
     val f = dir.listFiles { _, n -> n.startsWith("result-") && n.endsWith(".json") }
         ?.maxByOrNull { it.lastModified() } ?: return ""
     return runCatching { org.json.JSONObject(f.readText()).optString("message", "") }.getOrNull() ?: ""
+}
+
+private fun writeSelfEvolutionModel(context: Context, model: String) {
+    runCatching {
+        val dir = File(context.filesDir, "home/workspace/.aidev-loop")
+        dir.mkdirs()
+        File(dir, "se-config.json").writeText("{\"model\": \"$model\"}\n")
+    }
+}
+
+private fun readConversationLog(context: Context, maxChars: Int = 6000): String {
+    val f = File(context.filesDir, "home/workspace/.aidev-loop/conversation.log")
+    if (!f.isFile) return ""
+    return runCatching {
+        val t = f.readText()
+        if (t.length > maxChars) "…（省略较早内容）\n" + t.takeLast(maxChars) else t
+    }.getOrDefault("")
 }
 
 private fun lastCrashSummary(context: Context): String {

@@ -141,3 +141,16 @@ aidev-self-evolution --stop
 - App 侧：自治开关（A 系列）让"崩溃→重建"自动转；守护进程（本节约 7）让"崩溃→改码"自动转。
 - 两者齐备 = 无人值守自进化闭环；只开其一 = 半自动（人在环或空转重编）。
 - 真机端到端需设备 + Shizuku + 常驻 OpenCode 实测；本环境已用 fake-OpenCode 验证守护"扫描→改码→标记→触发重建→启停"全链路。
+
+## 9. 改码模型选择 + 对话可见（2026-07-12）
+
+### 背景
+真机实测发现：OpenCode 内置免费模型（hy3 / big-pickle / deepseek 等）按 IP 限额；额度耗尽时 `opencode run` **exit 0 且空返回、不打印任何错误** → 守护无法自动识别切换。因此改为「对话可见 + 用户手动切模型」。
+
+### 实现（简单方案，已落地）
+- **模型来源**：App「服务器中心 → 自我进化闭环 → 改码模型」下拉框，选择写入 `PreferencesManager.selfEvolutionModel` 并落盘 `workspace/.aidev-loop/se-config.json`（`{"model":"opencode/hy3-free"}`）。可选模型见 `Constants.SELF_EVOLUTION_MODELS`。
+- **守护读取**：`aidev-self-evolution` 每轮 `read_model()` 读 `se-config.json`（回退 `OPENCODE_MODEL` 环境变量 / 默认 hy3-free），以 `opencode run --auto -m <model> --dir <项目> "<prompt>"` 调用（`--auto` 自动批准改文件，无 serve 依赖）。
+- **对话可见**：守护把每轮「提示 + 回复」全文追加写 `workspace/.aidev-loop/conversation.log`；App 在「改码对话」可展开区块每 1.5s tail 展示。空回复时守护写一行 `⚠ 模型…无有效回复…请在 App 切换模型`，并**不**标记 `fix_applied`（留待换模型重试）。
+
+### 待办（SSE 富文本方案，暂缓）
+更好的体验是让守护用 `opencode run --attach http://127.0.0.1:4096`，App 订阅 4096 的 SSE `/event` 消息 part 事件，渲染流式聊天气泡（含 token 用量 / 模型名 / 分段增量）。工作量大（需 serve 常驻 + 事件解析 + 富文本渲染），记录备忘，后续实现。`OpenCodeMonitorService` 已连 SSE，仅处理 session.status/idle，可在其上扩展 message part 处理。

@@ -64,9 +64,22 @@ object Constants {
         const val PROJECT_VIEW_TAB = "project_view_tab"
         const val LAST_TAB = "last_tab"
         const val SELF_EVOLUTION_AUTONOMOUS = "self_evolution_autonomous"
+        const val SELF_EVOLUTION_MODEL = "self_evolution_model"
     }
 
     // OpenCode HTTP API
     const val OPENCODE_BASE_URL = "http://127.0.0.1:4096"
+
+    // 自我进化「宇宙A 改码」可用的 OpenCode 免费模型（用户可在服务器中心手动切换）。
+    // 额度耗尽时 opencode 会 exit 0 且空返回、不报错，故无法自动识别——由用户看对话内容判断后手动切换。
+    val SELF_EVOLUTION_MODELS = listOf(
+        "opencode/hy3-free",
+        "opencode/deepseek-v4-flash-free",
+        "opencode/mimo-v2.5-free",
+        "opencode/north-mini-code-free",
+        "opencode/nemotron-3-ultra-free",
+        "opencode/big-pickle",
+    )
+    const val SELF_EVOLUTION_DEFAULT_MODEL = "opencode/hy3-free"
 
 }

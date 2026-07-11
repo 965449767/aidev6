@@ -16,10 +16,12 @@
 #   aidev-self-evolution --once            前台跑一轮就退出（调试用）
 #   aidev-self-evolution --max-iter N      最多驱动 N 轮后退出（默认随守护一直跑）
 #
-# 前置：宇宙 A 里先起 OpenCode 服务（推荐常驻）：
-#   opencode serve --port 4096 &
-# 脚本默认通过 http://127.0.0.1:4096 附着；可用 OPENCODE_URL 覆盖，
-# 或设 OPENCODE_CMD 为其它非交互调用方式（如直接 `opencode` 的批处理形态）。
+# 调用方式：直接 `opencode run --auto -m <model> --dir <项目> "<prompt>"`（无需 serve 常驻）。
+#   - 模型由 App「服务器中心」写入 $WORKSPACE/.aidev-loop/se-config.json（{"model":"opencode/hy3-free"}）；
+#     也可用环境变量 OPENCODE_MODEL 覆盖；默认 opencode/hy3-free。
+#   - 每次改码的完整对话（提示 + 回复）追加写入 $WORKSPACE/.aidev-loop/conversation.log，供 App 实时查看。
+#   - 免费模型额度耗尽时 opencode 常 exit 0 且空返回、不报错 → 无法自动识别，
+#     故对话可见 + App 手动切换模型，是本设计的核心。
 
 set -uo pipefail
 
@@ -44,20 +46,45 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-WORKSPACE="${AIDEV_WORKSPACE:-$HOME/workspace}"
+# 在 aidev6 宇宙A 内，App 的 aidevHome 恒挂载到 /host-home、workspace 挂到 /workspace。
+# 据此自动对齐 App 沙箱路径，用户直接 `aidev-self-evolution --once` 即可，无需手传 env。
+if [ -n "${AIDEV_WORKSPACE:-}" ]; then
+  WORKSPACE="$AIDEV_WORKSPACE"
+elif [ -d /host-home/workspace ]; then
+  WORKSPACE=/host-home/workspace
+elif [ -d /workspace ]; then
+  WORKSPACE=/workspace
+else
+  WORKSPACE="$HOME/workspace"
+fi
 LOOP_DIR="$WORKSPACE/.aidev-loop"
-BRIDGE_DIR="$HOME/.aidev-build-bridge"
+# BRIDGE_DIR 必须与 App 沙箱一致（rootfs 内为 /host-home/.aidev-build-bridge）；
+# 若默认成 $HOME/.aidev-build-bridge，BuildBridgeService 永远读不到重建请求（真机踩过坑）。
+if [ -n "${AIDEV_BRIDGE_DIR:-}" ]; then
+  BRIDGE_DIR="$AIDEV_BRIDGE_DIR"
+elif [ -d /host-home ]; then
+  BRIDGE_DIR=/host-home/.aidev-build-bridge
+else
+  BRIDGE_DIR="$HOME/.aidev-build-bridge"
+fi
 PID_FILE="$HOME/.aidev-self-evolution.pid"
 LOG_FILE="${AIDEV_SELF_EVOLUTION_LOG:-$HOME/.aidev-self-evolution.log}"
 OPENCODE_URL="${OPENCODE_URL:-http://127.0.0.1:4096}"
-# 用数组保存命令，避免 "opencode run --attach ..." 被当成单个命令名
-if [ -n "${OPENCODE_CMD_ARR:+set}" ]; then
-  : # 已由调用方设为数组
-elif [ -n "${OPENCODE_CMD:-}" ]; then
-  OPENCODE_CMD_ARR=($OPENCODE_CMD)
-else
-  OPENCODE_CMD_ARR=(opencode run --attach "$OPENCODE_URL")
-fi
+# App 与守护共享的自进化配置 / 对话记录（都放共享盘 .aidev-loop，App 可读写）
+SE_CONFIG="$LOOP_DIR/se-config.json"          # App 写：{"model":"opencode/hy3-free"}
+CONV_LOG="$LOOP_DIR/conversation.log"          # 守护写：opencode 改码对话全文，供 App 实时查看
+DEFAULT_MODEL="opencode/hy3-free"
+
+# 读取 App 选定的模型（额度耗尽由用户看对话后在 App 手动切换）
+read_model() {
+  local m=""
+  if [ -f "$SE_CONFIG" ]; then
+    m=$(grep -o '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$SE_CONFIG" 2>/dev/null | head -1 | sed -E 's/.*:[[:space:]]*"//; s/"$//')
+  fi
+  echo "${m:-${OPENCODE_MODEL:-$DEFAULT_MODEL}}"
+}
+
+conv() { printf '%s\n' "$*" >> "$CONV_LOG"; }
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
@@ -104,10 +131,28 @@ $stack
 
 请定位根因并直接修改源码修复它；改完后不要手动构建。改完回复一行：已修复: <一句话说明>。"
 
-  reply=$("${OPENCODE_CMD_ARR[@]}" "$prompt" 2>&1)
+  local model
+  model=$(read_model)
+  log "调用 OpenCode 改码（模型 $model，项目 $WORKSPACE/$project）"
+
+  conv "════════ $(date '+%Y-%m-%d %H:%M:%S') ════════"
+  conv "模型: $model    项目: $project    崩溃: $f"
+  conv "── 提交给 OpenCode ──"
+  conv "$prompt"
+  conv "── OpenCode 回复 ──"
+
+  # --auto 自动批准改文件权限（无人值守必需）；-m 指定模型；--dir 指向项目目录
+  reply=$(opencode run --auto -m "$model" --dir "$WORKSPACE/$project" "$prompt" 2>&1)
   local rc=$?
-  if [ $rc -ne 0 ]; then
-    log "OpenCode 调用失败(rc=$rc)，本轮跳过。请确认 OpenCode 服务已起($OPENCODE_URL)。"
+  conv "$reply"
+  conv ""
+
+  # 额度耗尽时 opencode 往往 exit 0 且空返回、不报错 → 无法自动识别，提醒用户手动切模型
+  local trimmed
+  trimmed=$(printf '%s' "$reply" | tr -d '[:space:]')
+  if [ $rc -ne 0 ] || [ -z "$trimmed" ]; then
+    conv "⚠ 模型「$model」无有效回复（rc=$rc）。可能：额度耗尽 / 服务未起 / 网络不通。请在 App 切换模型后重试。"
+    log "OpenCode 无有效回复(rc=$rc, 模型 $model)，不标记已修复，等待用户切换模型/重试。"
     return 1
   fi
   log "OpenCode 回复: $(echo "$reply" | tail -1)"
@@ -167,5 +212,5 @@ if [ "$STOP" = 1 ]; then do_stop; exit 0; fi
 if [ "$SHOW_STATUS" = 1 ]; then do_status; exit 0; fi
 if [ "$DAEMON" = 1 ]; then daemonize; exit 0; fi
 
-log "启动 aidev-self-evolution (mode=$([ "$DAEMON" = 1 ] && echo daemon || echo foreground), max-iter=${MAX_ITER:-inf}, opencode=$OPENCODE_URL)"
+log "启动 aidev-self-evolution (mode=$([ "$DAEMON" = 1 ] && echo daemon || echo foreground), max-iter=${MAX_ITER:-inf}, model=$(read_model), workspace=$WORKSPACE, bridge=$BRIDGE_DIR)"
 main_loop

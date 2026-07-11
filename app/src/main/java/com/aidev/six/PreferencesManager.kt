@@ -76,6 +76,11 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(Constants.PrefKeys.SELF_EVOLUTION_AUTONOMOUS, false)
         set(value) = write { putBoolean(Constants.PrefKeys.SELF_EVOLUTION_AUTONOMOUS, value) }
 
+    var selfEvolutionModel: String
+        get() = prefs.getString(Constants.PrefKeys.SELF_EVOLUTION_MODEL, Constants.SELF_EVOLUTION_DEFAULT_MODEL)
+            ?: Constants.SELF_EVOLUTION_DEFAULT_MODEL
+        set(value) = write { putString(Constants.PrefKeys.SELF_EVOLUTION_MODEL, value) }
+
     var backupDir: String
         get() = prefs.getString(Constants.PrefKeys.BACKUP_DIR, "/sdcard/AIDev/backups/") ?: "/sdcard/AIDev/backups/"
         set(value) = write { putString(Constants.PrefKeys.BACKUP_DIR, value) }

@@ -4,6 +4,9 @@
 > Phase F（闭环贯通+可见）、Phase G（反向驱动宇宙A：文件契约 + 自治开关 + 常驻守护）均已编码完成并通过单测/构建。
 > Phase H：把"能在本环境验证的"全跑一遍（单测/构建/闭环契约模拟），并把"必须真机"的列为待办清单。
 
+> ✅ **2026-07-12 北极星达成（真机全闭环）**：崩溃(04:03:36) → 抓取真实堆栈(v41) → 宇宙A opencode(hy3-free) 自动改码移除 throw → fix_applied + 重建请求 → 宇宙B 自动重建 → 拉起(04:12:06)无新崩溃。
+> v42 增：改码模型选择器 + 改码对话实时可见（免费模型按 IP 限额、耗尽静默空返回，故人工看对话切模型）。守护 `aidev-self-evolution` 自动对齐 `/host-home` 路径，直接 `--once` 即可。SSE 富文本对话为后续待办（docs/self-evolution-loop.md §9）。
+
 ## 轨道 1 — 本环境可验证项（执行中）
 - [x] F01 端到端排查闭环链路，列出所有断点（只读调研，产出问题清单）
       范围：submitBuildRequest → BuildBridgeService → 宇宙B 编译 → aidev-install 静默安装 → 自动拉起 → CrashReportBridgeService → 回流宇宙A
