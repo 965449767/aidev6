@@ -50,7 +50,14 @@ BRIDGE_DIR="$HOME/.aidev-build-bridge"
 PID_FILE="$HOME/.aidev-self-evolution.pid"
 LOG_FILE="${AIDEV_SELF_EVOLUTION_LOG:-$HOME/.aidev-self-evolution.log}"
 OPENCODE_URL="${OPENCODE_URL:-http://127.0.0.1:4096}"
-OPENCODE_CMD="${OPENCODE_CMD:-opencode run --attach $OPENCODE_URL}"
+# 用数组保存命令，避免 "opencode run --attach ..." 被当成单个命令名
+if [ -n "${OPENCODE_CMD_ARR:+set}" ]; then
+  : # 已由调用方设为数组
+elif [ -n "${OPENCODE_CMD:-}" ]; then
+  OPENCODE_CMD_ARR=($OPENCODE_CMD)
+else
+  OPENCODE_CMD_ARR=(opencode run --attach "$OPENCODE_URL")
+fi
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
@@ -97,7 +104,7 @@ $stack
 
 请定位根因并直接修改源码修复它；改完后不要手动构建。改完回复一行：已修复: <一句话说明>。"
 
-  reply=$($OPENCODE_CMD "$prompt" 2>&1)
+  reply=$("${OPENCODE_CMD_ARR[@]}" "$prompt" 2>&1)
   local rc=$?
   if [ $rc -ne 0 ]; then
     log "OpenCode 调用失败(rc=$rc)，本轮跳过。请确认 OpenCode 服务已起($OPENCODE_URL)。"

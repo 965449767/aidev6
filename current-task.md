@@ -424,18 +424,31 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 
 ## Phase H — 验证与待办（2026-07-11 起）
 
-### H 本环境可验（执行中）
+### H 本环境可验（已完成）
 - [x] H03 全量 `testDebugUnitTest` + `assembleDebug` 绿灯
-- [x] H04 `scripts/verify-self-evolution.sh`：用 fake OpenCode 模拟完整闭环（崩溃→改码→重建），验证文件契约不依赖真机
-- [ ] H05 `docs/verification.md` 补 Phase H 真机验证清单（Shizuku / 设备待办）
+- [x] H04 `scripts/verify-self-evolution.sh`：fake OpenCode 模拟完整闭环，验证文件契约
+- [x] H05 `docs/verification.md` 补 Phase H 真机验证清单
 
-### 必须真机 / Shizuku 才能验（冻结为待办，非漏做）
-- [ ] 真机一次完整闭环：改码 → 提交 → 宇宙B 编译 → Shizuku 安装 → 自动拉起 → logcat 抓崩溃 → 守护改码 → 再构建，确认自动收敛
-- [ ] B5 实战验证：崩溃回流轮询 60s 窗口是否够（App 启动慢/晚崩场景）
-- [ ] B6 实战验证：长构建（>5min）期间 App 被 HyperOS 杀进程是否中断闭环（前台 Service / KeepAlive 覆盖）
-- [ ] B8 实战验证：首次 install-compiler 静默长任务是否需进度提示
-- [ ] B9 实战验证：parseCrash 误报/截断率
-- [ ] OpenCode `serve` + 守护在设备开机后自启（目前需手动起）
+### H 本环境可验（执行中：真机实测步骤落地）
+- [x] H10 本文件：真机实测拆为 H10–H17 分步，标注本环境可验 / 需真机
+- [ ] H11 写 `docs/real-device-runbook.md`（照抄版真机步骤手册）
+- [ ] H12 用**真实 opencode serve**（本环境已有 v1.17.18）+ 守护 验证「崩溃→真实改码」闭环
+- [ ] H13 跑 `scripts/harness_check.sh` 确认文档/结构完好
+
+### H 需真机 / Shizuku（用户实测，冻结为待办，非漏做）
+- [ ] H14 装 App 到手机（Shizuku 静默装 debug APK），底部上滑进「服务器中心」
+- [ ] H15 宇宙B 构建验证：点"提交构建请求"，4 阶段（准备→编译→安装→拉起）跑通
+- [ ] H16 起 OpenCode serve（宇宙A）+ `aidev-self-evolution --daemon`，确认 status 运行中
+- [ ] H17 开"自我进化自治模式"开关 + 造必崩改动 → 观察自动 崩→改码→重建 收敛
 
 ### 判据
-以上待办"默认冻结"，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
+以上 H14–H17 待办"默认冻结"，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
+
+### 真机实测 6 步（大白话，详见 docs/real-device-runbook.md）
+1. 装 App 到手机（Shizuku 静默装 debug APK）
+2. 在「服务器中心」点一次"提交构建请求"，确认宇宙B 能编译安装拉起
+3. 宇宙A 终端：`opencode serve --port 4096 &`
+4. 宇宙A 终端：`aidev-self-evolution --daemon`（然后 `status` 看运行中）
+5. 手机「服务器中心」开"自我进化自治模式"开关
+6. 在 `home/workspace/MyAndroidProject` 留个必崩 bug → 点提交 → 看它自己 崩→改码→重建 直到不崩
+坑：编译慢别急；把 App 和 OpenCode 加电池免优化；Shizuku 断了重连；守护没反应看 `~/.aidev-self-evolution.log`。
