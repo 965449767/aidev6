@@ -1,8 +1,9 @@
 {
   "phase": "phase-f-self-evolution-loop-e2e-observable",
-  "current_step": "Phase F 全部完成：F01(断点清单) F02/F03(BuildRequestTracker 可见化) F04(崩溃回流统一进任务流) F05(单测验证) F06(长尾冻结+decisions.md)。闭环已端到端贯通且可见。",
+  "current_step": "Phase G 完成：自我进化闭环「反向驱动宇宙A」文件契约落地（崩溃写共享工作区 + requestRebuild + 契约文档 + 自动驾驶脚本）。闭环可自动转：崩溃→改码→重建。",
   "active_plan": "current-task.md",
   "completed_phases": [
+    "Phase G: 反向驱动宇宙A 文件契约（崩溃回流写共享工作区 + requestRebuild + 契约文档 + aidev-self-evolution 脚本）",
     "Phase F: F06 长尾冻结+decisions.md",
     "Phase F: F05 崩溃回流单测验证",
     "Phase F: F04 崩溃回流统一进任务流",

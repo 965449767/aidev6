@@ -34,7 +34,9 @@ internal data class AgentTaskRecord(
     val exitCode: Int = -1,
     val log: String = "",
     val lastUpdatedAt: Long = System.currentTimeMillis(),
-    val steps: List<AgentTaskStepResult> = emptyList()
+    val steps: List<AgentTaskStepResult> = emptyList(),
+    // 宇宙 A（OpenCode）闭环回填：读到崩溃回流后应用了什么修复（F04/G 反向驱动）
+    val note: String = ""
 )
 
 internal data class AgentTaskStep(
@@ -123,6 +125,8 @@ internal object AgentTaskStore {
             append(task.lastUpdatedAt)
             append(FIELD_SEPARATOR)
             append(serializeSteps(task.steps))
+            append(FIELD_SEPARATOR)
+            append(encode(task.note))
         }
     }
 
@@ -173,7 +177,8 @@ internal object AgentTaskStore {
             exitCode = parts[9].toIntOrNull() ?: -1,
             log = decode(parts[10]),
             lastUpdatedAt = parts[11].toLongOrNull() ?: System.currentTimeMillis(),
-            steps = if (parts.size >= 13) parseSteps(parts[12]) else emptyList()
+            steps = if (parts.size >= 13) parseSteps(parts[12]) else emptyList(),
+            note = if (parts.size >= 14) decode(parts[13]) else ""
         )
     }
 

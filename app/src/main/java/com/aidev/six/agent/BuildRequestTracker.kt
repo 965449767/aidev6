@@ -1,8 +1,6 @@
 package com.aidev.six.agent
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import com.aidev.six.BuildBridgeService
 import com.aidev.six.CrashReportBridgeService
 import com.aidev.six.PathConfig
@@ -23,8 +21,9 @@ import java.util.concurrent.Executors
 internal class BuildRequestTracker {
 
     private val executor = Executors.newCachedThreadPool()
-    private var mainHandler: Handler? = null
-    private fun postToMain(block: () -> Unit) { mainHandler?.post(block) ?: block() }
+    private var appContext: Context? = null
+    // 记录已落盘（AgentTaskStore.upsertTask），这里直接回调即可，无需切主线程
+    private fun postToMain(block: () -> Unit) = block()
 
     // 暴露给 UI：最近一次回流的崩溃摘要（F04）。
     var latestCrash: String = ""
@@ -40,7 +39,7 @@ internal class BuildRequestTracker {
     ) {
         val appCtx = context.applicationContext
         val home = PathConfig.aidevHome(appCtx)
-        mainHandler = Handler(Looper.getMainLooper())
+        appContext = appCtx
         runCatching {
             BuildBridgeService.start(appCtx, home)
             CrashReportBridgeService.start(appCtx, home)
@@ -200,7 +199,46 @@ internal class BuildRequestTracker {
         )
         AgentTaskStore.upsertTask(stateFile, record, limit = 12)
         latestCrash = if (crashed) "✖ $pkg 崩溃（${stackLines.size} 行）" else "✔ $pkg 运行正常"
+        // G01：把崩溃回流同时写进共享工作区，供宇宙 A（OpenCode）读取并自我修正
+        writeLoopCrash(reportFile, json, crashed, pkg, stackLines)
         postToMain { onUpdate(record) }
+    }
+
+    /**
+     * 把崩溃回流写到 `home/workspace/.aidev-loop/crash-<id>.json`（G01）。
+     * 这是「宇宙 A 反向驱动」的入口文件：OpenCode 读它 → 改码 → 调 [requestRebuild] 触发下一轮构建。
+     */
+    private fun writeLoopCrash(reportFile: File, source: JSONObject, crashed: Boolean, pkg: String, stack: List<String>) {
+        val ctx = appContext ?: return
+        runCatching {
+            val loopDir = File(PathConfig.workspaceDir(ctx), ".aidev-loop").apply { mkdirs() }
+            val out = File(loopDir, "crash-${reportFile.nameWithoutExtension}.json")
+            val payload = JSONObject().apply {
+                put("type", "self-evolution/crash")
+                put("id", reportFile.nameWithoutExtension)
+                put("package", pkg)
+                put("time", source.optLong("time", System.currentTimeMillis()))
+                put("crashed", crashed)
+                put("fatal", source.optString("fatal", ""))
+                put("stack", org.json.JSONArray().apply { stack.forEach { put(it) } })
+                put("project", "MyAndroidProject")
+                put("fix_applied", false)
+            }
+            out.writeText(payload.toString(2))
+        }
+    }
+
+    /**
+     * 宇宙 A（OpenCode）改完码后调用，触发下一轮「宇宙 B 编译 → 安装 → 拉起 → 抓崩溃」（G03）。
+     * 等价于在「服务器中心」点一次「提交构建请求」，但由闭环自动发起。
+     */
+    fun requestRebuild(
+        context: Context,
+        project: String = "MyAndroidProject",
+        stateFile: File,
+        onUpdate: (AgentTaskRecord) -> Unit,
+    ) {
+        submit(context, project, stateFile, autoInstall = true, autoLaunch = true, onUpdate = onUpdate)
     }
 
     private data class Phase(val name: String, val markers: List<String>)
