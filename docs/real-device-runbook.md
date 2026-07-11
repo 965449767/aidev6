@@ -6,12 +6,27 @@
 ---
 
 ## 第 1 步：装 App 到手机
-电脑侧出包并静默安装（用你环境里的 Shizuku 安装链路，如 `aidev-install`）：
+
+电脑侧出包（本环境已验证产物存在：`app/build/outputs/apk/debug/app-debug.apk`，约 19.7MB）：
 ```bash
 ./gradlew assembleDebug -Pandroid.aapt2FromMavenOverride=/host-home/android-sdk/build-tools/34.0.0/aapt2 --no-daemon
-# 用 Shizuku 静默安装 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+**装到手机（二选一，均经 Shizuku 静默安装）：**
+```bash
+# 方式 A：用 aidev-install（推荐，自动发现/指定 APK，优先静默）
+aidev-install --silent app/build/outputs/apk/debug/app-debug.apk
+
+# 方式 B：直接用 adb（需手机开 USB 调试）
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+安装前确认：手机已装 **Shizuku** 并授权 aidev6 的 `moe.shizuku.manager.permission.API_V23`；
+`aidev-install --status` 应显示"桥接通道正常"。
+
 手机上打开 aidev6，**底部上滑**进「服务器中心」。
+
+> 本环境已确认：APK 可构建、权限齐全（含 Shizuku/IPC/安装/通知/电池免优化/开机广播）、`aidev-install --silent` 可用、Shizuku 桥接通道正常。
+> 仅"把 APK 推到真机并执行安装"这一步需真机，无法在开发机完成。
 
 ## 第 2 步：确认宇宙B 能编译（关键前提）
 在「服务器中心」点 **提交构建请求**，盯着任务流看 4 个阶段：

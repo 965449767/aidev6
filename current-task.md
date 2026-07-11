@@ -437,6 +437,7 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 
 ### H 需真机 / Shizuku（用户实测，冻结为待办，非漏做）
 - [ ] H14 装 App 到手机（Shizuku 静默装 debug APK），底部上滑进「服务器中心」
+      - 本环境已验证前置：APK 产物存在(19.7MB)、权限齐全(Shizuku/IPC/安装/通知/电池免优化/开机)、`aidev-install --silent` 可用、Shizuku 桥接通道正常；仅"推到真机+执行安装"需真机
 - [ ] H15 宇宙B 构建验证：点"提交构建请求"，4 阶段（准备→编译→安装→拉起）跑通
 - [ ] H16 起 OpenCode serve（宇宙A）+ `aidev-self-evolution --daemon`，确认 status 运行中
 - [ ] H17 开"自我进化自治模式"开关 + 造必崩改动 → 观察自动 崩→改码→重建 收敛
