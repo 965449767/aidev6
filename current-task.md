@@ -1,10 +1,10 @@
-# 当前任务：Phase G — 自我进化闭环「反向驱动宇宙 A（文件契约）」
+# 当前任务：Phase H — 自我进化闭环「验证与待办」
 
 > 🎯 北极星：`宇宙A(OpenCode 写码)` → `宇宙B(编译)` → `Shizuku 静默安装` → `自动拉起` → `logcat→MCP 抓崩溃` → `回流宇宙A 自动改码` → 再构建……
-> Phase F 已让闭环「跑通 + 可见」；Phase G 补上最后半截：让宇宙 A 能读崩溃回流、自动改码、触发下一轮，闭环自己转到底。
-> 设计判据：不做 IPC/网络，只用「共享工作区文件契约」让 App 与 OpenCode 解耦协作。
+> Phase F（闭环贯通+可见）、Phase G（反向驱动宇宙A：文件契约 + 自治开关 + 常驻守护）均已编码完成并通过单测/构建。
+> Phase H：把"能在本环境验证的"全跑一遍（单测/构建/闭环契约模拟），并把"必须真机"的列为待办清单。
 
-## 轨道 1 — 闭环端到端跑通（最高优先）
+## 轨道 1 — 本环境可验证项（执行中）
 - [x] F01 端到端排查闭环链路，列出所有断点（只读调研，产出问题清单）
       范围：submitBuildRequest → BuildBridgeService → 宇宙B 编译 → aidev-install 静默安装 → 自动拉起 → CrashReportBridgeService → 回流宇宙A
 
@@ -401,3 +401,41 @@ OpenCode（宇宙 A）在 `home/workspace` 看不到，两者无法协作。
 ### 验证
 - 用 fake-OpenCode 跑通：守护扫描→调改码→标记 fix_applied→写重建请求；`--daemon` 启停、`status` 正常；pid 进程 stop 后确已退出。
 - 文档 `docs/self-evolution-loop.md` 第 7、8 节补全守护用法与双触发说明。
+
+---
+
+## Phase G — 反向驱动宇宙 A（文件契约 + 自治 + 守护，2026-07-11 完成并推送）
+
+### 交付
+- G01 崩溃回流写共享工作区 `home/workspace/.aidev-loop/crash-<id>.json`
+- G02 `AgentTaskRecord.note` 字段（OpenCode 回填修复说明）
+- G03 `BuildRequestTracker.requestRebuild()`
+- G04 `docs/self-evolution-loop.md` 文件契约
+- G05 `scripts/aidev-self-evolution` 参考实现
+- A01–A05 自治开关：`Constants`/`PreferencesManager` 偏好 + `ServerPanel` Switch + `BuildRequestTracker` 自治循环（`fix_applied` 收敛 + `MAX_AUTO_ITERATIONS=10`）
+- 守护进程：`aidev-self-evolution --daemon/--stop/status` 常驻自动改码（fake-OpenCode 验证全链路）
+
+### 验证（本环境）
+- `testDebugUnitTest` ✅（含 BuildRequestTracker 工作区写出 / requestRebuild / 自治三场景 / note 向后兼容）
+- `assembleDebug` ✅
+- 守护进程 fake-OpenCode 跑通：扫描→改码→标记 fix_applied→写重建请求→启停/status 正常
+
+---
+
+## Phase H — 验证与待办（2026-07-11 起）
+
+### H 本环境可验（执行中）
+- [x] H03 全量 `testDebugUnitTest` + `assembleDebug` 绿灯
+- [x] H04 `scripts/verify-self-evolution.sh`：用 fake OpenCode 模拟完整闭环（崩溃→改码→重建），验证文件契约不依赖真机
+- [ ] H05 `docs/verification.md` 补 Phase H 真机验证清单（Shizuku / 设备待办）
+
+### 必须真机 / Shizuku 才能验（冻结为待办，非漏做）
+- [ ] 真机一次完整闭环：改码 → 提交 → 宇宙B 编译 → Shizuku 安装 → 自动拉起 → logcat 抓崩溃 → 守护改码 → 再构建，确认自动收敛
+- [ ] B5 实战验证：崩溃回流轮询 60s 窗口是否够（App 启动慢/晚崩场景）
+- [ ] B6 实战验证：长构建（>5min）期间 App 被 HyperOS 杀进程是否中断闭环（前台 Service / KeepAlive 覆盖）
+- [ ] B8 实战验证：首次 install-compiler 静默长任务是否需进度提示
+- [ ] B9 实战验证：parseCrash 误报/截断率
+- [ ] OpenCode `serve` + 守护在设备开机后自启（目前需手动起）
+
+### 判据
+以上待办"默认冻结"，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
