@@ -73,6 +73,12 @@ fun AppNavHost(
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
+                serverContent = {
+                    ServerPanel(
+                        onExecuteCommand = onExecuteCommand,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
                 content = {
                     TerminalPanel(
                         page = terminalPage,

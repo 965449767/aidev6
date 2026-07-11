@@ -37,4 +37,56 @@ class AgentTaskStoreTest {
         assertEquals("hello from task", loaded.single().log)
         assertEquals(0, loaded.single().exitCode)
     }
+
+    @Test
+    fun saveAndLoadRoundTripPreservesSteps() {
+        val tempDir = Files.createTempDirectory("agent-task-store-steps").toFile()
+        val stateFile = File(tempDir, "tasks.json")
+
+        val task = AgentTaskRecord(
+            definition = AgentTaskDefinition(
+                id = "plan-1",
+                name = "Android 闭环",
+                description = "构建并验证",
+                command = "./gradlew assembleDebug\n./gradlew test",
+                workingDirectory = "/tmp/workspace"
+            ),
+            status = AgentTaskStatus.FAILED,
+            exitCode = 2,
+            log = "aggregated log",
+            steps = listOf(
+                AgentTaskStepResult("构建", AgentTaskStatus.SUCCEEDED, 0, "build ok"),
+                AgentTaskStepResult("测试", AgentTaskStatus.FAILED, 2, "test\nfailed")
+            )
+        )
+
+        AgentTaskStore.saveState(stateFile, listOf(task))
+        val loaded = AgentTaskStore.loadState(stateFile).single()
+
+        assertEquals(2, loaded.steps.size)
+        assertEquals("构建", loaded.steps[0].name)
+        assertEquals(AgentTaskStatus.SUCCEEDED, loaded.steps[0].status)
+        assertEquals(AgentTaskStatus.FAILED, loaded.steps[1].status)
+        assertEquals(2, loaded.steps[1].exitCode)
+        assertEquals("test\nfailed", loaded.steps[1].log)
+    }
+
+    @Test
+    fun legacyRecordWithoutStepsParsesWithEmptySteps() {
+        val tempDir = Files.createTempDirectory("agent-task-store-legacy").toFile()
+        val stateFile = File(tempDir, "tasks.json")
+
+        val sep = "\u001F"
+        val legacyLine = listOf(
+            "task-legacy", "旧任务", "描述", "ls -la", "/tmp",
+            "", "SUCCEEDED", "100", "200", "0", "done", "150"
+        ).joinToString(sep)
+        stateFile.writeText(legacyLine)
+
+        val loaded = AgentTaskStore.loadState(stateFile).single()
+
+        assertEquals("旧任务", loaded.definition.name)
+        assertEquals(AgentTaskStatus.SUCCEEDED, loaded.status)
+        assertEquals(0, loaded.steps.size)
+    }
 }

@@ -19,6 +19,13 @@ internal data class AgentTaskDefinition(
     val tags: List<String> = emptyList()
 )
 
+internal data class AgentTaskStepResult(
+    val name: String,
+    val status: AgentTaskStatus = AgentTaskStatus.PENDING,
+    val exitCode: Int = -1,
+    val log: String = ""
+)
+
 internal data class AgentTaskRecord(
     val definition: AgentTaskDefinition,
     val status: AgentTaskStatus,
@@ -26,7 +33,8 @@ internal data class AgentTaskRecord(
     val finishedAt: Long = 0L,
     val exitCode: Int = -1,
     val log: String = "",
-    val lastUpdatedAt: Long = System.currentTimeMillis()
+    val lastUpdatedAt: Long = System.currentTimeMillis(),
+    val steps: List<AgentTaskStepResult> = emptyList()
 )
 
 internal data class AgentTaskStep(
@@ -62,6 +70,8 @@ internal object AgentTaskStore {
 
     private const val FIELD_SEPARATOR = "\u001F"
     private const val LIST_SEPARATOR = "\u001E"
+    private const val STEP_SEPARATOR = "\u001D"
+    private const val STEP_FIELD_SEPARATOR = "\u001C"
 
     fun loadState(file: File): List<AgentTaskRecord> {
         if (!file.exists()) return emptyList()
@@ -111,6 +121,36 @@ internal object AgentTaskStore {
             append(encode(task.log))
             append(FIELD_SEPARATOR)
             append(task.lastUpdatedAt)
+            append(FIELD_SEPARATOR)
+            append(serializeSteps(task.steps))
+        }
+    }
+
+    private fun serializeSteps(steps: List<AgentTaskStepResult>): String {
+        return steps.joinToString(STEP_SEPARATOR) { step ->
+            buildString {
+                append(encode(step.name))
+                append(STEP_FIELD_SEPARATOR)
+                append(step.status.name)
+                append(STEP_FIELD_SEPARATOR)
+                append(step.exitCode)
+                append(STEP_FIELD_SEPARATOR)
+                append(encode(step.log))
+            }
+        }
+    }
+
+    private fun parseSteps(value: String): List<AgentTaskStepResult> {
+        if (value.isEmpty()) return emptyList()
+        return value.split(STEP_SEPARATOR).mapNotNull { raw ->
+            val fields = raw.split(STEP_FIELD_SEPARATOR)
+            if (fields.size < 4) return@mapNotNull null
+            AgentTaskStepResult(
+                name = decode(fields[0]),
+                status = runCatching { AgentTaskStatus.valueOf(fields[1]) }.getOrDefault(AgentTaskStatus.PENDING),
+                exitCode = fields[2].toIntOrNull() ?: -1,
+                log = decode(fields[3])
+            )
         }
     }
 
@@ -132,7 +172,8 @@ internal object AgentTaskStore {
             finishedAt = parts[8].toLongOrNull() ?: 0L,
             exitCode = parts[9].toIntOrNull() ?: -1,
             log = decode(parts[10]),
-            lastUpdatedAt = parts[11].toLongOrNull() ?: System.currentTimeMillis()
+            lastUpdatedAt = parts[11].toLongOrNull() ?: System.currentTimeMillis(),
+            steps = if (parts.size >= 13) parseSteps(parts[12]) else emptyList()
         )
     }
 
@@ -140,6 +181,8 @@ internal object AgentTaskStore {
         return value.replace("\\", "\\\\")
             .replace(FIELD_SEPARATOR, "\\u001f")
             .replace(LIST_SEPARATOR, "\\u001e")
+            .replace(STEP_SEPARATOR, "\\u001d")
+            .replace(STEP_FIELD_SEPARATOR, "\\u001c")
             .replace("\n", "\\n")
             .replace("\r", "\\r")
     }
@@ -147,6 +190,8 @@ internal object AgentTaskStore {
     private fun decode(value: String): String {
         return value.replace("\\r", "\r")
             .replace("\\n", "\n")
+            .replace("\\u001c", STEP_FIELD_SEPARATOR)
+            .replace("\\u001d", STEP_SEPARATOR)
             .replace("\\u001e", LIST_SEPARATOR)
             .replace("\\u001f", FIELD_SEPARATOR)
             .replace("\\\\", "\\")

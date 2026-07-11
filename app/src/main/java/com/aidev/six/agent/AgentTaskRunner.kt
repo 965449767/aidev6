@@ -13,55 +13,142 @@ internal class AgentTaskRunner {
     private val activeProcesses = ConcurrentHashMap<String, Process>()
     private val activeCancellationFlags = ConcurrentHashMap<String, AtomicBoolean>()
 
+    private data class ExecResult(val exitCode: Int, val output: String, val failure: Throwable? = null)
+
     fun runTask(definition: AgentTaskDefinition, stateFile: File, onUpdate: (AgentTaskRecord) -> Unit) {
         executor.execute {
-            val task = AgentTaskRecord(
-                definition = definition,
-                status = AgentTaskStatus.RUNNING,
-                startedAt = System.currentTimeMillis(),
-                lastUpdatedAt = System.currentTimeMillis()
-            )
+            val startedAt = System.currentTimeMillis()
             val cancellationFlag = AtomicBoolean(false)
             activeCancellationFlags[definition.id] = cancellationFlag
-            AgentTaskStore.upsertTask(stateFile, task, limit = 12)
-            mainHandler.post { onUpdate(task) }
 
-            val shellCommand = if (definition.command.contains("\n")) {
-                definition.command
-            } else {
-                definition.command
+            val logBuilder = StringBuilder()
+            fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long) {
+                val record = AgentTaskRecord(
+                    definition = definition,
+                    status = status,
+                    startedAt = startedAt,
+                    finishedAt = finishedAt,
+                    exitCode = exitCode,
+                    log = logBuilder.toString().ifBlank {
+                        if (status == AgentTaskStatus.RUNNING) "任务执行中…" else "任务已完成"
+                    },
+                    lastUpdatedAt = System.currentTimeMillis()
+                )
+                AgentTaskStore.upsertTask(stateFile, record, limit = 12)
+                mainHandler.post { onUpdate(record) }
             }
-            val process = ProcessBuilder("/system/bin/sh", "-c", shellCommand)
-                .directory(File(definition.workingDirectory))
-                .redirectErrorStream(true)
-                .start()
-            activeProcesses[definition.id] = process
 
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exitCode = process.waitFor()
-            activeProcesses.remove(definition.id)
+            publish(AgentTaskStatus.RUNNING, -1, 0L)
+
+            val result = execProcess(definition.id, definition.command, definition.workingDirectory, cancellationFlag) { line ->
+                logBuilder.append(line).append('\n')
+                publish(AgentTaskStatus.RUNNING, -1, 0L)
+            }
+
             activeCancellationFlags.remove(definition.id)
 
-            val status = when {
-                cancellationFlag.get() -> AgentTaskStatus.CANCELLED
-                exitCode == 0 -> AgentTaskStatus.SUCCEEDED
-                else -> AgentTaskStatus.FAILED
-            }
-            val finished = AgentTaskRecord(
-                definition = definition,
-                status = status,
-                startedAt = task.startedAt,
-                finishedAt = System.currentTimeMillis(),
-                exitCode = exitCode,
-                log = if (status == AgentTaskStatus.CANCELLED) {
-                    "任务已被取消"
-                } else {
-                    output.takeIf { it.isNotBlank() } ?: "任务已完成"
-                },
-                lastUpdatedAt = System.currentTimeMillis()
+            val status = resolveStatus(cancellationFlag, result)
+            appendOutcome(logBuilder, cancellationFlag, result)
+            publish(status, result.exitCode, System.currentTimeMillis())
+        }
+    }
+
+    fun runPlan(plan: AgentTaskPlan, workingDirectory: String, stateFile: File, tags: List<String>, onUpdate: (AgentTaskRecord) -> Unit) {
+        executor.execute {
+            val startedAt = System.currentTimeMillis()
+            val cancellationFlag = AtomicBoolean(false)
+            activeCancellationFlags[plan.id] = cancellationFlag
+
+            val definition = AgentTaskDefinition(
+                id = plan.id,
+                name = plan.name,
+                description = plan.description,
+                command = plan.steps.joinToString("\n") { it.command },
+                workingDirectory = workingDirectory,
+                tags = tags
             )
-            AgentTaskStore.upsertTask(stateFile, finished, limit = 12)
-            mainHandler.post { onUpdate(finished) }
+
+            fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, log: String, steps: List<AgentTaskStepResult>) {
+                val record = AgentTaskRecord(
+                    definition = definition,
+                    status = status,
+                    startedAt = startedAt,
+                    finishedAt = finishedAt,
+                    exitCode = exitCode,
+                    log = log.ifBlank { "任务执行中…" },
+                    lastUpdatedAt = System.currentTimeMillis(),
+                    steps = steps
+                )
+                AgentTaskStore.upsertTask(stateFile, record, limit = 12)
+                mainHandler.post { onUpdate(record) }
+            }
+
+            val outcome = AgentPlanEngine.execute(
+                plan = plan,
+                isCancelled = { cancellationFlag.get() },
+                onProgress = { steps, log -> publish(AgentTaskStatus.RUNNING, -1, 0L, log, steps) },
+                exec = { step, onLine ->
+                    val result = execProcess(plan.id, step.command, workingDirectory, cancellationFlag, onLine)
+                    AgentPlanEngine.StepOutput(result.exitCode, result.output, result.failure)
+                }
+            )
+
+            activeCancellationFlags.remove(plan.id)
+            publish(outcome.status, outcome.exitCode, System.currentTimeMillis(), outcome.log, outcome.steps)
+        }
+    }
+
+    private fun execProcess(
+        taskId: String,
+        command: String,
+        workingDirectory: String,
+        cancellationFlag: AtomicBoolean,
+        onLine: (String) -> Unit
+    ): ExecResult {
+        return try {
+            val workDir = File(workingDirectory)
+            if (!workDir.isDirectory) {
+                return ExecResult(-1, "", IllegalStateException("工作目录不存在: $workingDirectory"))
+            }
+            val process = ProcessBuilder("/system/bin/sh", "-c", command)
+                .directory(workDir)
+                .redirectErrorStream(true)
+                .start()
+            activeProcesses[taskId] = process
+
+            val output = StringBuilder()
+            process.inputStream.bufferedReader().use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    output.append(line).append('\n')
+                    onLine(line)
+                    if (cancellationFlag.get()) {
+                        process.destroy()
+                        break
+                    }
+                }
+            }
+            val exitCode = process.waitFor()
+            activeProcesses.remove(taskId)
+            ExecResult(exitCode, output.toString())
+        } catch (t: Throwable) {
+            activeProcesses.remove(taskId)
+            ExecResult(-1, "", t)
+        }
+    }
+
+    private fun resolveStatus(cancellationFlag: AtomicBoolean, result: ExecResult): AgentTaskStatus = when {
+        cancellationFlag.get() -> AgentTaskStatus.CANCELLED
+        result.failure != null -> AgentTaskStatus.FAILED
+        result.exitCode == 0 -> AgentTaskStatus.SUCCEEDED
+        else -> AgentTaskStatus.FAILED
+    }
+
+    private fun appendOutcome(logBuilder: StringBuilder, cancellationFlag: AtomicBoolean, result: ExecResult) {
+        when {
+            cancellationFlag.get() -> logBuilder.append("\n■ 任务已被取消")
+            result.failure != null -> logBuilder.append("\n✖ 任务启动失败：${result.failure.message ?: result.failure}")
+            result.exitCode != 0 -> logBuilder.append("\n✖ 任务失败 (exit=${result.exitCode})")
         }
     }
 

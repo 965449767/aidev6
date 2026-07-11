@@ -13,6 +13,7 @@ import com.aidev.six.agent.AgentTaskTemplate
 import com.aidev.six.agent.AgentTaskRunner
 import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.agent.AgentTaskStore
+import com.aidev.six.agent.BuildRequestTracker
 import com.aidev.six.navigation.DialogType
 import com.aidev.six.navigation.LocalDialogManager
 import com.aidev.six.ui.components.AppActionRow
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import java.io.File
 
 @Composable
@@ -59,8 +61,13 @@ fun ServerPanel(
 
     val taskStateFile = remember(context) { File(PathConfig.tasksDir(context), "agent-tasks.json") }
     val taskRunner = remember { AgentTaskRunner() }
+    val buildTracker = remember { BuildRequestTracker() }
     val taskRecords = remember { mutableStateListOf<AgentTaskRecord>() }
     val selectedTaskId = remember { mutableStateOf<String?>(null) }
+    val upsertRecord: (AgentTaskRecord) -> Unit = { record ->
+        taskRecords.removeAll { it.definition.id == record.definition.id }
+        taskRecords.add(0, record)
+    }
 
     LaunchedEffect(taskStateFile) {
         taskRecords.clear()
@@ -147,16 +154,12 @@ fun ServerPanel(
                     )
                 )
             )
-            val combinedCommand = plan.steps.joinToString(separator = "\n") { it.command }
-            val definition = AgentTaskDefinition(
-                id = plan.id,
-                name = plan.name,
-                description = plan.description,
-                command = combinedCommand,
+            taskRunner.runPlan(
+                plan = plan,
                 workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                stateFile = taskStateFile,
                 tags = listOf("android", "loop")
-            )
-            taskRunner.runTask(definition, taskStateFile) { record ->
+            ) { record ->
                 taskRecords.removeAll { it.definition.id == record.definition.id }
                 taskRecords.add(0, record)
             }
@@ -200,13 +203,28 @@ fun ServerPanel(
             Spacer(Modifier.height(4.dp))
             InfoNote("最近构建: $buildResult")
         }
-        val crash = remember { lastCrashSummary(context) }
-        if (crash.isNotBlank()) {
+        val crashState = remember { mutableStateOf(lastCrashSummary(context)) }
+        // 提交后轮询 tracker 的最新崩溃回流（F04：闭环回流实时可见）
+        LaunchedEffect(Unit) {
+            while (true) {
+                val latest = buildTracker.latestCrash
+                if (latest.isNotBlank() && latest != crashState.value) crashState.value = latest
+                delay(1000)
+            }
+        }
+        if (crashState.value.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
-            InfoNote("最近崩溃: $crash")
+            InfoNote("最近崩溃回流: ${crashState.value}")
         }
         Spacer(Modifier.height(8.dp))
-        AppActionRow("提交构建请求", "在宇宙 B 编译默认项目并安装/拉起", onClick = { submitBuildRequest(context, "MyAndroidProject") })
+        AppActionRow("提交构建请求", "在宇宙 B 编译默认项目并安装/拉起", onClick = {
+            buildTracker.submit(
+                context = context,
+                project = "MyAndroidProject",
+                stateFile = taskStateFile,
+                onUpdate = upsertRecord
+            )
+        })
         HorizontalDivider()
         AppActionRow("查看崩溃报告", "读取最新 MCP 崩溃报告", onClick = { onExecuteCommand("aidev-crash-report") })
 
@@ -256,19 +274,6 @@ private fun lastCrashSummary(context: Context): String {
         val stack = j.optJSONArray("stack")
         "fatal=${j.optString("fatal", "")} (${stack?.length() ?: 0} 行)"
     }.getOrNull() ?: ""
-}
-
-private fun submitBuildRequest(context: Context, project: String) {
-    val dir = File(context.filesDir, "home/.aidev-build-bridge").apply { mkdirs() }
-    val id = System.currentTimeMillis()
-    val json = org.json.JSONObject().apply {
-        put("id", "$id")
-        put("project", project)
-        put("flavor", "debug")
-        put("autoInstall", true)
-        put("autoLaunch", true)
-    }
-    runCatching { File(dir, "req-$id.json").writeText(json.toString()) }
 }
 
 @Composable
@@ -325,6 +330,22 @@ private fun AgentTaskRow(
             Text(task.definition.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         if (isSelected) {
+            if (task.steps.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                task.steps.forEachIndexed { index, step ->
+                    Text(
+                        text = "${index + 1}. ${step.name} · ${stepStatusLabel(step.status)}" +
+                            if (step.exitCode >= 0) " (exit=${step.exitCode})" else "",
+                        color = when (step.status) {
+                            AgentTaskStatus.SUCCEEDED -> MaterialTheme.colorScheme.secondary
+                            AgentTaskStatus.FAILED -> MaterialTheme.colorScheme.error
+                            AgentTaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(task.log.ifBlank { "暂无输出" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             if (task.status == AgentTaskStatus.RUNNING) {
@@ -338,10 +359,18 @@ private fun AgentTaskRow(
             }
             if (task.exitCode >= 0) {
                 Spacer(Modifier.height(4.dp))
-                Text("exit=$${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("exit=${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
+}
+
+private fun stepStatusLabel(status: AgentTaskStatus): String = when (status) {
+    AgentTaskStatus.PENDING -> "待执行"
+    AgentTaskStatus.RUNNING -> "执行中"
+    AgentTaskStatus.SUCCEEDED -> "已完成"
+    AgentTaskStatus.FAILED -> "失败"
+    AgentTaskStatus.CANCELLED -> "已取消"
 }
 
 @Composable

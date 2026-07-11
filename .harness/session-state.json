@@ -1,8 +1,16 @@
 {
-  "phase": "refactor-dual-rootfs-self-evolution-loop",
-  "current_step": "P0-P6 全部完成并通过验证（shell 63 passed / unit tests passed / assembleDebug SUCCESSFUL / harness_check passed）。双 PRoot rootfs + 自我进化闭环已落地。",
-  "active_plan": "docs/refactor-dual-rootfs-plan.md",
+  "phase": "phase-f-self-evolution-loop-e2e-observable",
+  "current_step": "Phase F 全部完成：F01(断点清单) F02/F03(BuildRequestTracker 可见化) F04(崩溃回流统一进任务流) F05(单测验证) F06(长尾冻结+decisions.md)。闭环已端到端贯通且可见。",
+  "active_plan": "current-task.md",
   "completed_phases": [
+    "Phase F: F06 长尾冻结+decisions.md",
+    "Phase F: F05 崩溃回流单测验证",
+    "Phase F: F04 崩溃回流统一进任务流",
+    "Phase F: F02/F03 构建请求可见化(状态机+实时日志)",
+    "Phase F: F01 闭环断点清单",
+    "Phase F: F01 闭环断点清单 + F02/F03 构建请求可见化（BuildRequestTracker 接入任务流 + 4阶段状态机 + 实时日志）",
+    "Phase F 前置：Agent 任务系统补全（AgentPlanEngine 分步/失败即停/取消 + 实时增量日志 + 步骤持久化 + 修复 exit=$$ 与死代码）",
+    "Phase F 前置：ServerPanel 入口修复（底部上滑手势打开服务器中心 + 第三指示点）",
     "重构计划已批准并落盘 docs/refactor-dual-rootfs-plan.md（双 PRoot rootfs + 自我进化闭环）",
     "Phase 0-5: 文件浏览器重设计（手势/视觉/搜索/交互/预览/架构）",
     "Bugfix: elevation + selection indicator（HyperOS 适配）",
@@ -25,7 +33,7 @@
   "pending_optional": [
     "File browser detail implementation (pinch-zoom grid, swipe auto-copy)",
     "Known issues: LinearProgressIndicator deprecation, test config warnings",
-    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel",
-    "重构：双 PRoot rootfs + 自我进化闭环（P0-P6 完成，详见 docs/refactor-dual-rootfs-plan.md）"
-  ]
+    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel"
+  ],
+  "active_tasks": []
 }

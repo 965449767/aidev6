@@ -1,4 +1,80 @@
-# 当前任务：双 PRoot rootfs + AI 自我进化闭环（重构）
+# 当前任务：Phase F — 自我进化闭环「端到端贯通 + 可见 + 可信」
+
+> 🎯 北极星：`宇宙A(OpenCode 写码)` → `宇宙B(编译)` → `Shizuku 静默安装` → `自动拉起` → `logcat→MCP 抓崩溃` → `喂回宇宙A`。
+> P0–P6 的骨架已落地，但闭环从未端到端真跑通、且核心 UI 曾是孤儿（ServerPanel 无入口，已于本轮修复）。
+> 本阶段目标：把闭环真正跑通一次、让它在「服务器中心」可观测、收敛长尾打磨。
+> 判据：一个改动若不能让「写码→自动构建运行→自动反馈」更快 / 更可靠 / 更可见，则不做。
+
+## 轨道 1 — 闭环端到端跑通（最高优先）
+- [x] F01 端到端排查闭环链路，列出所有断点（只读调研，产出问题清单）
+      范围：submitBuildRequest → BuildBridgeService → 宇宙B 编译 → aidev-install 静默安装 → 自动拉起 → CrashReportBridgeService → 回流宇宙A
+
+### F01 断点清单（2026-07-11）
+
+链路已确认真实连通：`ServerPanel.submitBuildRequest` 写 `req-<id>.json` → `BuildBridgeService.poll()`（500ms 轮询）→ 宇宙B `ProotLauncher` 跑 `./gradlew assembleDebug` → Shizuku `pm install` + `am start` → 固定 delay(8s) 写 `.aidev-crash-bridge/req` → `CrashReportBridgeService` 抓 logcat → `.aidev-mcp/latest.json` → OpenCode `aidev-crash-report` 读取。骨架完整，但有以下断点：
+
+**可见性（阻断用户感知，最高优先）**
+- B1 ServerPanel 的 `lastBuildResult`/`lastCrashSummary`/`taskCount` 均为 `remember { }` 无 key → 提交后 UI 永不刷新（ServerPanel.kt:198/203/56）。
+- B2 `submitBuildRequest` 静默写 json，无 toast/无状态，且不进入 Agent 任务流 → 排队/编译/安装/拉起全程不可见（ServerPanel.kt:261）。
+- B4 编译日志写到 `.aidev-build-bridge/logs/build-<id>.log`，UI 从不读取；失败仅显示「构建失败(exit=N)」，看不到 gradle 报错。
+
+**生命周期 / 可靠性**
+- B3 BuildBridge/CrashReportBridge 仅在 `SessionManager` 启动终端会话时 `start()`（SessionManager.kt:93-94）→ 未进终端或会话被回收时，请求无人轮询、无限挂起。
+- B6 bridges 是进程内协程（非前台 Service），App 被 HyperOS 杀后闭环中断；长构建（最长 900s）期间尤其危险，需确认 KeepAliveService 覆盖。
+- B8 编译前置依赖多（宇宙B rootfs ready + JDK17 + gradlew + workspace 有项目），首次 `install-compiler`（最长 600s）静默进行，UI 无进度；workspace 无项目直接失败。
+
+**时序 / 健壮性**
+- B5 崩溃回流靠固定 `delay(8000)` 只抓一次（BuildBridgeService.kt:138）→ App 启动慢或 8s 后崩溃则漏抓。
+- B9 `parseCrash` 用「Exception/Error」关键字兜底易误报，`raw.takeLast(2000)` 可能截断关键栈（CrashReportBridgeService.kt:88）。
+
+**架构一致性**
+- B7 两套「任务」并存且互不相干：新 Agent 任务系统（AgentTaskRunner，跑宿主 sh）与 BuildBridge（跑宇宙B PRoot），ServerPanel 里是两个独立列表 → F04 需统一视图。
+
+结论：F02/F03 的核心正是消灭 B1/B2/B4（把构建请求接入可见的任务流 + 状态机 + 日志），并顺带处理 B3（提交时确保 bridge 在跑）。
+- [x] F02 `submitBuildRequest` 接入可见状态反馈（复用 AgentTaskRecord / 任务系统），点了要「看得见在转」
+      实现：新增 `agent/BuildRequestTracker.kt` —— 提交时确保 BuildBridge/CrashReportBridge 已启动（解决 B3）、写 req-<id>.json、
+      立即插入 RUNNING 任务记录，并后台轮询 `logs/build-<id>.log`（实时日志）+ `result-<id>.json`（最终结果）持续刷新 UI（解决 B1/B2/B4）。
+- [x] F03 构建请求状态机：排队 / 编译中 / 安装中 / 已拉起 / 失败，在 ServerPanel 展示进度与日志
+      实现：BuildRequestTracker 从构建日志推导 4 阶段（准备宇宙B → 编译 → 安装 → 拉起），映射为 AgentTaskStepResult，
+      复用既有 AgentTaskRow 渲染每步状态 + 实时日志 + exit；20 分钟超时兜底。可后续细化阶段标记正则。
+
+## 轨道 2 — 闭环可观测（信任基础）
+- [x] F04 宇宙B 构建日志 + 安装结果 + 崩溃回流，统一进「服务器中心」任务流视图
+      实现：BuildRequestTracker 提交后轮询 `logs/build-<id>.log` + `result-<id>.json` 刷新任务流（B1/B2/B4）；
+      拉起成功后 `watchCrashReport` 监听 `.aidev-mcp/crash-*.json`，回流为独立任务记录「崩溃回流 <pkg>」（F04 核心）；
+      ServerPanel 的「最近崩溃回流」随 tracker.latestCrash 实时刷新（原静态 remember 已改为 LaunchedEffect 轮询）。
+- [x] F05 崩溃自动回流端到端验证：构建含 crash 的测试包 → 触发 → 崩溃报告自动出现在闭环视图
+      实现：新增 `BuildRequestTrackerTest`（合成 crash-*.json 验证 FAILED 记录含堆栈；空 stack 验证 SUCCEEDED「未捕获到崩溃」）；
+      并为此修复测试环境：`app/build.gradle.kts` 加 `testOptions.unitTests.isIncludeAndroidResources=true` 与 `testImplementation("org.json:json:20231013")`，
+      BuildRequestTracker.mainHandler 改为延迟初始化 + null-safe `postToMain`（单测不构造主线程 Looper）。testDebugUnitTest ✅ / assembleDebug ✅。
+
+## 轨道 3 — 收敛长尾
+- [x] F06 冻结 pending_optional 长尾（除非影响主闭环），在 decisions.md 记录冻结判据
+      判据见 `decisions.md`「Phase F pending_optional 冻结清单」。核心：B6/B8/B9 等属可靠性长尾，默认冻结；
+      仅当「阻断一次真实闭环跑通 / 用户实测报错」才解冻。
+
+### pending_optional（已冻结，2026-07-11）
+- B6 bridges 改前台 Service / 确认 KeepAliveService 覆盖长构建（HyperOS 杀进程风险）。—— 冻结：当前进程内协程在终端会话内可用，闭环骨架已通；前台化是可靠性增强，非阻断。
+- B8 install-compiler 首次静默无进度。—— 冻结：属「首次环境搭建」一次性的长任务，非主闭环（改码→构建→反馈）路径，用户可在终端看见。
+- B9 parseCrash 误报/截断健壮性。—— 冻结：当前关键字兜底够用；优化属长尾，待实测误报率高再解。
+- 阶段标记正则细化（F03 备注）。—— 冻结：当前 4 阶段推导已覆盖主路径，精细化不阻断可见性。
+- 多构建请求并发管理（同一项目排队 / 不同项目并行）。—— 冻结：当前单 tracker 实例 + 每请求独立线程已够用，待真实并发需求。
+- 「查看崩溃报告」按钮仍走 onExecuteCommand（与任务流并存）。—— 冻结：保留冗余入口无害，收敛成本 > 收益。
+
+### 未解冻条件（触发后再开工）
+- 用户实测一次完整闭环（改码→提交→安装拉起→崩溃回流）出现任一断点 → 对应项解冻。
+- 后台长构建（>5min）实测被 HyperOS 中断 → 解冻 B6。
+- crash 报告实测误报率高 → 解冻 B9。
+
+## 已完成（本轮）
+- [x] Agent 任务系统补全：AgentPlanEngine 分步执行（失败即停/取消）、实时增量日志、步骤持久化；修复 exit=$$ 与死代码
+- [x] ServerPanel 入口修复：新增底部上滑手势打开「服务器中心」+ 第三指示点
+- [x] F01 断点清单（见上）
+- [x] F02+F03 构建请求可见化：BuildRequestTracker 接入任务流 + 4 阶段状态机 + 实时日志（testDebugUnitTest ✅ / assembleDebug ✅）
+
+---
+
+# （历史）当前任务：双 PRoot rootfs + AI 自我进化闭环（重构）
 
 > ⚠️ 长线重构任务。完整计划与阶段清单见 **`docs/refactor-dual-rootfs-plan.md`**，harness 状态见 `.harness/session-state.json`。
 > 各阶段顺序：P0(地基) → P1(双宇宙+workspace) → P2(编译+文件桥) → P3(安装+拉起) → P4(logcat→MCP) → P5(UI) → P6(验证)。
