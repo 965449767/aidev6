@@ -57,84 +57,50 @@ internal class BuildRequestTracker {
             put("autoLaunch", autoLaunch)
         }
 
-        val definition = AgentTaskDefinition(
-            id = "build-$id",
-            name = "构建 $project",
-            description = "宇宙 B 编译 → 静默安装 → 自动拉起",
-            command = "aidev-build-request --project $project",
-            workingDirectory = PathConfig.workspaceDir(appCtx).absolutePath,
-            tags = listOf("build", "self-evolution")
-        )
-
+        // 注意：构建进度记录由 BuildBridgeService 统一发布到 agent-tasks.json（单一真源），
+        // 保证「手动提交」与「宇宙 A 终端自动提交」在 AF 面板呈现完全一致。这里只负责：
+        // 写请求文件 → 等结果 → 成功拉起后驱动崩溃回流/自治重建。
         val startedAt = System.currentTimeMillis()
-        fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, log: String, steps: List<AgentTaskStepResult>) {
+        val writeOk = runCatching { reqFile.writeText(payload.toString()) }.isSuccess
+        if (!writeOk) {
             val record = AgentTaskRecord(
-                definition = definition,
-                status = status,
+                definition = AgentTaskDefinition(
+                    id = "build-$id", name = "构建 $project",
+                    description = "宇宙 B 编译 → 静默安装 → 自动拉起",
+                    command = "aidev-build-request --project $project",
+                    workingDirectory = PathConfig.workspaceDir(appCtx).absolutePath,
+                    tags = listOf("build", "self-evolution")
+                ),
+                status = AgentTaskStatus.FAILED,
                 startedAt = startedAt,
-                finishedAt = finishedAt,
-                exitCode = exitCode,
-                log = log.ifBlank { "已提交构建请求，等待宇宙 B 调度…" },
-                lastUpdatedAt = System.currentTimeMillis(),
-                steps = steps
+                finishedAt = System.currentTimeMillis(),
+                exitCode = -1,
+                log = "✖ 写入构建请求失败：${reqFile.absolutePath}"
             )
             AgentTaskStore.upsertTask(stateFile, record, limit = 12)
             postToMain { onUpdate(record) }
-        }
-
-        val writeOk = runCatching { reqFile.writeText(payload.toString()) }.isSuccess
-        if (!writeOk) {
-            publish(AgentTaskStatus.FAILED, -1, System.currentTimeMillis(), "✖ 写入构建请求失败：${reqFile.absolutePath}", emptyList())
             return
         }
 
-        publish(AgentTaskStatus.RUNNING, -1, 0L, "▶ 已提交构建请求 (id=$id, project=$project)\n等待 BuildBridge 调度…", emptyList())
-
         executor.execute {
-            val logFile = File(bridgeDir, "logs/build-$id.log")
             val resultFile = File(bridgeDir, "result-$id.json")
+            val logFile = File(bridgeDir, "logs/build-$id.log")
             val timeoutMs = 20 * 60 * 1000L
             val deadline = System.currentTimeMillis() + timeoutMs
 
             while (System.currentTimeMillis() < deadline) {
-                val logText = runCatching { if (logFile.isFile) logFile.readText() else "" }.getOrDefault("")
-                val steps = derivePhases(logText)
-
                 if (resultFile.isFile) {
                     val result = runCatching { JSONObject(resultFile.readText()) }.getOrNull()
                     val success = result?.optBoolean("success", false) ?: false
-                    val message = result?.optString("message", "") ?: ""
-                    val finalLog = buildString {
-                        append(logText.takeLast(6000))
-                        append("\n\n")
-                        append(if (success) "✔ $message" else "✖ $message")
-                    }
-                    val finalSteps = finalizePhases(steps, success)
-                    publish(
-                        if (success) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED,
-                        if (success) 0 else 1,
-                        System.currentTimeMillis(),
-                        finalLog,
-                        finalSteps
-                    )
+                    val logText = runCatching { if (logFile.isFile) logFile.readText() else "" }.getOrDefault("")
                     // 闭环最后一环：若成功安装并拉起，等待崩溃回流报告并作为独立任务呈现（F04）
                     if (success && logText.contains("已拉起")) {
                         watchCrashReport(home, startedAt, stateFile, autonomous, onUpdate)
                     }
                     return@execute
                 }
-
-                publish(AgentTaskStatus.RUNNING, -1, 0L, logText.takeLast(6000), steps)
                 Thread.sleep(800)
             }
-
-            publish(
-                AgentTaskStatus.FAILED,
-                -1,
-                System.currentTimeMillis(),
-                "✖ 构建超时（超过 20 分钟未返回结果）。可能宇宙 B 首次初始化较慢，稍后在服务器中心刷新查看。",
-                emptyList()
-            )
         }
     }
 
@@ -262,42 +228,5 @@ internal class BuildRequestTracker {
         onUpdate: (AgentTaskRecord) -> Unit,
     ) {
         submit(context, project, stateFile, autoInstall = true, autoLaunch = true, autonomous = autonomous, onUpdate = onUpdate)
-    }
-
-    private data class Phase(val name: String, val markers: List<String>)
-
-    private val phaseOrder = listOf(
-        Phase("准备宇宙 B", listOf("准备宇宙 B", "宇宙 B 已就绪", "install-compiler", "JDK17")),
-        Phase("编译", listOf("进入宇宙 B 编译", "gradlew assembleDebug", "构建成功", "构建失败")),
-        Phase("安装", listOf("通过 Shizuku 安装", "复制 APK", "未找到产物")),
-        Phase("拉起", listOf("已拉起")),
-    )
-
-    private fun derivePhases(log: String): List<AgentTaskStepResult> {
-        if (log.isBlank()) return emptyList()
-        var activeReached = -1
-        phaseOrder.forEachIndexed { idx, phase ->
-            if (phase.markers.any { log.contains(it) }) activeReached = idx
-        }
-        if (activeReached < 0) return emptyList()
-        return phaseOrder.mapIndexed { idx, phase ->
-            val status = when {
-                idx < activeReached -> AgentTaskStatus.SUCCEEDED
-                idx == activeReached -> AgentTaskStatus.RUNNING
-                else -> AgentTaskStatus.PENDING
-            }
-            AgentTaskStepResult(name = phase.name, status = status)
-        }
-    }
-
-    private fun finalizePhases(steps: List<AgentTaskStepResult>, success: Boolean): List<AgentTaskStepResult> {
-        if (steps.isEmpty()) return emptyList()
-        return steps.map { step ->
-            when (step.status) {
-                AgentTaskStatus.RUNNING -> step.copy(status = if (success) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED)
-                AgentTaskStatus.PENDING -> if (success) step.copy(status = AgentTaskStatus.SUCCEEDED) else step
-                else -> step
-            }
-        }
     }
 }

@@ -373,6 +373,9 @@ class CompletionEngine(
         return when {
             pwd == "/host-home" -> home
             pwd.startsWith("/host-home/") -> File(home, pwd.removePrefix("/host-home/"))
+            // 共享 workspace 绑定于宿主 home/workspace（宇宙A/B 内均为 /workspace）
+            pwd == "/workspace" -> File(home, "workspace")
+            pwd.startsWith("/workspace/") -> File(home, "workspace/${pwd.removePrefix("/workspace/")}")
             pwd == "/root" -> File(home, "ubuntu-rootfs/root")
             pwd.startsWith("/root/") -> File(home, "ubuntu-rootfs/root/${pwd.removePrefix("/root/")}")
             pwd.startsWith("/") -> File(home, "ubuntu-rootfs/${pwd.removePrefix("/")}")

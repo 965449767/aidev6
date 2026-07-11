@@ -7,14 +7,26 @@ set -eo pipefail
 
 APP_NAME="${1:-}"
 PACKAGE="${2:-}"
-OUTPUT_DIR="${3:-/root/Workspace/Android}"
+# 默认输出目录必须是共享 workspace（宇宙B 只能看见 /workspace），否则编译请求找不到项目。
+# 优先 /workspace（宇宙A 内绑定点），回退 $AIDEV_WORKSPACE / /host-home/workspace。
+if [ -n "${3:-}" ]; then
+    OUTPUT_DIR="$3"
+elif [ -d /workspace ]; then
+    OUTPUT_DIR="/workspace"
+elif [ -n "${AIDEV_WORKSPACE:-}" ]; then
+    OUTPUT_DIR="$AIDEV_WORKSPACE"
+else
+    OUTPUT_DIR="/host-home/workspace"
+fi
 
 if [ -z "$APP_NAME" ] || [ -z "$PACKAGE" ]; then
     echo "用法: aidev-create-android-project <应用名> <包名> [输出目录]"
     echo ""
     echo "示例:"
     echo "  aidev-create-android-project MyApp com.example.myapp"
-    echo "  aidev-create-android-project MyApp com.example.myapp /root/Workspace/Android"
+    echo "  aidev-create-android-project MyApp com.example.myapp /workspace"
+    echo ""
+    echo "注意: 项目必须建在 /workspace 下，宇宙B 才能编译。默认已指向 /workspace。"
     exit 1
 fi
 
@@ -32,10 +44,10 @@ if [ -d "$PROJECT_DIR" ]; then
     exit 1
 fi
 
-# AGP / Kotlin / Gradle 版本（与当前环境一致）
+# AGP / Kotlin / Gradle 黄金版本（宇宙B 唯一支持且已验证；勿改，见工作区 AGENTS.md）
 AGP_VERSION="8.7.3"
 KOTLIN_VERSION="2.0.21"
-GRADLE_VERSION="8.14.5"
+GRADLE_VERSION="9.1.0"
 
 # 从构建脚本所在目录上溯查找宿主项目（AdvTerminal）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -340,6 +352,20 @@ EOF
 # ─── proguard-rules.pro ───
 cat > app/proguard-rules.pro <<EOF
 # ProGuard rules for ${APP_NAME}
+EOF
+
+# ─── 项目级 AGENTS.md（把宇宙B 构建约束钉在项目里，OpenCode 后续改码必读） ───
+cat > AGENTS.md <<EOF
+# ${APP_NAME} — 构建约束（OpenCode 必读）
+
+本项目由 AIDev 宇宙B 离线编译。**改码时严格遵守，否则编译失败：**
+
+- 版本锁定（勿改）：Gradle ${GRADLE_VERSION} / AGP ${AGP_VERSION} / Kotlin ${KOTLIN_VERSION} / compileSdk 36 / targetSdk 36 / minSdk 26 / Java 17
+- **不要在 app/build.gradle.kts 写 repositories { } 块**（settings.gradle.kts 已开 FAIL_ON_PROJECT_REPOS，统一用阿里云镜像）
+- 依赖只用能从 阿里云/google/mavenCentral/jitpack 解析到的
+- 不要改 gradle-wrapper.properties / local.properties / settings.gradle.kts 仓库块 / gradle.properties 的 aapt2 覆盖（环境托管，会被覆盖）
+- namespace / applicationId / 源码 package 保持一致（本项目为 ${PACKAGE}）
+- 编译安装：aidev-build-request --project ${PROJECT_DIR}
 EOF
 
 # ─── 下载 Gradle Wrapper ───

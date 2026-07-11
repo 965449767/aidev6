@@ -74,21 +74,39 @@ fun ServerPanel(
         taskRecords.add(0, record)
     }
 
+    // 实时反映 agent-tasks.json：构建进度由 BuildBridgeService 统一写入该文件（无论请求来自
+    // 手动按钮还是宇宙 A 终端的 aidev-build-request），这里轮询磁盘即可让两条路径过程一致可见。
+    // 对「卡死」的 RUNNING（超过 90s 未更新，说明进程已随应用重启被打断）就地收敛为失败。
     LaunchedEffect(taskStateFile) {
-        taskRecords.clear()
-        // 冷启动时，磁盘上残留的 RUNNING 记录说明上次构建被应用重启打断（无活跃追踪线程），
-        // 标记为失败并给出可重试提示，避免永久卡在"执行中"。
-        val loaded = AgentTaskStore.loadState(taskStateFile).map { rec ->
-            if (rec.status == AgentTaskStatus.RUNNING) {
-                rec.copy(
-                    status = AgentTaskStatus.FAILED,
-                    exitCode = -1,
-                    finishedAt = System.currentTimeMillis(),
-                    log = rec.log + "\n\n✖ 应用重启导致构建被中断，请点击「重试」重新提交。"
-                )
-            } else rec
+        fun reconcile(): List<AgentTaskRecord> {
+            val now = System.currentTimeMillis()
+            val loaded = AgentTaskStore.loadState(taskStateFile)
+            var mutated = false
+            val fixed = loaded.map { rec ->
+                if (rec.status == AgentTaskStatus.RUNNING && now - rec.lastUpdatedAt > 90_000L) {
+                    mutated = true
+                    rec.copy(
+                        status = AgentTaskStatus.FAILED,
+                        exitCode = -1,
+                        finishedAt = now,
+                        log = rec.log + "\n\n✖ 构建被中断（长时间无进度更新），请点击「重试」重新提交。"
+                    )
+                } else rec
+            }
+            if (mutated) AgentTaskStore.saveState(taskStateFile, fixed)
+            return fixed
         }
-        taskRecords.addAll(loaded)
+        taskRecords.clear()
+        taskRecords.addAll(reconcile())
+        while (true) {
+            delay(1200)
+            val disk = reconcile()
+            val signature = disk.map { it.definition.id to it.lastUpdatedAt }
+            if (signature != taskRecords.map { it.definition.id to it.lastUpdatedAt }) {
+                taskRecords.clear()
+                taskRecords.addAll(disk)
+            }
+        }
     }
 
     Column(
@@ -222,7 +240,7 @@ fun ServerPanel(
                         if (record.definition.tags.any { it == "build" || it == "self-evolution" }) {
                             buildTracker.submit(
                                 context = context,
-                                project = "MyAndroidProject",
+                                project = projectOf(record),
                                 stateFile = taskStateFile,
                                 autonomous = PreferencesManager(context).selfEvolutionAutonomous,
                                 onUpdate = upsertRecord
@@ -236,7 +254,13 @@ fun ServerPanel(
                         }
                     },
                     onCancel = {
-                        taskRunner.cancelTask(record.definition.id)
+                        // 构建任务在 BuildBridgeService（文件桥+PRoot 进程）里跑，taskRunner 管不到，
+                        // 必须直接杀对应请求的 Gradle/PRoot 进程。id 形如 build-<ts>。
+                        if (record.definition.tags.any { it == "build" || it == "self-evolution" }) {
+                            com.aidev.six.BuildBridgeService.cancel(record.definition.id.removePrefix("build-"))
+                        } else {
+                            taskRunner.cancelTask(record.definition.id)
+                        }
                     },
                 )
                 Spacer(Modifier.height(6.dp))
@@ -386,10 +410,59 @@ fun ServerPanel(
         }
 
         Spacer(Modifier.height(8.dp))
-        AppActionRow("提交构建请求", "在宇宙 B 编译默认项目并安装/拉起", onClick = {
+
+        // 构建项目选择：workspace 下可能有多个 OpenCode 项目，让用户挑要编译哪个，
+        // 不再硬编码默认 MyAndroidProject。
+        val projectList = remember { listProjects(context) }
+        val projectExpanded = remember { mutableStateOf(false) }
+        val selectedProject = remember {
+            mutableStateOf(projectList.firstOrNull { it == "MyAndroidProject" } ?: projectList.first())
+        }
+        Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("构建项目", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "选择 workspace 下要编译的项目",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Box {
+                Text(
+                    text = selectedProject.value + " ▾",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { projectExpanded.value = true }
+                        .padding(8.dp)
+                )
+                DropdownMenu(
+                    expanded = projectExpanded.value,
+                    onDismissRequest = { projectExpanded.value = false }
+                ) {
+                    projectList.forEach { proj ->
+                        DropdownMenuItem(
+                            text = { Text(proj) },
+                            onClick = {
+                                selectedProject.value = proj
+                                projectExpanded.value = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        AppActionRow("提交构建请求", "在宇宙 B 编译所选项目并安装/拉起", onClick = {
             buildTracker.submit(
                 context = context,
-                project = "MyAndroidProject",
+                project = selectedProject.value,
                 stateFile = taskStateFile,
                 autonomous = autonomousOn.value,
                 onUpdate = upsertRecord
@@ -451,6 +524,28 @@ private fun readConversationLog(context: Context, maxChars: Int = 6000): String 
         val t = f.readText()
         if (t.length > maxChars) "…（省略较早内容）\n" + t.takeLast(maxChars) else t
     }.getOrDefault("")
+}
+
+/** 枚举 workspace 下的可构建项目（含 settings.gradle(.kts) 或 gradlew 的目录）。空则回退默认名。 */
+private fun listProjects(context: Context): List<String> {
+    val ws = PathConfig.workspaceDir(context)
+    val dirs = ws.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
+        ?.filter {
+            File(it, "settings.gradle.kts").isFile ||
+                File(it, "settings.gradle").isFile ||
+                File(it, "gradlew").isFile
+        }
+        ?.map { it.name }
+        ?.sorted()
+        ?: emptyList()
+    return if (dirs.isEmpty()) listOf("MyAndroidProject") else dirs
+}
+
+/** 从构建任务记录里还原提交时的项目名（命令形如 `aidev-build-request --project <name>`）。 */
+private fun projectOf(record: AgentTaskRecord): String {
+    val cmd = record.definition.command
+    val after = cmd.substringAfter("--project ", "")
+    return after.trim().ifBlank { "MyAndroidProject" }
 }
 
 private fun lastCrashSummary(context: Context): String {

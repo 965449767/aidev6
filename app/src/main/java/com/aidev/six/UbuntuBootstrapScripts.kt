@@ -634,7 +634,7 @@ AIDEV_BASHRC_AGENT_EOF
           sleep 0.05
           eval exec "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_ROOTFS" \
             $(proot_common_binds) \
-            -w /root /usr/bin/env -i \
+            -w /workspace /usr/bin/env -i \
             $(proot_common_env "A") "${'$'}shell" -l
         }
 

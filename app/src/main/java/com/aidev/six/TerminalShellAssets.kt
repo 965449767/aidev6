@@ -36,6 +36,9 @@ object TerminalShellAssets {
         writeCanonicalRc(activity, home, rc)
         writeShellEntry(home, rc, entry)
         writeGradleInitScripts(home, rootfs)
+        // 工作区规范 AGENTS.md（每次启动刷新，确保与内置规范同步）
+        runCatching { deployWorkspaceAgents(activity, home) }
+            .onFailure { Log.e("TerminalShellAssets", "deployWorkspaceAgents failed (non-fatal)", it) }
 
         // 第二类：大文件用 versionCode 门控（rootfs 相关，失败不致命，不连累核心环境）
         val deployMarker = File(home, ".asset-deploy-code")
@@ -174,6 +177,24 @@ object TerminalShellAssets {
                 }
             }.onFailure { Log.e("TerminalShellAssets", "deployOpenCodeCommands: $name.md failed", it) }
         }
+        // 全局 AGENTS.md：OpenCode 每次会话都加载 ~/.config/opencode/AGENTS.md，
+        // 用它给 vibe coding 立宇宙B 构建规范（黄金版本/项目须在 /workspace/禁模块级 repositories 等）
+        runCatching {
+            val cfgDir = File(rootfs, "root/.config/opencode").apply { mkdirs() }
+            activity.assets.open("config/opencode/AGENTS.md").use { input ->
+                File(cfgDir, "AGENTS.md").outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onFailure { Log.e("TerminalShellAssets", "deployOpenCodeCommands: AGENTS.md failed", it) }
+    }
+
+    /** 把工作区规范 AGENTS.md 放到 workspace 根，作为项目级规范（与全局互为补充），每次启动刷新 */
+    private fun deployWorkspaceAgents(activity: Activity, home: File) {
+        runCatching {
+            val ws = File(home, "workspace").apply { mkdirs() }
+            activity.assets.open("config/opencode/AGENTS.md").use { input ->
+                File(ws, "AGENTS.md").outputStream().use { output -> input.copyTo(output) }
+            }
+        }.onFailure { Log.e("TerminalShellAssets", "deployWorkspaceAgents failed", it) }
     }
 
     private fun writeCanonicalRc(activity: Activity, home: File, rc: File) {

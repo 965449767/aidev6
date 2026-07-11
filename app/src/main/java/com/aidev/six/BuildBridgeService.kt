@@ -1,6 +1,12 @@
 package com.aidev.six
 
 import android.content.Context
+import com.aidev.six.agent.AgentTaskDefinition
+import com.aidev.six.agent.AgentTaskRecord
+import com.aidev.six.agent.AgentTaskStatus
+import com.aidev.six.agent.AgentTaskStepResult
+import com.aidev.six.agent.AgentTaskStore
+import com.aidev.six.agent.BuildProgress
 import com.aidev.six.terminal.ProotLauncher
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -26,6 +32,37 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jdk/aarch64/linux/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.19_10.tar.gz"
 
     private var requestDir: File? = null
+
+    // 按请求 id 跟踪：活跃协程 Job 与当前 PRoot 进程，供「取消」真正中止编译（否则只删标志不杀进程）。
+    private val activeJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val activeProcesses = java.util.concurrent.ConcurrentHashMap<String, Process>()
+    private val cancelledIds = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /**
+     * 取消指定 id 的构建请求：标记取消 → 强杀正在运行的 PRoot/Gradle 进程（解除阻塞读取）→
+     * 取消协程 Job → 删除残留请求文件。runStreaming 检测到取消会抛 CancellationException，
+     * handleRequest 捕获后写入「已取消」结果，UI 轮询即刷新为已取消。幂等。
+     */
+    fun cancel(id: String) {
+        cancelledIds.add(id)
+        activeProcesses.remove(id)?.let { runCatching { it.destroyForcibly() } }
+        activeJobs.remove(id)?.cancel()
+        val reqDir = requestDir
+        if (reqDir != null) {
+            reqDir.listFiles { _, n -> n.startsWith("req-$id.json") }?.forEach { runCatching { it.delete() } }
+            // 若请求尚未被认领（无活跃 Job/进程），直接写结果让追踪器收敛
+            if (!File(reqDir, "result-$id.json").isFile) {
+                runCatching {
+                    File(reqDir, "result-$id.json").writeText(
+                        JSONObject().apply {
+                            put("id", id); put("success", false); put("message", "已取消")
+                            put("time", System.currentTimeMillis())
+                        }.toString(2)
+                    )
+                }
+            }
+        }
+    }
 
     override fun onStart(homeDir: File) {
         requestDir = File(homeDir, BRIDGE_DIR).also {
@@ -59,23 +96,75 @@ object BuildBridgeService : BridgeService("BuildBridge") {
 
         val ctx = appCtx ?: run { processingFile.delete(); return }
         val id = json.optString("id", processingFile.nameWithoutExtension)
+        kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]?.let { activeJobs[id] = it }
         val project = json.optString("project", "MyAndroidProject").ifBlank { "MyAndroidProject" }
         val autoInstall = json.optBoolean("autoInstall", true)
         val autoLaunch = json.optBoolean("autoLaunch", true)
 
         val log = StringBuilder()
         val logFile = File(requestDir, "logs/build-$id.log")
+
+        // 单一真源：BuildBridge 无论请求来自手动按钮还是宇宙 A（OpenCode）终端，都把构建进度
+        // 写入同一份 agent-tasks.json，AF 面板轮询即可看到一致的过程（准备→编译→安装→拉起）。
+        val stateFile = File(PathConfig.tasksDir(ctx), "agent-tasks.json")
+        val definition = AgentTaskDefinition(
+            id = "build-$id",
+            name = "构建 $project",
+            description = "宇宙 B 编译 → 静默安装 → 自动拉起",
+            command = "aidev-build-request --project $project",
+            workingDirectory = PathConfig.workspaceDir(ctx).absolutePath,
+            tags = listOf("build", "self-evolution")
+        )
+        val startedAt = System.currentTimeMillis()
+        var lastPublish = 0L
+        fun publishBuild(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, steps: List<AgentTaskStepResult>) {
+            val record = AgentTaskRecord(
+                definition = definition,
+                status = status,
+                startedAt = startedAt,
+                finishedAt = finishedAt,
+                exitCode = exitCode,
+                log = log.toString().takeLast(6000).ifBlank { "已提交构建请求，等待宇宙 B 调度…" },
+                lastUpdatedAt = System.currentTimeMillis(),
+                steps = steps
+            )
+            runCatching { AgentTaskStore.upsertTask(stateFile, record, limit = 12) }
+        }
+
         val append: (String) -> Unit = { line ->
             log.appendLine(line)
             runCatching { logFile.appendText("$line\n") }
+            // 节流发布（≥800ms），避免逐行重写状态文件
+            val now = System.currentTimeMillis()
+            if (now - lastPublish >= 800) {
+                lastPublish = now
+                publishBuild(AgentTaskStatus.RUNNING, -1, 0L, BuildProgress.derive(log.toString()))
+            }
+        }
+
+        // 统一收尾：写 result-<id>.json + 导出日志（finish），并把最终状态发布到 AF 面板。
+        fun finishAndPublish(success: Boolean, message: String, cancelled: Boolean = false) {
+            finish(ctx, id, success, message, log, processingFile)
+            val status = when {
+                cancelled -> AgentTaskStatus.CANCELLED
+                success -> AgentTaskStatus.SUCCEEDED
+                else -> AgentTaskStatus.FAILED
+            }
+            publishBuild(
+                status,
+                if (success) 0 else 1,
+                System.currentTimeMillis(),
+                BuildProgress.finalize(BuildProgress.derive(log.toString()), success)
+            )
         }
 
         append("=== BuildBridge 构建请求 $id (project=$project) ===")
+        publishBuild(AgentTaskStatus.RUNNING, -1, 0L, emptyList())
         notify(ctx, "AIDev 构建", "开始编译 $project", priority = "default")
 
         try {
             // 1) 确保宇宙 B（编译器）就绪
-            ensureCompilerRootfs(ctx, append)
+            ensureCompilerRootfs(ctx, id, append)
             // 2) 解析项目路径（共享 workspace）
             val ws = PathConfig.workspaceDir(ctx)
             val projectDir = when {
@@ -91,7 +180,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                 scaffoldProject(projectDir, ctx)
                 if (!File(projectDir, "gradlew").isFile) {
                     append("✗ 自动创建项目失败")
-                    finish(ctx, id, false, "自动创建项目失败", log, processingFile)
+                    finishAndPublish(false, "自动创建项目失败")
                     return
                 }
                 append("✓ 项目模板已创建")
@@ -119,6 +208,10 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             runCatching { TerminalShellAssets.installGradleUserHomeInit(File(PathConfig.aidevHome(ctx), "gradle-cache")) }
                 .onFailure { AIDevLogger.e("BuildBridge", "安装 GRADLE_USER_HOME init.d 失败", it) }
 
+            // 2.7) 预构建体检：扫描并修复 OpenCode 常见的、宇宙B 必失败的写法（vibe coding 护栏）
+            runCatching { preflightCheck(projectDir, append) }
+                .onFailure { AIDevLogger.e("BuildBridge", "预构建体检失败(非致命)", it) }
+
             // 3) 在宇宙 B 内编译
             val compilerRootfs = PathConfig.compilerRootfs(ctx).absolutePath
             val bind = ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")
@@ -135,6 +228,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                 append("→ 探测 aapt2 version ...")
                 runStreaming(
                     ctx,
+                    id,
                     "$aapt2Override version 2>&1; echo \"AAPT2_PROBE_EXIT=\$?\"",
                     ProotLauncher.Options(
                         rootfs = PathConfig.compilerRootfs(ctx).absolutePath,
@@ -151,6 +245,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             append("→ 进入宇宙 B 编译: cd /workspace/$rel && ./gradlew assembleDebug")
             val exit = runStreaming(
                 ctx,
+                id,
                 "cd /workspace/$rel && chmod +x gradlew && ./gradlew assembleDebug --no-daemon$aapt2Arg",
                 ProotLauncher.Options(
                     rootfs = compilerRootfs,
@@ -171,7 +266,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
 
             if (exit != 0) {
                 append("✗ 构建失败 (exit=$exit)")
-                finish(ctx, id, false, "构建失败 (exit=$exit)", log, processingFile)
+                finishAndPublish(false, "构建失败 (exit=$exit)")
                 return
             }
             append("✓ 构建成功")
@@ -180,7 +275,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             val apk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
             if (!apk.isFile) {
                 append("✗ 未找到产物 APK: ${apk.absolutePath}")
-                finish(ctx, id, true, "构建成功但缺少 APK", log, processingFile)
+                finishAndPublish(true, "构建成功但缺少 APK")
                 return
             }
             if (autoInstall) {
@@ -190,7 +285,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                     autoLaunch -> "构建成功并安装 (已拉起 $pkg)"
                     else -> "构建成功并安装 ($pkg)"
                 }
-                finish(ctx, id, true, msg, log, processingFile)
+                finishAndPublish(true, msg)
                 // 自动触发崩溃回传：给刚启动的 App 几秒运行时间后抓取 logcat
                 if (autoLaunch && pkg != null) {
                     scope?.launch {
@@ -203,14 +298,18 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                     }
                 }
             } else {
-                finish(ctx, id, true, "构建成功", log, processingFile)
+                finishAndPublish(true, "构建成功")
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             append("⏹ 已取消")
-            finish(ctx, id, false, "已取消", log, processingFile)
+            finishAndPublish(false, "已取消", cancelled = true)
         } catch (e: Exception) {
             append("✗ ${e.message}")
-            finish(ctx, id, false, e.message ?: "异常", log, processingFile)
+            finishAndPublish(false, e.message ?: "异常")
+        } finally {
+            activeJobs.remove(id)
+            activeProcesses.remove(id)
+            cancelledIds.remove(id)
         }
     }
 
@@ -236,8 +335,23 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         }
     }
 
+    /** 由项目目录名推导合法包名，避免脚手架硬编码 com.example.myandroidproject 与用户源码冲突。 */
+    private fun derivePackage(projectName: String): String {
+        val slug = projectName.lowercase().filter { it.isLetterOrDigit() }.ifBlank { "app" }
+        val safe = if (slug.first().isDigit()) "a$slug" else slug
+        return "com.aidev.app.$safe"
+    }
+
+    /** 由项目目录名推导合法主题名后缀（仅字母数字）。 */
+    private fun deriveThemeSuffix(projectName: String): String =
+        projectName.filter { it.isLetterOrDigit() }.ifBlank { "App" }
+
     private fun scaffoldProject(projectDir: File, ctx: Context) {
         projectDir.mkdirs()
+        val projectName = projectDir.name.ifBlank { "MyAndroidProject" }
+        val pkg = derivePackage(projectName)
+        val pkgPath = pkg.replace('.', '/')
+        val themeName = "Theme.${deriveThemeSuffix(projectName)}"
 
         // gradlew 脚本（从 assets 加载，避免 Kotlin 字符串模板转义问题）
         val gradlewDest = File(projectDir, "gradlew")
@@ -310,11 +424,11 @@ captures/
 }
 
 android {
-    namespace = "com.example.myandroidproject"
+    namespace = "$pkg"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.myandroidproject"
+        applicationId = "$pkg"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -361,11 +475,11 @@ dependencies {
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyAndroidProject">
+        android:theme="@style/$themeName">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.MyAndroidProject">
+            android:theme="@style/$themeName">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -377,9 +491,9 @@ dependencies {
         )
 
         // MainActivity.kt
-        File(appDir, "java/com/example/myandroidproject").mkdirs()
-        File(appDir, "java/com/example/myandroidproject/MainActivity.kt").writeText(
-            """package com.example.myandroidproject
+        File(appDir, "java/$pkgPath").mkdirs()
+        File(appDir, "java/$pkgPath/MainActivity.kt").writeText(
+            """package $pkg
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -409,7 +523,7 @@ class MainActivity : AppCompatActivity() {
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello MyAndroidProject!"
+        android:text="Hello $projectName!"
         android:textSize="24sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -422,14 +536,14 @@ class MainActivity : AppCompatActivity() {
         File(resDir, "values/strings.xml").writeText(
             """<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MyAndroidProject</string>
+    <string name="app_name">$projectName</string>
 </resources>"""
         )
 
         File(resDir, "values/themes.xml").writeText(
             """<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MyAndroidProject" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+    <style name="$themeName" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <item name="colorPrimary">#6200EE</item>
         <item name="colorPrimaryVariant">#3700B3</item>
         <item name="colorOnPrimary">#FFFFFF</item>
@@ -512,12 +626,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun runStreaming(
         ctx: Context,
+        id: String,
         command: String,
         opts: ProotLauncher.Options,
         append: (String) -> Unit,
         heartbeat: String
     ): Int {
         val process = ProotLauncher.start(ctx, command, opts.copy(redirectErrorStream = true))
+        activeProcesses[id] = process
         val running = java.util.concurrent.atomic.AtomicBoolean(true)
         val lastOutput = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
         val startedAt = System.currentTimeMillis()
@@ -532,7 +648,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.apply { isDaemon = true; start() }
-        return try {
+        val exit = try {
             process.inputStream.bufferedReader().use { reader ->
                 var line = reader.readLine()
                 while (line != null) {
@@ -549,19 +665,23 @@ class MainActivity : AppCompatActivity() {
         } finally {
             running.set(false)
             hb.interrupt()
+            activeProcesses.remove(id, process)
         }
+        // 被取消：进程已被强杀（上面读取到 EOF/异常返回），抛出以让 handleRequest 收敛为「已取消」。
+        if (id in cancelledIds) throw kotlinx.coroutines.CancellationException("已取消")
+        return exit
     }
 
     // ─── 编译器 rootfs 初始化 ─────────────────────────────────────────────
 
-    private fun ensureCompilerRootfs(ctx: Context, append: (String) -> Unit) {
+    private fun ensureCompilerRootfs(ctx: Context, id: String, append: (String) -> Unit) {
         val compilerRootfs = PathConfig.compilerRootfs(ctx)
         if (File(compilerRootfs, ".aidev-rootfs-ready").isFile &&
             File(compilerRootfs, "usr/bin/bash").isFile
         ) {
             append("宇宙 B 已就绪: ${compilerRootfs.absolutePath}")
             // 即使 base 已就绪，也要确保 JDK 存在（首次可能 apt 失败导致缺 java）
-            ensureJdk(ctx, append)
+            ensureJdk(ctx, id, append)
             return
         }
         append("→ 准备宇宙 B（编译器 rootfs）...")
@@ -572,6 +692,7 @@ class MainActivity : AppCompatActivity() {
         val agentRootfs = PathConfig.agentRootfs(ctx).absolutePath
         val installExit = runStreaming(
             ctx,
+            id,
             "AIDEV_HOME=/host-home " +
                 "AIDEV_ROOTFS=/host-home/compiler_rootfs " +
                 "AIDEV_PROOT=/bin/true " +
@@ -589,7 +710,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Step 2: 在 compiler_rootfs 内安装 JDK 17
-        ensureJdk(ctx, append)
+        ensureJdk(ctx, id, append)
     }
 
     /** 从 assets 拷贝单个文件到目标（不存在或空才拷），可执行。 */
@@ -633,7 +754,16 @@ class MainActivity : AppCompatActivity() {
      * 官方 google()/mavenCentral() 兜底——任一镜像 502/被禁用时仍可从其它仓库解析。
      */
     private fun writeSettingsGradle(projectDir: File) {
-        File(projectDir, "settings.gradle.kts").writeText(
+        // 保留已有 settings 里的 rootProject.name（用户/OpenCode 命名），否则用目录名——不再硬编码 MyAndroidProject
+        val settingsFile = File(projectDir, "settings.gradle.kts")
+        val existingName = runCatching {
+            if (settingsFile.isFile) {
+                Regex("""rootProject\.name\s*=\s*"([^"]+)"""").find(settingsFile.readText())?.groupValues?.get(1)
+            } else null
+        }.getOrNull()
+        val projectName = existingName?.takeIf { it.isNotBlank() }
+            ?: projectDir.name.ifBlank { "MyAndroidProject" }
+        settingsFile.writeText(
             """pluginManagement {
     repositories {
         maven { setUrl("https://maven.aliyun.com/repository/public") }
@@ -655,9 +785,30 @@ dependencyResolutionManagement {
         maven { setUrl("https://jitpack.io") }
     }
 }
-rootProject.name = "MyAndroidProject"
+rootProject.name = "$projectName"
 include(":app")"""
         )
+    }
+
+    /**
+     * 预构建体检：针对 vibe coding 小白，OpenCode 生成的代码常犯几类宇宙B 必失败的错误。
+     * 编译前扫描 app/build.gradle.kts：
+     *  1) 模块级 repositories{} → 自动移除（settings 已开 FAIL_ON_PROJECT_REPOS，统一阿里云镜像）
+     *  2) compileSdk ≠ 36 → 告警（宇宙B 只装了 android-36）
+     *  3) 使用 Compose 但配置不完整 → 告警
+     * 全部尽力而为，失败不阻断构建；提示以中文写入构建日志，小白可读。
+     */
+    private fun preflightCheck(projectDir: File, append: (String) -> Unit) {
+        val gradleFile = File(projectDir, "app/build.gradle.kts")
+        if (!gradleFile.isFile) return
+        val original = runCatching { gradleFile.readText() }.getOrNull() ?: return
+        val rootGradle = runCatching { File(projectDir, "build.gradle.kts").readText() }.getOrDefault("")
+        val result = BuildPreflight.inspect(original, rootGradle)
+        result.messages.forEach(append)
+        if (result.fixedText != original) {
+            runCatching { gradleFile.writeText(result.fixedText) }
+                .onFailure { append("⚠ 体检：自动修复写回失败: ${it.message}") }
+        }
     }
 
     /**
@@ -665,7 +816,7 @@ include(":app")"""
      * 免 apt/dpkg/debconf——本机 rootfs 的 dpkg/debconf 环境损坏，apt 装 openjdk 的 postinst 必崩。
      * JDK 解压到共享持久目录 /host-home/jdk17，跨重建复用。幂等。
      */
-    private fun ensureJdk(ctx: Context, append: (String) -> Unit) {
+    private fun ensureJdk(ctx: Context, id: String, append: (String) -> Unit) {
         val compilerRootfs = PathConfig.compilerRootfs(ctx)
         val wsBind = ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")
         append("→ 检查/安装宇宙 B JDK17（便携版，免 apt）...")
@@ -706,6 +857,7 @@ include(":app")"""
         """.trimIndent()
         val javaExit = runStreaming(
             ctx,
+            id,
             script,
             ProotLauncher.Options(
                 rootfs = compilerRootfs.absolutePath,
