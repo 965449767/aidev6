@@ -389,3 +389,59 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 ```
 
 用户实际安装验证：Tab 切换不再卡死 ✅
+
+## 2026-07-12 — ServerPanel 全面重设计（b94-b99）
+
+### Summary
+
+ServerPanel（服务中心）从单 Column 709 行重写为 3 Tab 导航结构，同时修复 9 项 Bug，新增确认弹窗和日志滚动。
+
+### Changes
+
+| 步骤 | 内容 |
+|------|------|
+| b94 | Tab 导航框架：`TabRow` + `Crossfade`，3 Tab（状态/任务/进化） |
+| b95 | Tab 1 状态：系统状态 2×2 网格 + 快速诊断 + 安装工具 |
+| b96 | Tab 2 任务：快速任务 + 构建项目选择器 + 提交构建 + 任务记录列表 + 崩溃报告卡片 |
+| b97 | Tab 3 进化：闭环状态 + 自治模式 + 改码模型选择器 + 对话日志滚动 |
+| b98 | Bug 修复 B1-B9：状态轮询/确认弹窗/异常保护/JSON安全/重试注入/autonomousOn同步 |
+| b99 | 构建验证 + 安装真机 |
+
+### Validation
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:compileDebugKotlin --no-daemon  # BUILD SUCCESSFUL
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-daemon        # BUILD SUCCESSFUL
+aidev-install app/build/outputs/apk/debug/app-debug.apk                                      # 静默安装成功
+```
+
+## 2026-07-12 — 自动化构建流程优化任务规划
+
+### Summary
+
+对完整自动化构建流程（BuildBridgeService + AgentTaskStore + CrashReportBridgeService + BridgeService + BuildProgress）进行端到端分析，识别出 14 项优化建议，全部记录到 `current-task.md`。
+
+### 分析产出
+
+| 优先级 | 编号 | 改进项 | 核心问题 |
+|--------|------|--------|----------|
+| P0 | OPT-01 | JDK 多镜像 fallback + 缓存校验 | 192MB 单镜像下载是单点故障 |
+| P0 | OPT-02 | AgentTaskStore 内存缓存 + 延迟写盘 | 每 ≥800ms 全量读写 12×6KB |
+| P0 | OPT-03 | BuildProgress 结构化状态 | 字符串匹配推导阶段脆弱易误判 |
+| P1 | OPT-04 | Shizuku 安装重试 | 未就绪时直接跳过无重试 |
+| P1 | OPT-05 | 动态崩溃等待 | 固定 8 秒太死板 |
+| P1 | OPT-06 | 编译错误分类 + 中文建议 | exit=$exit 小白看不懂 |
+| P1 | OPT-07 | scaffold Compose 模板 | 默认 View 项目不符预期 |
+| P1 | OPT-08 | 源码预检 | 只检查 build.gradle.kts |
+| P2 | OPT-09 | 增量编译提示 | 用户不知是否增量 |
+| P2 | OPT-10 | 构建历史统计 | 只保留 12 条无统计 |
+| P2 | OPT-11 | BridgeService 空闲退避 | 500ms 固定轮询浪费 CPU |
+| P2 | OPT-12 | 构建产物缓存 | 源码未变仍完整编译 |
+| P2 | OPT-13 | Gradle 分发包预置 | 首次下载 ~150MB 慢 |
+| P2 | OPT-14 | 取消确认弹窗 | 误触直接强杀 |
+
+### 状态变更
+
+- `current-task.md`：重写为构建流程优化 14 项（b100 起）
+- `session-state.json`：phase 改为 `build-pipeline-optimization`，frozen_tasks 冻结所有其他任务
+- 所有其他任务（Phase I/ServerPanel/Tasks Tab audit/Phase H/Phase G）一律冻结

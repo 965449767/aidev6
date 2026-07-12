@@ -1,8 +1,24 @@
 {
-  "phase": "phase-h-real-device-closed-loop",
-  "current_step": "真机宇宙B assembleDebug 打通（自带 x86_64 sysroot+qemu 跑动态 aapt2）；修安装/拉起 fire-and-forget 假成功；修测试项目与宿主同包名（改 com.example.myandroidproject）。v39 已装并运行。下一步：真机 D 组手动闭环验证。",
+  "phase": "build-pipeline-optimization",
+  "current_step": "current-task.md 已重写为构建流程优化 14 项，其他任务全部冻结，新会话 b100 起推进",
   "active_plan": "current-task.md",
   "completed_phases": [
+    "Tasks Tab audit: 9项修复（P0-1线程泄漏/P0-2项目列表缓存/P0-3崩溃数据源统一/P1-4取消按钮/P1-5提交即时反馈/P1-6SFTP分类/P1-7Tab切换闪烁/P2-8死参数/P2-9轮询间隔）",
+    "b99: 构建验证 + 安装真机（assembleDebug BUILD SUCCESSFUL, Shizuku静默安装成功）",
+    "b98: Bug修复B1-B9（状态轮询5s刷新/确认弹窗/异常保护/JSON安全/重试注入项目/autonomousOn同步/lastBuildResult动态/upsertRecord统一）",
+    "b97: Tab 3 进化（闭环状态+自治模式+改码模型选择器+对话日志滚动+设计原则）",
+    "b96: Tab 2 任务（快速任务+Android闭环+构建项目选择器+提交构建+任务记录列表+崩溃报告卡片）",
+    "b95: Tab 1 状态（运行状态2×2网格+快速诊断4项+安装OpenCode工具）",
+    "b94: ServerPanel Tab导航框架（3 Tab: 状态/任务/进化 + Crossfade切换）",
+    "b86: parsePart增强（file/patch类型解析、getToolInfo按工具类型提取摘要）",
+    "b85: Tool输出修复（PartView Tool分支重写：折叠显示input摘要、展开显示input+output+error）",
+    "b84: 流式输出修复（part.updated直接替换parts、delta缓冲保留作中间态、streaming光标改用state.busy）",
+    "Phase I: b83 Markdown 增强（标题#/##/###、列表-/*/1.、链接[text](url)样式）",
+    "Phase I: b82 UX 增强（消息时间戳 HH:mm、流式光标 ▍ 指示器、ChatMessage.createdAt 解析 API time.created）",
+    "Phase I: b81 性能微优化（regex 常量化 7 个 RE_*、InlineText 清理未用变量、DiffDialog LazyColumn key）",
+    "Phase I: b80 Medium UX 修复（BackHandler 弹窗返回键拦截、未闭合代码围栏渲染、refresh() 300ms debounce、⋯菜单终端切换接入）",
+    "Phase I: b79 Critical Bug 修复（send() busy 守卫、StringBuilder→String 线程竞争、as? 安全剪贴板、SideEffect client.directory、断连清 streamingText、发送失败回滚、删除会话确认、isUserAtBottom 自动滚动）",
+    "Phase I: b78-b72 模型列表免费化、真正流式 streamingText、状态 Crossfade、会话搜索、Diff 折叠展开、空态引导、Scroll-to-bottom FAB、字符计数、AI 打字指示器、Tool 折叠、顶栏 ⋯ 菜单",
     "Phase H: 真机宇宙B 编译打通（x86_64 sysroot+qemu 跑动态 aapt2，processDebugResources 通过，出 APK，v37）",
     "Phase H: 安装/拉起结果校验（executeCommand 替代 fire-and-forget，v38）+ 测试项目独立包名 com.example.myandroidproject（v39）",
     "Phase H: 验证（本环境单测/构建/闭环契约模拟通过；真机待办冻结）",
@@ -35,13 +51,28 @@
     "IME completion real-time fix: completionSnapshot as State instead of getter",
     "Font size drag: long-press drag gesture with dragAccumulator + haptic feedback per step"
   ],
-  "pending_optional": [
-    "File browser detail implementation (pinch-zoom grid, swipe auto-copy)",
-    "Known issues: LinearProgressIndicator deprecation, test config warnings",
-    "NotificationHistory missing entry point after removal from terminal menu → add to SettingsPanel"
+  "frozen_tasks": [
+    "Phase I Chat UI 全面优化（30 项，b72-b93）— 冻结",
+    "ServerPanel 3 Tab 重设计（b94-b99）— 冻结",
+    "Tasks Tab 9 项审计修复 — 冻结",
+    "Phase H 真机端到端闭环验证 — 冻结（待用户实测）",
+    "Phase G 自治/守护 — 冻结",
+    "pending_optional 全部 — 冻结"
   ],
   "active_tasks": [
-    "H: 真机/Shizuku 端到端闭环验证（待用户实测，当前冻结为待办）",
-    "H: B5/B6/B8/B9 实战验证（待用户实测，当前冻结）"
+    "OPT-01: JDK 多镜像 fallback + 缓存校验",
+    "OPT-02: AgentTaskStore 内存缓存 + 延迟写盘",
+    "OPT-03: BuildProgress 结构化状态",
+    "OPT-04: Shizuku 安装重试",
+    "OPT-05: 动态崩溃等待",
+    "OPT-06: 编译错误分类 + 中文建议",
+    "OPT-07: scaffold Compose 模板",
+    "OPT-08: 源码预检",
+    "OPT-09: 增量编译提示",
+    "OPT-10: 构建历史统计",
+    "OPT-11: BridgeService 空闲退避",
+    "OPT-12: 构建产物缓存",
+    "OPT-13: Gradle 分发包预置",
+    "OPT-14: 取消确认弹窗"
   ]
 }
