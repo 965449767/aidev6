@@ -1,13 +1,22 @@
 # AndroidManifest-registered components (referenced by framework by name)
--keep class com.aidev.three.AIDevApp { *; }
--keep class com.aidev.three.ShellActivity { *; }
--keep class com.aidev.three.KeepAliveService { *; }
--keep class com.aidev.three.OpenCodeMonitorService { *; }
--keep class com.aidev.three.KeepAliveBootReceiver { *; }
--keep class com.aidev.three.OpenCodeActionReceiver { *; }
--keep class com.aidev.three.SysCommandReceiver { *; }
+-keep class com.aidev.six.AIDevApp { *; }
+-keep class com.aidev.six.ShellActivity { *; }
+-keep class com.aidev.six.KeepAliveService { *; }
+-keep class com.aidev.six.OpenCodeMonitorService { *; }
+-keep class com.aidev.six.KeepAliveBootReceiver { *; }
+-keep class com.aidev.six.OpenCodeActionReceiver { *; }
+-keep class com.aidev.six.SysCommandReceiver { *; }
 
 # Library reflection targets
 -keep class rikka.shizuku.** { *; }
 -keep class com.termux.terminal.TerminalSession { *; }
 -keep class com.termux.terminal.TerminalEmulator { *; }
+
+# JSch (mwiede fork, uses reflection for JCE providers)
+-keep class com.jcraft.jsch.** { *; }
+-keep class com.jcraft.jzlib.** { *; }
+-dontwarn com.jcraft.jsch.**
+
+# CommonMark (reflection for extension loading)
+-keep class org.commonmark.** { *; }
+-dontwarn org.commonmark.**

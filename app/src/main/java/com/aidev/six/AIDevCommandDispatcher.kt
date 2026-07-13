@@ -17,10 +17,12 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object AIDevCommandDispatcher {
 
     private const val CHANNEL_ID = Constants.NOTIFICATION_CHANNEL_ID
+    private val notifIdCounter = AtomicInteger(0)
 
     fun notify(context: Context, title: String, msg: String, priority: String? = null, ongoing: Boolean = false, alertOnlyOnce: Boolean = false) {
         dragLog("notify: title=$title msg=$msg priority=$priority ongoing=$ongoing alertOnlyOnce=$alertOnlyOnce")
@@ -77,7 +79,7 @@ object AIDevCommandDispatcher {
             .setContentText(msg)
             .setAutoCancel(!ongoing)
             .build()
-        nm.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+        nm.notify(notifIdCounter.incrementAndGet(), notification)
         dragLog("notify: notification sent")
     }
 

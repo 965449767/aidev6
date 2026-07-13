@@ -229,7 +229,7 @@ dependencies {
     implementation("org.commonmark:commonmark:0.21.0")
 
     testImplementation("junit:junit:4.13.2")
-    implementation("com.jcraft:jsch:0.1.55")
+    implementation("com.github.mwiede:jsch:0.2.18")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("org.mockito:mockito-core:5.12.0")
