@@ -469,3 +469,110 @@ aidev-install app/build/outputs/apk/debug/app-debug.apk                         
 ### 下一步
 
 修真机 aidev-deploy 安装失败（aidev-install exit non-zero）：排查 Shizuku 授权 / PRoot 内 aidev-install 路径依赖 / APK 路径设备侧可见性。
+
+## 2026-07-13 — Phase 7 部署可靠性 + 终端构建请求返回值（#135/#137/#139 → 提交 494a327）
+
+### Summary
+
+实测「服务器中心」安装/拉起与终端 `aidev-build-request` 暴露的真实缺陷，不在原 98 项审计内，但直接影响交付可用性，已全部修复并提交。
+
+### 关键改动
+
+- #135 `DeployBridgeService.kt:193`：部署脚本 `deployScript` 由宿主绝对路径改为 PRoot 视图路径 `/host-home/dev-env/bin/aidev-deploy`（PRoot 内仅 `/host-home` 被绑定，宿主路径不可见 → 此前必报"文件不存在"）。
+- #137 `aidev-deploy.sh`：`pm list packages` 二次校验改为**非致命**（仅提示），最终以"能否启动"为准（启动成功即证明已安装），消除误报失败；安装重试 3→2、校验/启动 sleep 2s→1s 提速。
+- #137 `DeployBridgeService.kt` `ensureDeployScripts`：以 bundled assets 为准，MD5 不一致则覆盖脚本并刷新 `.md5`，避免脚本更新后 `.md5` 过期导致 `validateDeployScript` 误拦。
+- #137 `aidev-shizuku.sh`：请求 `REQ_ID` 加 `$RANDOM` 防同 PID 同秒碰撞。
+- #139 `aidev-build-request.sh`：提交请求后阻塞等待 `result-<id>.json`（≤900s）；成功打印 `构建成功`+APK（exit 0），失败 cat 完整构建日志 `/sdcard/AIDev/logs/<project>/build.log`（exit 1），超时 exit 2。
+- #139 `TerminalShellAssets.kt:274`：`aidev-build-request` 函数改走 `${AIDEV_ROOTFS}/usr/local/bin`（同 aidev-shizuku），由 `copyAssetScripts` 每次终端会话刷新，确保新脚本生效。
+
+### 验证
+
+- 构建 #135/#137/#139 均 BUILD SUCCESSFUL；APK 复制到 /sdcard/AIDev/。
+- #139 构建曾因删除 ChatPanel.kt 残留 dex 缓存失败，清理 `app/build/intermediates/global_synthetics_project` 与 `dex` 后恢复。
+- 真机复测（部署 + aidev-build-request 返回值）用户侧进行中。
+
+### 状态变更
+
+- current-task.md：新增 Phase 7 记录（P7-01~P7-05）。
+- session-state.json：phase 上下文更新；completed_phases 补安全审计 98 项与 Phase 7。
+- 提交 494a327（6 文件），main 领先 origin/main 4 提交，未推送。
+
+### 下一步
+
+- Phase 6 测试补齐（P6-01~P6-04）尚未实现。
+- 推送前 gradle-wrapper.properties 须改回 https://（当前本地 file://）。
+
+## 2026-07-13 — Phase 6 测试补齐（P6-01~P6-04，42 新用例）
+
+### Summary
+
+按 current-task.md 执行 Phase 6 测试补齐。P6-01/02/03 用本地 JUnit + Mockito + 反射（无需 Robolectric，避免 spawn Termux 进程）；P6-04 ShellActivity 因本环境无法拉取 Robolectric 传递依赖，改用 instrumented 测试。
+
+### 新增测试
+
+- `app/src/test/java/com/aidev/six/chat/OpenCodeClientTest.kt`（P6-01, 12 用例）：反射测试 private `parseMessage`/`parseEvent`，覆盖正常事件流/不完整 chunk/错误字段/data 兜底/权限 v1+v2/追问/完整消息替换/空 JSON 兜底。
+- `app/src/test/java/com/aidev/six/DeployBridgeServiceTest.kt`（P6-02, 16 用例）：shEscape/isValidApkPath/isValidPkg/toProotPath/parseDeployJson/validateDeployScript(writeResult 结果 JSON)。
+- `app/src/test/java/com/aidev/six/BuildBridgeServiceTest.kt`（P6-02, 7 用例）：resolveProjectDir/derivePackage/finish 结果 JSON 出口。
+- `app/src/test/java/com/aidev/six/terminal/SessionManagerTest.kt`（P6-03, 7 用例）：switchSession/closeSession 索引重排/toggleLock/cachedCompletionPwd；反射播种 `_sessions` 用 mock TerminalSession，避免真正 spawn shell。
+- `app/src/androidTest/java/com/aidev/six/ShellActivityTest.kt`（P6-04, 2 用例）：onCreate→RESUMED→onDestroy 不抛异常；switchTo 标签页边界保护。需真机 `connectedAndroidTest`。
+
+### 验证
+
+- `./gradlew :app:testDebugUnitTest`：158 用例，仅 3 个**预存失败**（BuildDiagnosticsTest / BuildPreflightSourceTest / BuildRequestTrackerTest，与改动无关，按 AGENTS 不修）残留；新增 42 用例全过。
+- instrumented 测试仅编译验证（`compileAndroidTestKotlin` BUILD SUCCESSFUL），真机运行待用户侧。
+
+### 偏差（重要）
+
+- 用户选择「加 Robolectric 写单元测试」，但本环境 Aliyun `central` 镜像对 Robolectric 传递依赖（shadows-framework/icu4j/android-all）报 DNS/连接重置，无法拉取。已回退 Robolectric 依赖，P6-02/03 改为纯 JUnit+反射（等价覆盖），P6-04 改为 instrumented 测试。
+- `app/build.gradle.kts` 新增 `testInstrumentationRunner` 与 `androidTestImplementation(androidx.test.ext:junit / runner)`。
+
+---
+
+## 2026-07-13（续）— 新任务：AIDev 固定开发流程
+
+### 起因
+- ServerPanel UI 重构（b144）完成后，用户复盘：之前的改动暴露"单调平铺/缺层次"与"离线缺依赖"两类问题。
+- 用户要求以 PM 视角重新设计服务器中心 UI（已完成卡片化+三级层级重构，b144 通过）。
+- 进一步追问根因：为何 Material 版本低（BOM 2024.12.01→material3 1.3.1，无 FilledButton）、为何离线拉不到 material-icons-extended、限制是否在内置环境存在。
+- 结论：限制非硬性封锁，是离线优先 + 基线不全的偶发状况。用户要求形成"固定开发流程"，让在 AIDev 里开发的 App 提前感知 UI/结构/限制，不再突然"用不了/被限制"。
+
+### 设计决策（经多轮澄清）
+- 不升 AIDev 宿主 BOM（保 宇宙 B 稳定）；用 `Button` 而非 `FilledButton`。
+- 模板栈对齐到 2024.12.01 + 补 material-icons-extended；能力文档描述**模板栈**（非宿主栈）。
+- 可视化开发前计划：静态模板 Mockup + 项目结构树 + 能力&权限清单（确认三块都要）。
+- 已有/导入项目：检测+报告+预缓存 + **可选**对齐（用户确认才改写），不自动改写。
+- 范围：完整版（G1-G10）。
+
+### 执行中
+- ① 单一版本/依赖清单(ScaffoldBaseline) + 对齐 create-compose-project 与 generateScript（进行中）。
+
+### 完成情况（同日，宿主 b150）
+- ① ✅ `ScaffoldBaseline.kt`（模板栈单一真相源）+ `ProjectScaffoldState.generateScript()` 与 `/usr/local/bin/create-compose-project` 对齐到 2024.12.01 + material-icons-extended；宿主 BOM 不动。
+- ② ✅ `aidev-precache`（基线 + 任意项目路径），离线自检通过；基线依赖已预缓存进 `~/.gradle`。
+- ③ ✅ `ProjectScaffoldPanel` 重构为三步流：表单 → 可视化预览（UI 模拟图 + 项目结构树 + 能力&权限清单）→ 脚本预览；三块均可滚动。
+- ④ ✅ `BuildPreflight.checkPreconditions`：HARD_BLOCKER 权限硬拦截 + 离线缺基线软提示；接入 `BuildBridgeService` 构建前。
+- ⑤ ✅ ServerPanel「新建项目（脚手架 + 开发前可视化预览）」一等入口触发脚手架对话框；新增 `docs/dev-workflow.md` 串起全流程。
+- ⑥ ✅ `docs/compose-capabilities.md`：模板栈可用/不可用 API + 受限权限（与能力清单同源）。
+- ⑦ ✅ `BuildPreflight` 扩展（源码/Manifest/资源预检）+ 宇宙 B「项目体检（旧项目兼容性检查）」UI，仅报告不自动改写。
+- 验证：宿主 `:app:assembleDebug` 连续通过 b145–b150；未引入新测试失败（3 个预存失败保持）。
+- 备注：推送前需将 `gradle-wrapper.properties` 的 `file://` 改回 `https://`。
+
+### 补充：把预缓存也搬进宇宙 B（同日后）
+- 根因：之前 `aidev-precache` 只预热宿主 `~/.gradle`，但宇宙 B 构建用的是它自己的 `GRADLE_USER_HOME=/host-home/gradle-cache`（宿主真实路径 `filesDir/home/gradle-cache`），断网时宇宙 B 仍缺包。
+- 修复：`aidev-precache` 现支持 `--gradle-home <DIR>` 指定落点 + 自动探测并**同步**到宇宙 B 缓存目录（单次下载到宿主，再 cp 到宇宙 B，避免双重拉取）；离线自检覆盖两个落点。
+- 验证：用 `--gradle-home /tmp/ubtest` 模拟，material-icons-extended 正确落进该目录；默认运行仍预热宿主并自检通过。真机上 `aidev-precache` 会自动把货也备进宇宙 B，断网可离线构建。
+
+### 收尾三步（同日后）
+1. **固化文档**：验证结论写入 `docs/decisions.md`（固定开发流程决策）+ `docs/error-journal.md`（material-icons-extended 离线缺包 / aidev-precache 只预热宿主 / testShellScripts 任务不存在）；AGENTS.md Testing 段改正为 `bash app/src/test/sh/run.sh`（原 `testShellScripts` 任务不存在）。
+2. **回归验证**：shell 测试 `bash app/src/test/sh/run.sh` → 65 passed, 0 failed；单元测试 158 个、仅 3 个预存失败（无新增）；宿主 assembleDebug b150/b151 通过。无新增破坏。
+3. **自动预热宇宙 B**：原想在「新建项目」终端命令后追加 `aidev-precache`，但该脚本不在宇宙 B rootfs、`onExecuteCommand` 走 Ubuntu 终端会 command not found，故 revert。改为在 `BuildBridgeService` 编译前检测 `filesDir/home/gradle-cache` 基线标记，缺且联网时自动在宇宙 B 内跑 `./gradlew dependencies` 预热其缓存。宿主 b151 编译通过。至此：首次在线构建后宇宙 B 断网可离线编译。
+
+### Backlog 优化（同日后，连续推进）
+- **OPT-06 编译错误中文建议（dev-workflow 补强，b152）**：`BuildDiagnostics.diagnoseBuildErrors` 早已在构建失败时调用（BuildBridgeService:371），主体已实现。补了一条针对性建议：依赖解析失败且离线/缺缓存（或 `material-icons-extended` 缺失）→ 提示 `aidev-precache` / `aidev-precache --universe-b` 预热。纯加法、低风险。
+- **OPT-09 增量编译提示（b153）**：ServerPanel 构建卡片根据 `app/build` 是否存在，显示「默认走增量编译（更快）；若改了依赖/gradle/SDK 版本建议先 clean」或「首次构建走全量（会下载 Gradle 分发与依赖，较慢）」。宿主 b153 编译通过。
+- 评估剩余 OPT：OPT-07(scaffold Compose 模板)/08(源码预检) 已在 dev-workflow 顺手完成；OPT-10(最近构建提示) 已有 InfoNote；OPT-06 主体已有。真正未做且需谨慎的：OPT-01(JDK 多镜像)/02(AgentTaskStore 缓存)/03(BuildProgress 结构化)/04(Shizuku 重试)/05(动态崩溃等待)/11(BridgeService 退避)/12(产物缓存)/13(Gradle 分发预置)——多涉及构建/部署核心或需真机验证。
+
+### OPT-02 AgentTaskStore 缓存（同日后，b154）
+- 核查发现 OPT-02 核心早已实现：`AgentTaskStore` 已有 `ConcurrentHashMap` 内存缓存 + 2000ms 延迟写盘调度器 + `flush()`。
+- 打磨：原实现每次写都 `scheduler.schedule` 排新定时任务，连续更新会排队多个冗余落盘；改为**真正防抖**（新增 `pendingWrites` 记录待写任务，排新前先 `cancel` 上一个），减少重复 IO。纯内部优化、低风险。宿主 b154 编译通过。
+- 结论：OPT-02 已完成（含防抖打磨）。

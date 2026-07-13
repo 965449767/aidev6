@@ -20,23 +20,26 @@ fun AppActionRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val vPad = if (compact) 8.dp else 10.dp
+    val labelColor = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    val descColor = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
     Column(
         modifier = modifier
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = vPad),
     ) {
         Text(
             label,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = labelColor,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.height(2.dp))
         Text(
             desc,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = descColor,
             style = MaterialTheme.typography.bodySmall,
         )
     }

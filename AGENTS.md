@@ -24,13 +24,13 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 ## Testing (run in order)
 
 ```
-./gradlew :app:testShellScripts --no-daemon       # 47 shell tests
 ./gradlew :app:compileDebugKotlin --no-daemon       # Kotlin compile check
-./gradlew :app:testDebugUnitTest --no-daemon        # 78 unit tests (JUnit 4 + Mockito)
+./gradlew :app:testDebugUnitTest --no-daemon        # 158 unit tests (JUnit 4 + Mockito)；已知 3 个预存失败（BuildDiagnosticsTest/BuildPreflightSourceTest/BuildRequestTrackerTest），与改动无关
 ./gradlew :app:assembleDebug --no-daemon             # full build
 ```
 
-- Shell tests also runnable: `bash app/src/test/sh/run.sh`
+- Shell tests（正确入口）：`bash app/src/test/sh/run.sh`  # 65 shell 测试（含 create-compose-project 等），全过
+- 注：项目无 `testShellScripts` Gradle 任务，勿用 `./gradlew :app:testShellScripts`（会报 task not found）
 - Harness/doc validation: `bash scripts/harness_check.sh`
 
 ## Architecture

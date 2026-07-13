@@ -1,6 +1,6 @@
 {
-  "phase": "self-evolution-build-deploy-decouple",
-  "current_step": "v117-v121 完成：构建/部署/验证三黑盒解耦 + 部署经 DeployBridgeService 接入面板「部署到设备」；文档已更新（decisions/error-journal/verification/current-task/session）；下一步修真机 aidev-install exit non-zero 安装失败",
+  "phase": "dev-workflow-verify",
+  "current_step": "G1-G10 全部落地（b150）：ScaffoldBaseline 单一真相源 + create-compose-project/generateScript 对齐；aidev-precache 预缓存+离线自检；ProjectScaffoldPanel 三步可视化预览；BuildPreflight.checkPreconditions 构建前硬护栏；ServerPanel「新建项目」一等入口 + docs/dev-workflow.md；docs/compose-capabilities.md；BuildPreflight 扩展 + 宇宙B「项目体检」UI。待回归验证与 handoff。",
   "active_plan": "current-task.md",
   "completed_phases": [
     "Tasks Tab audit: 9项修复（P0-1线程泄漏/P0-2项目列表缓存/P0-3崩溃数据源统一/P1-4取消按钮/P1-5提交即时反馈/P1-6SFTP分类/P1-7Tab切换闪烁/P2-8死参数/P2-9轮询间隔）",
@@ -52,7 +52,11 @@
     "Font size drag: long-press drag gesture with dragAccumulator + haptic feedback per step",
     "V121: 部署经 DeployBridgeService 接入面板「部署到设备」（安装并拉起/仅安装按钮）+ 部署脚本 headless 落地 dev-env/bin",
     "V120: 构建黑盒解耦部署（删 installAndLaunch，result 只产出 APK+pkg，部署交独立黑盒2）",
-    "V117-V119: 闭环编排增强（黑盒1/2/3 三黑盒循环、服务一致性、build 产物路径真存在校验、aapt2 解析 pkg）"
+    "V117-V119: 闭环编排增强（黑盒1/2/3 三黑盒循环、服务一致性、build 产物路径真存在校验、aapt2 解析 pkg）",
+    "安全审计修复 98 项 (Phase 1-5, b122-b138)：命令注入防护/SSL校验/线程安全/构建发布配置/Shell加固/代码质量，全量提交",
+    "Phase 7: 部署可靠性 + 终端构建请求返回值 (#135/#137/#139, 提交 494a327)：DeployBridgeService PRoot路径修正、aidev-deploy 校验非致命提速、ensureDeployScripts .md5 自动刷新、aidev-shizuku 请求ID防碰撞、aidev-build-request 阻塞等待并返回完整构建日志",
+    "Phase 6: 测试补齐(P6-01~P6-04)：OpenCodeClient SSE解析(12)、DeployBridgeService(16)+BuildBridgeService(7)纯逻辑、SessionManager 生命周期/PWD(7) 共 42 本地单测全过；ShellActivity 仪表化测试(2)需真机",
+    "dev-workflow-foundation (G1-G10): ScaffoldBaseline 单一真相源(模板栈 2024.12.01+icons-ext)+对齐 create-compose-project/generateScript；aidev-precache 预缓存+离线自检；ProjectScaffoldPanel 三步可视化预览(UI模拟图/结构树/能力权限)；BuildPreflight.checkPreconditions(HARD_BLOCKER硬拦截+离线缺基线提示) 接入 BuildBridgeService；ServerPanel「新建项目」一等入口 + docs/dev-workflow.md；docs/compose-capabilities.md；BuildPreflight 扩展(源码/Manifest预检)+宇宙B「项目体检」UI。宿主 b150 构建通过，宇宙B零风险。"
   ],
   "frozen_tasks": [
     "Phase I Chat UI 全面优化（30 项，b72-b93）— 冻结",

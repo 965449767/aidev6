@@ -4,7 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 
 class PreferencesManager(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs: SharedPreferences = appContext.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
     val sharedPreferences: SharedPreferences get() = prefs
 
     private var pendingEdit: SharedPreferences.Editor? = null
@@ -92,6 +93,23 @@ class PreferencesManager(context: Context) {
     var externalAidevDir: String
         get() = prefs.getString(Constants.PrefKeys.EXTERNAL_AIDEV_DIR, "/sdcard/AIDev") ?: "/sdcard/AIDev"
         set(value) = write { putString(Constants.PrefKeys.EXTERNAL_AIDEV_DIR, value) }
+
+    var repoMode: String
+        get() = prefs.getString(Constants.PrefKeys.REPO_MODE, "AUTO") ?: "AUTO"
+        set(value) {
+            val v = value.trim().uppercase()
+            write { putString(Constants.PrefKeys.REPO_MODE, v) }
+            writeRepoPolicyFile(v)
+        }
+
+    private fun writeRepoPolicyFile(mode: String) {
+        runCatching {
+            val dir = java.io.File(Constants.REPO_ROOT)
+            dir.mkdirs()
+            java.io.File(dir, ".nomedia").createNewFile()
+            java.io.File(dir, "policy.txt").writeText(mode)
+        }
+    }
 
     var projectActionHistory: String
         get() = prefs.getString(Constants.PrefKeys.PROJECT_ACTION_HISTORY, "") ?: ""

@@ -85,6 +85,7 @@ android {
         targetSdk = 36
         versionCode = versionCodeOverride ?: buildNumber
         versionName = versionNameOverride ?: generatedVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     packaging {
@@ -250,6 +251,10 @@ dependencies {
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     testImplementation("org.json:json:20231013")
+    // 仪表化测试（androidTest）：P6-04 ShellActivity 生命周期需在真实设备上运行
+    // （Robolectric 在本环境的 Aliyun central 镜像无法拉取 shadows-framework/icu4j/android-all）
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
 // Shell tests: run directly via "bash app/src/test/sh/run.sh"

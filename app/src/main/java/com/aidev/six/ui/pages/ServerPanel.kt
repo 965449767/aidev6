@@ -14,17 +14,18 @@ import com.aidev.six.agent.AgentTaskRunner
 import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.agent.AgentTaskStore
 import com.aidev.six.agent.BuildRequestTracker
+import com.aidev.six.BuildPreflight
 import com.aidev.six.agent.DeployRequestTracker
 import com.aidev.six.navigation.DialogType
+import com.aidev.six.navigation.DialogManagerState
 import com.aidev.six.navigation.LocalDialogManager
-import com.aidev.six.ui.components.AppActionRow
 import com.aidev.six.ui.components.AppSectionHeader
-import com.aidev.six.ui.components.AppSectionTitle
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,15 +35,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -101,7 +106,7 @@ fun ServerPanel(
         Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab ->
             when (tab) {
                 0 -> UniverseATab(onExecuteCommand, dialogManager)
-                1 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker)
+                1 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
             }
         }
     }
@@ -119,133 +124,79 @@ private fun UniverseATab(
     val batteryIgnored = remember { batteryIgnored(context) }
     val opencodeInstalled = remember { opencodeInstalled(context) }
 
-    // 自治模式状态
-    val autonomousOn = remember { mutableStateOf(PreferencesManager(context).selfEvolutionAutonomous) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(3000)
-            runCatching {
-                val latest = PreferencesManager(context).selfEvolutionAutonomous
-                if (latest != autonomousOn.value) autonomousOn.value = latest
-            }
-        }
-    }
-
     // 改码模型
     val modelExpanded = remember { mutableStateOf(false) }
     val selectedModel = remember { mutableStateOf(PreferencesManager(context).selfEvolutionModel) }
     LaunchedEffect(Unit) { writeSelfEvolutionModel(context, selectedModel.value) }
 
-    // 改码对话
-    val convExpanded = remember { mutableStateOf(false) }
-    val convLog = remember { mutableStateOf(readConversationLog(context)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1500)
-            runCatching {
-                val latest = readConversationLog(context)
-                if (latest != convLog.value) convLog.value = latest
-            }
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp)
     ) {
         Spacer(Modifier.height(8.dp))
 
-        // ── 运行状态 ──
-        AppSectionTitle("运行状态")
-        Row(modifier = Modifier.fillMaxWidth()) {
-            StatusRow("电池优化", if (batteryIgnored) "已忽略" else "受限制", batteryIgnored, Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
-            StatusRow("OpenCode", if (opencodeInstalled) "已安装" else "未检测到", opencodeInstalled, Modifier.weight(1f))
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ── 快速诊断 ──
-        AppSectionTitle("快速诊断")
-        AppActionRow("监听端口", "查看当前本地服务端口", onClick = { onExecuteCommand("list-listen-ports") })
-        HorizontalDivider()
-        AppActionRow("访问诊断", "检查 127.0.0.1 服务", onClick = { onExecuteCommand("check-local-server 3000") })
-        HorizontalDivider()
-        AppActionRow("检测环境", "AI/Web 通信与工具链", onClick = { onExecuteCommand("check-dev-env\naidev-net-explain") })
-        HorizontalDivider()
-        AppActionRow("OpenCode 日志", "查看 OpenCode 任务输出", onClick = { onExecuteCommand("aidev-agent-log") })
-        HorizontalDivider()
-        AppActionRow(label = "SFTP 传输", desc = "远程文件传输管理", onClick = { dialogManager.show(DialogType.SFtpTransfer) })
-
-        Spacer(Modifier.height(8.dp))
-
-        // ── 工具 ──
-        AppSectionTitle("工具")
-        AppActionRow("安装 OpenCode", "调用官方安装入口", onClick = { onExecuteCommand("install-aitool") })
-
-        Spacer(Modifier.height(16.dp))
-
-        // ── 自治模式 ──
-        AppSectionTitle("自治模式")
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("自我进化自治模式", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "开启后崩溃自动触发下一轮构建（需宇宙 A 自动改码），闭环自转",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        // ── 环境状态 ──
+        SectionCard(title = "环境状态") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusChip(
+                    text = "电池优化 · " + if (batteryIgnored) "已忽略" else "受限制",
+                    tone = if (batteryIgnored) StatusTone.Ok else StatusTone.Warn
+                )
+                StatusChip(
+                    text = "OpenCode · " + if (opencodeInstalled) "已安装" else "未安装",
+                    tone = if (opencodeInstalled) StatusTone.Ok else StatusTone.Neutral
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Switch(
-                checked = autonomousOn.value,
-                onCheckedChange = {
-                    autonomousOn.value = it
-                    PreferencesManager(context).selfEvolutionAutonomous = it
+            if (!opencodeInstalled) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { onExecuteCommand("curl -fsSL https://opencode.ai/install | bash") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("安装 OpenCode")
                 }
-            )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "curl -fsSL https://opencode.ai/install | bash",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
 
         // ── 改码模型 ──
-        AppSectionTitle("改码模型")
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("选择改码模型", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "宇宙 A 用哪个免费模型改码；额度耗尽请看对话后切换",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Box {
-                Text(
-                    text = selectedModel.value.removePrefix("opencode/") + " ▾",
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { modelExpanded.value = true }.padding(8.dp)
-                )
-                DropdownMenu(expanded = modelExpanded.value, onDismissRequest = { modelExpanded.value = false }) {
-                    com.aidev.six.Constants.SELF_EVOLUTION_MODELS.forEach { model ->
-                        DropdownMenuItem(
-                            text = { Text(model.removePrefix("opencode/")) },
-                            onClick = {
-                                selectedModel.value = model
-                                PreferencesManager(context).selfEvolutionModel = model
-                                writeSelfEvolutionModel(context, model)
-                                modelExpanded.value = false
-                            }
-                        )
+        SectionCard(title = "改码模型") {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("选择改码模型", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "宇宙 A 用哪个免费模型改码；额度耗尽请看对话后切换",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Box {
+                    OutlinedButton(onClick = { modelExpanded.value = true }) {
+                        Text(selectedModel.value.removePrefix("opencode/") + " ▾")
+                    }
+                    DropdownMenu(expanded = modelExpanded.value, onDismissRequest = { modelExpanded.value = false }) {
+                        com.aidev.six.Constants.SELF_EVOLUTION_MODELS.forEach { model ->
+                            DropdownMenuItem(
+                                text = { Text(model.removePrefix("opencode/")) },
+                                onClick = {
+                                    selectedModel.value = model
+                                    PreferencesManager(context).selfEvolutionModel = model
+                                    writeSelfEvolutionModel(context, model)
+                                    modelExpanded.value = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -253,25 +204,30 @@ private fun UniverseATab(
 
         Spacer(Modifier.height(16.dp))
 
-        // ── 改码对话 ──
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable { convExpanded.value = !convExpanded.value }.padding(vertical = 4.dp)
-        ) {
-            Text("改码对话", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text(
-                text = if (convLog.value.isBlank()) "暂无" else if (convExpanded.value) "收起" else "展开",
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelMedium,
+        // ── 诊断与工具 ──
+        SectionCard(title = "诊断与工具") {
+            ListRow(
+                label = "监听端口",
+                desc = "查看当前本地服务端口",
+                onClick = { onExecuteCommand("list-listen-ports") }
             )
-        }
-        if (convExpanded.value) {
-            Text(
-                text = convLog.value.ifBlank { "尚无改码对话。点「生成修复命令并发送到 OpenCode」会把本次失败的完整日志路径交给终端 OpenCode，它读日志改码后会自行跑 aidev-build 验证。" },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()).padding(4.dp)
+            HorizontalDivider()
+            ListRow(
+                label = "检测环境",
+                desc = "AI/Web 通信与工具链",
+                onClick = { onExecuteCommand("check-dev-env\naidev-net-explain") }
+            )
+            HorizontalDivider()
+            ListRow(
+                label = "OpenCode 日志",
+                desc = "查看 OpenCode 任务输出",
+                onClick = { onExecuteCommand("aidev-agent-log") }
+            )
+            HorizontalDivider()
+            ListRow(
+                label = "SFTP 传输",
+                desc = "远程文件传输管理",
+                onClick = { dialogManager.show(DialogType.SFtpTransfer) }
             )
         }
 
@@ -286,6 +242,7 @@ private fun UniverseBTab(
     onExecuteCommand: (String) -> Unit,
     taskRunner: AgentTaskRunner,
     buildTracker: BuildRequestTracker,
+    dialogManager: DialogManagerState,
 ) {
     val context = LocalContext.current
     val taskStateFile = remember(context) { File(PathConfig.tasksDir(context), "agent-tasks.json") }
@@ -303,6 +260,8 @@ private fun UniverseBTab(
     val scope = rememberCoroutineScope()
     val fixSending = remember { mutableStateOf(false) }
     val fixMsg = remember { mutableStateOf("") }
+    val healthMessages = remember { mutableStateListOf<String>() }
+    val healthLoading = remember { mutableStateOf(false) }
 
     val upsertRecord: (AgentTaskRecord) -> Unit = { record ->
         taskRecords.removeAll { it.definition.id == record.definition.id }
@@ -405,168 +364,229 @@ private fun UniverseBTab(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
         Spacer(Modifier.height(8.dp))
 
-        // ── 运行状态 ──
-        AppSectionTitle("运行状态")
-        Row(modifier = Modifier.fillMaxWidth()) {
-            StatusRow("Ubuntu rootfs", if (ubuntuInstalled(context)) "可用" else "未安装", ubuntuInstalled(context), Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
-            StatusRow("编译器", if (compilerInstalled(context)) "就绪" else "未安装", compilerInstalled(context), Modifier.weight(1f))
+        // ── 环境状态 ──
+        SectionCard(title = "环境状态") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusChip(
+                    text = "Ubuntu rootfs · " + if (ubuntuInstalled(context)) "可用" else "未安装",
+                    tone = if (ubuntuInstalled(context)) StatusTone.Ok else StatusTone.Neutral
+                )
+                StatusChip(
+                    text = "编译器 · " + if (compilerInstalled(context)) "就绪" else "未安装",
+                    tone = if (compilerInstalled(context)) StatusTone.Ok else StatusTone.Neutral
+                )
+            }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // ── 构建项目 ──
-        AppSectionTitle("构建项目")
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("选择要编译的项目", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text("workspace 下可构建的项目", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // ── 构建 ──
+        SectionCard(title = "构建") {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("选择要编译的项目", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("workspace 下可构建的项目", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.width(12.dp))
+                Box {
+                    OutlinedButton(onClick = { projectExpanded.value = true }) {
+                        Text(selectedProject.value + " ▾")
+                    }
+                    DropdownMenu(expanded = projectExpanded.value, onDismissRequest = { projectExpanded.value = false }) {
+                        projectList.value.forEach { proj ->
+                            DropdownMenuItem(text = { Text(proj) }, onClick = { selectedProject.value = proj; projectExpanded.value = false })
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Box {
-                Text(text = selectedProject.value + " ▾", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.clickable { projectExpanded.value = true }.padding(8.dp))
-                DropdownMenu(expanded = projectExpanded.value, onDismissRequest = { projectExpanded.value = false }) {
-                    projectList.value.forEach { proj ->
-                        DropdownMenuItem(text = { Text(proj) }, onClick = { selectedProject.value = proj; projectExpanded.value = false })
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { dialogManager.show(DialogType.ProjectScaffold) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("新建项目（脚手架 + 开发前可视化预览）")
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    if (submitting.value) return@Button
+                    submitting.value = true
+                    val id = "build-${System.currentTimeMillis()}"
+                    upsertRecord(AgentTaskRecord(
+                        definition = AgentTaskDefinition(id = id, name = "构建 ${selectedProject.value}",
+                            description = "宇宙 B 编译 → 产出 APK（安装/拉起由部署黑盒接力）",
+                            command = "aidev-build-request --project ${selectedProject.value}",
+                            workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                            tags = listOf("build", "self-evolution")),
+                        status = AgentTaskStatus.RUNNING, startedAt = System.currentTimeMillis(),
+                        log = "已提交构建请求，等待宇宙 B 调度…"))
+                    buildTracker.submit(context = context, project = selectedProject.value, stateFile = taskStateFile,
+                        autonomous = PreferencesManager(context).selfEvolutionAutonomous,
+                        onUpdate = { r -> upsertRecord(r); if (r.status != AgentTaskStatus.RUNNING) submitting.value = false })
+                },
+                enabled = !submitting.value,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (submitting.value) "提交中…" else "提交构建请求")
+            }
+            Spacer(Modifier.height(8.dp))
+            val hasBuild = remember(selectedProject.value) {
+                File(PathConfig.workspaceDir(context), "${selectedProject.value}/app/build").isDirectory
+            }
+            InfoNote(
+                if (hasBuild)
+                    "检测到上次构建产物：默认走增量编译（更快）。若改了依赖 / gradle / SDK 版本，建议先 clean 再构建。"
+                else
+                    "首次构建：走全量编译（会下载 Gradle 分发与依赖，首次较慢）。"
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    if (healthLoading.value) return@OutlinedButton
+                    healthLoading.value = true
+                    healthMessages.clear()
+                    val projDir = File(PathConfig.workspaceDir(context), selectedProject.value)
+                    scope.launch(Dispatchers.IO) {
+                        val msgs = mutableListOf<String>()
+                        val appGradle = File(projDir, "app/build.gradle.kts")
+                        if (appGradle.isFile) {
+                            val rootGradle = File(projDir, "build.gradle.kts").takeIf { it.isFile }?.readText() ?: ""
+                            msgs += BuildPreflight.inspect(appGradle.readText(), rootGradle).messages
+                        }
+                        msgs += BuildPreflight.inspectSourceCode(projDir)
+                        val pre = BuildPreflight.checkPreconditions(projDir)
+                        msgs += pre.hardErrors + pre.warnings
+                        healthMessages.addAll(
+                            if (msgs.isEmpty()) listOf("✓ 体检通过：未发现明显兼容性问题") else msgs
+                        )
+                        healthLoading.value = false
+                    }
+                },
+                enabled = !healthLoading.value,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (healthLoading.value) "体检中…" else "项目体检（旧项目兼容性检查）")
+            }
+            if (healthMessages.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Column(Modifier.padding(10.dp)) {
+                        healthMessages.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        AppActionRow(
-            label = if (submitting.value) "提交中…" else "提交构建请求",
-            desc = "在宇宙 B 编译所选项目（产出 APK）",
-            onClick = {
-                if (submitting.value) return@AppActionRow
-                submitting.value = true
-                val id = "build-${System.currentTimeMillis()}"
-                upsertRecord(AgentTaskRecord(
-                    definition = AgentTaskDefinition(id = id, name = "构建 ${selectedProject.value}",
-                        description = "宇宙 B 编译 → 产出 APK（安装/拉起由部署黑盒接力）",
-                        command = "aidev-build-request --project ${selectedProject.value}",
-                        workingDirectory = PathConfig.workspaceDir(context).absolutePath,
-                        tags = listOf("build", "self-evolution")),
-                    status = AgentTaskStatus.RUNNING, startedAt = System.currentTimeMillis(),
-                    log = "已提交构建请求，等待宇宙 B 调度…"))
-                buildTracker.submit(context = context, project = selectedProject.value, stateFile = taskStateFile,
-                    autonomous = PreferencesManager(context).selfEvolutionAutonomous,
-                    onUpdate = { r -> upsertRecord(r); if (r.status != AgentTaskStatus.RUNNING) submitting.value = false })
-            }
-        )
-
         Spacer(Modifier.height(16.dp))
 
         // ── 部署到设备 ──
-        AppSectionTitle("部署到设备")
-        if (deployArtifact.value == null) {
-            InfoNote("请先成功构建（产出 APK）后再部署")
-        } else {
-            val (apk, pkg) = deployArtifact.value!!
-            val submitDeploy: (Boolean) -> Unit = { launch ->
-                if (!deploySubmitting.value) {
-                    deploySubmitting.value = true
-                    val id = System.currentTimeMillis().toString()
-                    upsertRecord(
-                        AgentTaskRecord(
-                            definition = AgentTaskDefinition(id = "deploy-$id", name = "部署 $pkg",
-                                description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
-                                command = "aidev-deploy --apk $apk --pkg $pkg${if (launch) " --launch" else " --no-launch"}",
-                                workingDirectory = PathConfig.workspaceDir(context).absolutePath,
-                                tags = listOf("deploy", "self-evolution")),
-                            status = AgentTaskStatus.RUNNING, startedAt = System.currentTimeMillis(),
-                            log = "已提交部署请求，等待执行…"
+        SectionCard(title = "部署到设备") {
+            if (deployArtifact.value == null) {
+                InfoNote("请先成功构建（产出 APK）后再部署")
+            } else {
+                val (apk, pkg) = deployArtifact.value!!
+                val submitDeploy: (Boolean) -> Unit = { launch ->
+                    if (!deploySubmitting.value) {
+                        deploySubmitting.value = true
+                        val id = System.currentTimeMillis().toString()
+                        upsertRecord(
+                            AgentTaskRecord(
+                                definition = AgentTaskDefinition(id = "deploy-$id", name = "部署 $pkg",
+                                    description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
+                                    command = "aidev-deploy --apk $apk --pkg $pkg${if (launch) " --launch" else " --no-launch"}",
+                                    workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                                    tags = listOf("deploy", "self-evolution")),
+                                status = AgentTaskStatus.RUNNING, startedAt = System.currentTimeMillis(),
+                                log = "已提交部署请求，等待执行…"
+                            )
                         )
-                    )
-                    deployTracker.submit(context = context, id = id, apk = apk, pkg = pkg, launch = launch,
-                        onDone = { deploySubmitting.value = false })
+                        deployTracker.submit(context = context, id = id, apk = apk, pkg = pkg, launch = launch,
+                            onDone = { deploySubmitting.value = false })
+                    }
                 }
-            }
-            AppActionRow(
-                label = if (deploySubmitting.value) "部署中…" else "安装并拉起",
-                desc = "用部署黑盒 aidev-deploy 安装并启动 $pkg",
-                onClick = { submitDeploy(true) }
-            )
-            Spacer(Modifier.height(4.dp))
-            AppActionRow(
-                label = "仅安装",
-                desc = "用部署黑盒 aidev-deploy 仅安装不启动 $pkg",
-                onClick = { submitDeploy(false) }
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ── 任务记录 ──
-        AppSectionTitle("任务记录")
-        if (taskRecords.isNotEmpty()) {
-            val builds = taskRecords.filter { it.definition.tags.any { t -> t == "build" } }
-            val total = builds.size; val ok = builds.count { it.status == AgentTaskStatus.SUCCEEDED }
-            val rate = if (total > 0) ok * 100 / total else 0
-            val avg = builds.filter { it.finishedAt > it.startedAt }.map { (it.finishedAt - it.startedAt) / 1000 }.average().let { if (it.isNaN()) 0.0 else it }
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatItem("构建次数", "$total"); StatItem("成功率", "${rate}%"); StatItem("平均耗时", "${avg.toInt()}s")
+                Button(
+                    onClick = { submitDeploy(true) },
+                    enabled = !deploySubmitting.value,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("安装并拉起")
                 }
-            }
-        }
-        if (taskRecords.isEmpty()) {
-            InfoNote("暂无任务记录")
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text("共 ${taskRecords.size} 条", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                Text("清空全部", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { showClearConfirm.value = true })
-            }
-            taskRecords.forEach { record ->
-                AgentTaskRow(task = record, isSelected = selectedTaskId.value == record.definition.id,
-                    onToggle = { selectedTaskId.value = if (selectedTaskId.value == record.definition.id) null else record.definition.id },
-                    onDelete = { deleteTarget.value = record },
-                    onRetry = {
-                        if (record.definition.tags.any { it == "build" || it == "self-evolution" }) {
-                            buildTracker.submit(context = context, project = projectOf(record).ifBlank { selectedProject.value },
-                                stateFile = taskStateFile, autonomous = PreferencesManager(context).selfEvolutionAutonomous, onUpdate = upsertRecord)
-                        } else {
-                            taskRunner.runTask(record.definition.copy(id = "agent-retry-${System.currentTimeMillis()}"), taskStateFile) { upsertRecord(it) }
-                        }
-                    },
-                    onCancel = { cancelTarget.value = record })
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { submitDeploy(false) },
+                    enabled = !deploySubmitting.value,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (deploySubmitting.value) "部署中…" else "仅安装")
+                }
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // ── 闭环状态 ──
-        AppSectionTitle("闭环状态")
-        InfoNote("错误回流盘: ${PathConfig.aidevHome(context).absolutePath}/.aidev-loop")
-        InfoNote("构建日志: ${PathConfig.logsDir(context).absolutePath}/<项目>/build.log")
-        if (buildResult.value.isNotBlank()) { Spacer(Modifier.height(4.dp)); InfoNote("最近构建: ${buildResult.value}") }
-        if (crashState.value.isNotBlank()) { Spacer(Modifier.height(4.dp)); InfoNote("最近崩溃回流: ${crashState.value}") }
-
-        Spacer(Modifier.height(8.dp))
-        AppActionRow(
-            label = if (fixSending.value) "发送中…" else "生成修复命令并发送到 OpenCode",
-            desc = "读取最新构建错误摘要，让宇宙 A 改码修复（项目：${selectedProject.value}）",
-            onClick = {
-                if (fixSending.value) return@AppActionRow
-                fixSending.value = true
-                fixMsg.value = ""
-                val proj = selectedProject.value
-                val model = PreferencesManager(context).selfEvolutionModel
-                scope.launch(Dispatchers.IO) {
-                    val r = sendBuildFixToOpenCode(context, proj, model)
-                    fixMsg.value = r
-                    fixSending.value = false
+        // ── 任务 ──
+        SectionCard(title = "任务") {
+            if (taskRecords.isEmpty()) {
+                InfoNote("暂无任务记录")
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Text("共 ${taskRecords.size} 条", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    Text("清空全部", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { showClearConfirm.value = true })
+                }
+                taskRecords.forEach { record ->
+                    AgentTaskRow(task = record, isSelected = selectedTaskId.value == record.definition.id,
+                        onToggle = { selectedTaskId.value = if (selectedTaskId.value == record.definition.id) null else record.definition.id },
+                        onDelete = { deleteTarget.value = record },
+                        onRetry = {
+                            if (record.definition.tags.any { it == "build" || it == "self-evolution" }) {
+                                buildTracker.submit(context = context, project = projectOf(record).ifBlank { selectedProject.value },
+                                    stateFile = taskStateFile, autonomous = PreferencesManager(context).selfEvolutionAutonomous, onUpdate = upsertRecord)
+                            } else {
+                                taskRunner.runTask(record.definition.copy(id = "agent-retry-${System.currentTimeMillis()}"), taskStateFile) { upsertRecord(it) }
+                            }
+                        },
+                        onCancel = { cancelTarget.value = record })
+                    Spacer(Modifier.height(8.dp))
                 }
             }
-        )
-        if (fixMsg.value.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            InfoNote(fixMsg.value)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── 自愈闭环 ──
+        SectionCard(title = "自愈闭环") {
+            if (buildResult.value.isNotBlank()) InfoNote("最近构建: ${buildResult.value}")
+            if (crashState.value.isNotBlank()) { Spacer(Modifier.height(4.dp)); InfoNote("最近崩溃回流: ${crashState.value}") }
+
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    if (fixSending.value) return@Button
+                    fixSending.value = true
+                    fixMsg.value = ""
+                    val proj = selectedProject.value
+                    val model = PreferencesManager(context).selfEvolutionModel
+                    scope.launch(Dispatchers.IO) {
+                        val r = sendBuildFixToOpenCode(context, proj, model)
+                        fixMsg.value = r
+                        fixSending.value = false
+                    }
+                },
+                enabled = !fixSending.value,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (fixSending.value) "发送中…" else "生成修复命令并发送到 OpenCode")
+            }
+            if (fixMsg.value.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                InfoNote(fixMsg.value)
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -589,24 +609,82 @@ private fun AgentTaskRow(
     task: AgentTaskRecord, isSelected: Boolean, onToggle: () -> Unit,
     onDelete: () -> Unit, onRetry: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 4.dp)) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(task.definition.name, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text(text = taskStatusLabel(task.status), color = taskStatusColor(task.status), style = MaterialTheme.typography.bodySmall)
-                if (task.status == AgentTaskStatus.RUNNING) {
-                    val phase = task.steps.firstOrNull { it.status == AgentTaskStatus.RUNNING }?.name
-                        ?: task.steps.lastOrNull { it.status == AgentTaskStatus.SUCCEEDED }?.name
-                    if (!phase.isNullOrBlank()) Text("当前阶段：$phase", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+    val statusTone = when (task.status) {
+        AgentTaskStatus.SUCCEEDED -> StatusTone.Ok
+        AgentTaskStatus.FAILED -> StatusTone.Warn
+        else -> StatusTone.Neutral
+    }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(task.definition.name, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    if (task.status == AgentTaskStatus.RUNNING) {
+                        val phase = task.steps.firstOrNull { it.status == AgentTaskStatus.RUNNING }?.name
+                            ?: task.steps.lastOrNull { it.status == AgentTaskStatus.SUCCEEDED }?.name
+                        if (!phase.isNullOrBlank()) Text("当前阶段：$phase", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                StatusChip(taskStatusLabel(task.status), statusTone)
+            }
+            if (task.definition.description.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(task.definition.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            if (isSelected) {
+                if (task.steps.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    task.steps.forEachIndexed { i, s ->
+                        Text("${i + 1}. ${s.name} · ${taskStatusLabel(s.status)}" + if (s.exitCode >= 0) " (exit=${s.exitCode})" else "",
+                            color = taskStatusColor(s.status), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (task.status == AgentTaskStatus.FAILED) {
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    val ctx = LocalContext.current
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("复制错误摘要", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.clickable { copyToClipboard(ctx, extractErrorSummary(task.log)); Toast.makeText(ctx, "错误摘要已复制", Toast.LENGTH_SHORT).show() })
+                        Text("复制日志路径", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.clickable {
+                                val project = Regex("--project\\s+(\\S+)").find(task.definition.command)?.groupValues?.getOrNull(1)
+                                val path = project?.let { findLatestFailureLogFile(ctx, it)?.absolutePath }
+                                if (path != null) {
+                                    copyToClipboard(ctx, path)
+                                    Toast.makeText(ctx, "日志路径已复制", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    copyToClipboard(ctx, task.log)
+                                    Toast.makeText(ctx, "未找到日志文件，已复制截断日志", Toast.LENGTH_SHORT).show()
+                                }
+                            })
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(text = task.log.ifBlank { "暂无输出" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
+                if (task.exitCode >= 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("exit=${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (isSelected) "收起" else "详情", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.clickable(onClick = onToggle).padding(6.dp))
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.weight(1f))
                 Text("重试", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.clickable(onClick = onRetry).padding(6.dp))
-                Spacer(Modifier.height(2.dp))
                 if (task.status == AgentTaskStatus.RUNNING) {
                     Text("取消", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.clickable(onClick = onCancel).padding(6.dp))
@@ -614,48 +692,6 @@ private fun AgentTaskRow(
                     Text("删除", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.clickable(onClick = onDelete).padding(6.dp))
                 }
-            }
-        }
-        if (task.definition.description.isNotBlank()) Text(task.definition.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        if (isSelected) {
-            if (task.steps.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                task.steps.forEachIndexed { i, s ->
-                    Text("${i + 1}. ${s.name} · ${taskStatusLabel(s.status)}" + if (s.exitCode >= 0) " (exit=${s.exitCode})" else "",
-                        color = taskStatusColor(s.status), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            if (task.status == AgentTaskStatus.FAILED) {
-                Spacer(Modifier.height(4.dp))
-                val ctx = LocalContext.current
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("复制错误摘要", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.clickable { copyToClipboard(ctx, extractErrorSummary(task.log)); Toast.makeText(ctx, "错误摘要已复制", Toast.LENGTH_SHORT).show() })
-                    Text("复制日志路径", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.clickable {
-                            val project = Regex("--project\\s+(\\S+)").find(task.definition.command)?.groupValues?.getOrNull(1)
-                            val path = project?.let { findLatestFailureLogFile(ctx, it)?.absolutePath }
-                            if (path != null) {
-                                copyToClipboard(ctx, path)
-                                Toast.makeText(ctx, "日志路径已复制", Toast.LENGTH_SHORT).show()
-                            } else {
-                                copyToClipboard(ctx, task.log)
-                                Toast.makeText(ctx, "未找到日志文件，已复制截断日志", Toast.LENGTH_SHORT).show()
-                            }
-                        })
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(text = task.log.ifBlank { "暂无输出" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
-            if (task.status == AgentTaskStatus.RUNNING) {
-                Spacer(Modifier.height(4.dp))
-                Text("取消", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable(onClick = onCancel))
-            }
-            if (task.exitCode >= 0) {
-                Spacer(Modifier.height(4.dp))
-                Text("exit=${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -676,26 +712,56 @@ private fun taskStatusLabel(status: AgentTaskStatus) = when (status) {
     AgentTaskStatus.SUCCEEDED -> "已完成"; AgentTaskStatus.FAILED -> "失败"; AgentTaskStatus.CANCELLED -> "已取消"
 }
 
+private enum class StatusTone { Ok, Warn, Neutral }
+
 @Composable
-private fun StatusRow(label: String, value: String, positive: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-        Text(value, color = if (positive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+private fun StatusChip(text: String, tone: StatusTone) {
+    val (bg, fg) = when (tone) {
+        StatusTone.Ok -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+        StatusTone.Warn -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+        StatusTone.Neutral -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = Modifier
+            .background(bg, RoundedCornerShape(50))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(text, color = fg, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ListRow(label: String, desc: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
     }
 }
 
 @Composable
 private fun InfoNote(text: String, modifier: Modifier = Modifier) {
     Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = modifier)
-}
-
-@Composable
-private fun StatItem(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }
 
 // ─────────────────── 数据函数 ───────────────────
@@ -746,12 +812,6 @@ private fun writeSelfEvolutionModel(context: Context, model: String) {
         val dir = File(context.filesDir, "home/.aidev-loop"); dir.mkdirs()
         File(dir, "se-config.json").writeText(org.json.JSONObject().put("model", model).toString() + "\n")
     }
-}
-
-private fun readConversationLog(context: Context, maxChars: Int = 6000): String {
-    val f = File(context.filesDir, "home/.aidev-loop/conversation.log")
-    if (!f.isFile) return ""
-    return runCatching { val t = f.readText(); if (t.length > maxChars) "…（省略较早内容）\n" + t.takeLast(maxChars) else t }.getOrDefault("")
 }
 
 private fun listProjects(context: Context): List<String> {

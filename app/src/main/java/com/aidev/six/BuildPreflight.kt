@@ -1,6 +1,9 @@
 package com.aidev.six
 
 import java.io.File
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * 预构建体检的纯逻辑（无 Android 依赖，可单测）。
@@ -157,6 +160,80 @@ object BuildPreflight {
         val match = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
             .find(content) ?: return null
         return match.groupValues[1]
+    }
+
+    /**
+     * 设备/宇宙B 硬禁止的权限（来源：AGENTS.md 约束）。
+     * 命中即构建或安装必失败，应在构建前明确拦截，而不是浪费数分钟编译后报错。
+     */
+    val HARD_BLOCKER_PERMISSIONS: List<String> = listOf(
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.GET_ACCOUNTS",
+        "android.permission.SEND_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_MMS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.CALL_PHONE",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.WRITE_CALL_LOG",
+    )
+
+    /** 构建前护栏结果：hardErrors 命中即应阻断构建；warnings 仅提示。 */
+    data class PreconditionResult(val hardErrors: List<String>, val warnings: List<String>)
+
+    /**
+     * 构建前护栏（vibe coding 护栏的「硬」一层）：
+     *  1) Manifest 含 HARD_BLOCKER 权限 → hardErrors（设备/宇宙B 禁止）
+     *  2) 离线且基线依赖未预缓存 → warnings（提示先 aidev-precache，避免缺包失败）
+     * 纯逻辑、可单测；不修改任何文件。
+     */
+    fun checkPreconditions(projectDir: File): PreconditionResult {
+        val hard = mutableListOf<String>()
+        val warn = mutableListOf<String>()
+
+        val manifest = File(projectDir, "app/src/main/AndroidManifest.xml")
+        if (manifest.isFile) {
+            val text = runCatching { manifest.readText() }.getOrDefault("")
+            HARD_BLOCKER_PERMISSIONS.forEach { perm ->
+                if (Regex("""android:name="$perm"""").containsMatchIn(text)) {
+                    hard += "✖ 硬限制命中：Manifest 声明了受限权限 $perm（设备/宇宙B 禁止，构建或安装必失败）。" +
+                        "请改用其他方案，或在合规环境单独处理。"
+                }
+            }
+        }
+
+        if (isOffline() && !baselineDepsCached()) {
+            warn += "⚠ 当前离线且基线依赖未预缓存（material-icons-extended 等缺失）。" +
+                "若构建报『Could not resolve』，请联网后运行 aidev-precache 再构建。"
+        }
+
+        return PreconditionResult(hard, warn)
+    }
+
+    /** 粗粒度离线探测（1.5s 超时）。仅用于「离线+缺基线」的软提示。 */
+    private fun isOffline(): Boolean = try {
+        val socket = Socket()
+        socket.connect(InetSocketAddress(InetAddress.getByName("maven.aliyun.com"), 443), 1500)
+        socket.close()
+        false
+    } catch (_: Exception) {
+        true
+    }
+
+    /** 基线依赖是否已预缓存：检查 material-icons-extended（模板基线独有标记）是否在任一 Gradle 缓存中。 */
+    private fun baselineDepsCached(): Boolean {
+        val homes = listOf(
+            System.getProperty("user.home") + "/.gradle",
+            "/host-home/gradle-cache",
+        )
+        val marker = "caches/modules-2/files-2.1/androidx.compose.material/material-icons-extended"
+        return homes.any { File(it, marker).isDirectory }
     }
 
     /**

@@ -123,6 +123,14 @@ internal fun systemMenu(
             onToggle = { if (it) { runCatching { KeepAliveService.start(context) }.onFailure { android.widget.Toast.makeText(context, "启动保活服务失败：${it.message}", android.widget.Toast.LENGTH_SHORT).show() } }; prefs.keepaliveAuto = it },
         ),
     ),
+    MenuEntry(
+        title = "离线优先（下载来源）",
+        desc = "开启后构建只使用 AIDevRepo 离线仓库，禁止走网络下载 JDK/Gradle/依赖基线",
+        kind = MenuEntryKind.Toggle(
+            checked = { prefs.repoMode == "STRICT" },
+            onToggle = { prefs.repoMode = if (it) "STRICT" else "AUTO" },
+        ),
+    ),
     MenuEntry("应用详情", "跳转到系统应用信息页") {
         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.parse("package:${context.packageName}")

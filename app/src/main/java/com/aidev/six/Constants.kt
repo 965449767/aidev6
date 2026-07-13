@@ -22,6 +22,7 @@ object Constants {
     // SharedPreferences 文件名
     const val PREFS_NAME = "aidev_ui"
     const val PREFS_SHELL = "aidev_shell"
+    const val REPO_ROOT = "/sdcard/.AIDevRepo"
 
     // SharedPreferences Key 常量
     object PrefKeys {
@@ -65,8 +66,9 @@ object Constants {
         const val LAST_TAB = "last_tab"
         const val SELF_EVOLUTION_AUTONOMOUS = "self_evolution_autonomous"
         const val SELF_EVOLUTION_MODEL = "self_evolution_model"
-    }
+        const val REPO_MODE = "repo_mode"
 
+    }
     // OpenCode HTTP API
     const val OPENCODE_BASE_URL = "http://127.0.0.1:4096"
 

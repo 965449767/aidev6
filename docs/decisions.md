@@ -198,3 +198,33 @@ Introduce `MenuBottomSheet` (a custom bottom-sheet Dialog using the project's de
 - 部署状态与构建状态同样经 `agent-tasks.json` 回流，闭环编排一致（黑盒1/2/3 三黑盒循环）。
 - 改动文件：`DeployBridgeService.kt`（新增）、`DeployRequestTracker.kt`（新增）、`BuildBridgeService.kt`（产物解析 pkg + result 带 project/pkg）、`ServerPanel.kt`（部署区 + lastBuildArtifact）、`SessionManager.kt`（启动 DeployBridgeService）。
 - 落地版本：**v121**（versionName 1.0.0-b121）。
+
+## 2026-07-13 — 固定开发流程：模板依赖基线 + 可视化预览 + 构建前护栏 + 宇宙B预热
+
+### Context
+
+ServerPanel UI 重构（b144）后复盘，暴露两类问题：① 内置开发"离线缺依赖"偶发失败（material-icons-extended 拉不到）；
+② 限制不透明（Material 版本低、某些 API 不可用、敏感权限受限）。用户要求形成**固定开发流程**，让在 AIDev 里开发的 App
+"动手前看清 UI/结构/限制，构建前保证依赖齐备、失败早报"，新建与已有项目同等受护。
+
+### Decision
+
+- **单一真相源 `ScaffoldBaseline.kt`**（模板栈）：AGP 8.7.0 / Kotlin 2.0.20 / Compose BOM 2024.12.01（material3 1.3.1）/
+  compileSdk 35 / minSdk 26 / 默认含 `material-icons-extended`。`/usr/local/bin/create-compose-project` 与
+  `ProjectScaffoldState.generateScript()` 必须与之对齐。
+- **宿主 BOM 不动**（仍 2024.12.01，与模板同款），保宇宙 B 稳定锚点；宿主 UI 用 `Button` 而非 `FilledButton`（material3 1.3.1 无）。
+- **可视化开发前预览**（`ProjectScaffoldPanel` 三步流）：表单 → 可视化预览（UI 模拟图 + 项目结构树 + 能力&权限清单）→ 脚本预览；
+  能力清单与 `docs/compose-capabilities.md` 同源。
+- **构建前护栏** `BuildPreflight.checkPreconditions`：Manifest 含 HARD_BLOCKER 权限 → **硬拦截**直接报错（不浪费编译时间）；
+  离线且基线依赖未预缓存 → 软提示先 `aidev-precache`。接入 `BuildBridgeService` 编译前。
+- **宇宙B预热** `aidev-precache`：自动探测并同步到宇宙 B 的 gradle 缓存（`filesDir/home/gradle-cache`，对应宇宙 B 内
+  `/host-home/gradle-cache`），断网也能离线构建。支持 `--gradle-home <DIR>` / `--universe-b`。
+- **已有/导入项目非破坏性**：`BuildPreflight` 扩展（源码/Manifest/资源预检）+ 宇宙 B「项目体检」UI，仅检测/报告/预缓存，不自动改写。
+- 流程文档：`docs/dev-workflow.md`；能力边界：`docs/compose-capabilities.md`。
+
+### Consequences
+
+- 宿主 `:app:assembleDebug` 连续通过 b145–b150；shell 测试 65 全过（含 create-compose-project）；单元测试 158 仅 3 个预存失败、无新增。
+- 改动文件：`ScaffoldBaseline.kt`（新增）、`ProjectScaffoldState.kt`、`ProjectScaffoldPanel.kt`、`BuildPreflight.kt`、
+  `BuildBridgeService.kt`、`ServerPanel.kt`、`create-compose-project`、`aidev-precache`、`docs/dev-workflow.md`、`docs/compose-capabilities.md`。
+- 落地版本：**b150**（versionName 1.0.0-b150）。

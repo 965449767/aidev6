@@ -147,7 +147,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             val now = System.currentTimeMillis()
             if (now - lastPublish >= 800) {
                 lastPublish = now
-                publishBuild(AgentTaskStatus.RUNNING, -1, 0L, BuildProgress.deriveFromPhase(currentPhase))
+                publishBuild(AgentTaskStatus.RUNNING, -1, 0L, BuildProgress.deriveUpTo(currentPhase))
             }
         }
 
@@ -199,7 +199,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                 status,
                 if (success) 0 else 1,
                 System.currentTimeMillis(),
-                BuildProgress.finalize(BuildProgress.deriveFromPhase(currentPhase), success)
+                BuildProgress.finalize(BuildProgress.deriveUpTo(currentPhase), success)
             )
         }
 
@@ -265,6 +265,15 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             runCatching { preflightCheck(projectDir, append) }
                 .onFailure { AIDevLogger.e("BuildBridge", "预构建体检失败(非致命)", it) }
 
+            // 2.7b) 构建前硬护栏：命中 HARD_BLOCKER 或离线缺基线 → 明确报错，不浪费编译时间
+            val pre = BuildPreflight.checkPreconditions(projectDir)
+            pre.warnings.forEach(append)
+            if (pre.hardErrors.isNotEmpty()) {
+                pre.hardErrors.forEach(append)
+                finishAndPublish(false, "构建前护栏拦截：${pre.hardErrors.first().removePrefix("✖ ")}")
+                return
+            }
+
             // 3) 在宇宙 B 内编译
             val compilerRootfs = PathConfig.compilerRootfs(ctx).absolutePath
             val bind = ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")
@@ -276,6 +285,38 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             val aapt2Override = ensureX86Aapt2(ctx)
             val aapt2Arg = aapt2Override?.let { " -Pandroid.aapt2FromMavenOverride=$it" } ?: ""
             append(if (aapt2Override != null) "→ aapt2(x86_64/qemu) 就绪: $aapt2Override" else "⚠ aapt2 部署失败")
+
+            // 2.8) 自动预热宇宙 B 依赖缓存（首次在线构建时）：确保断网也能离线构建
+            // 宇宙 B 构建用 GRADLE_USER_HOME=/host-home/gradle-cache，对应宿主 filesDir/home/gradle-cache。
+            // 若其缺基线标记且当前联网，先解析依赖把缓存落进去，后续断网 assembleDebug 即可离线。
+            val ubMarker = File(PathConfig.aidevHome(ctx), "gradle-cache/caches/modules-2/files-2.1/androidx.compose.material/material-icons-extended")
+            if (!ubMarker.isDirectory) {
+                if (isOnline()) {
+                    append("→ 预热宇宙 B 依赖缓存（首次在线构建）...")
+                    runStreaming(
+                        ctx, id,
+                        "cd /workspace/$rel && ./gradlew dependencies --no-daemon$aapt2Arg",
+                        ProotLauncher.Options(
+                            rootfs = compilerRootfs,
+                            cwd = "/workspace/$rel",
+                            binds = listOf(bind),
+                            env = mapOf(
+                                "ANDROID_SDK_ROOT" to "/host-home/android-sdk",
+                                "GRADLE_USER_HOME" to "/host-home/gradle-cache",
+                                "JAVA_HOME" to "/host-home/jdk17",
+                                "PATH" to "/host-home/jdk17/bin:/host-home/dev-env/bin:/system/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                            ),
+                            timeoutSec = 600,
+                            redirectErrorStream = true
+                        ),
+                        append,
+                        heartbeat = "预热宇宙 B 缓存"
+                    )
+                    append("→ 宇宙 B 依赖缓存预热完成（断网可离线构建）")
+                } else {
+                    append("⚠ 宇宙 B 依赖缓存缺失且当前离线；若构建报缺包，请联网后运行 aidev-precache 再构建。")
+                }
+            }
             // 探针：真机上直接验证 aapt2 能否运行（宿主机容器无法复现）
             if (aapt2Override != null) {
                 append("→ 探测 aapt2 version ...")
@@ -872,6 +913,15 @@ include(":app")"""
      *  3) 使用 Compose 但配置不完整 → 告警
      * 全部尽力而为，失败不阻断构建；提示以中文写入构建日志，小白可读。
      */
+    private fun isOnline(): Boolean = try {
+        val socket = java.net.Socket()
+        socket.connect(java.net.InetSocketAddress(java.net.InetAddress.getByName("maven.aliyun.com"), 443), 1500)
+        socket.close()
+        true
+    } catch (_: Exception) {
+        false
+    }
+
     private fun preflightCheck(projectDir: File, append: (String) -> Unit) {
         val gradleFile = File(projectDir, "app/build.gradle.kts")
         if (!gradleFile.isFile) return
@@ -923,6 +973,22 @@ include(":app")"""
             [ -x "${'$'}CURL" ] || CURL=curl
             EXPECTED_SHA="${JDK_SHA256}"
             JDK_FILE=/host-home/jdk17.tar.gz
+            REPO_JDK_DEC=$(aidev-repo decide android-jdk17 2>/dev/null || true)
+            case "${'$'}REPO_JDK_DEC" in
+              repo:*)
+                REPO_JDK=${'$'}{REPO_JDK_DEC#repo:}
+                echo "→ 使用离线仓库 JDK: ${'$'}REPO_JDK"
+                cp "${'$'}REPO_JDK" "${'$'}JDK_FILE"
+                ;;
+              network)
+                echo "ℹ️ 离线仓库无 JDK，回退网络下载（可在 AIDevRepo 缓存 android-jdk17 以离线）"
+                ;;
+              deny)
+                echo "❌ 离线优先模式：仓库无 JDK，已禁止网络下载。请先在 AIDevRepo 缓存该资源，或把「离线优先」开关关闭。"
+                exit 1
+                ;;
+            esac
+            if [ ! -f "${'$'}JDK_FILE" ]; then
             MIRRORS="https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jdk/aarch64/linux/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.19_10.tar.gz https://mirrors.ustc.edu.cn/Adoptium/17/jdk/aarch64/linux/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.19_10.tar.gz https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.19_10.tar.gz"
             DOWNLOADED=0
             for url in ${'$'}MIRRORS; do
@@ -934,7 +1000,7 @@ include(":app")"""
                     elif command -v openssl >/dev/null 2>&1; then
                         ACTUAL_SHA=$(openssl dgst -sha256 "${'$'}JDK_FILE" | awk '{print ${'$'}NF}')
                     fi
-                    if [ -n "${'$'}ACTUAL_SHA" ] && [ "${'$'}ACTUAL_SHA" != "${'$'}EXPECTED_SHA" ]; then
+                    if [ -n "${'$'}EXPECTED_SHA" ] && [ -n "${'$'}ACTUAL_SHA" ] && [ "${'$'}ACTUAL_SHA" != "${'$'}EXPECTED_SHA" ]; then
                         echo "⚠️ SHA256 校验失败: 期望 ${'$'}EXPECTED_SHA, 实际 ${'$'}ACTUAL_SHA，尝试下一个镜像"
                         rm -f "${'$'}JDK_FILE"
                         continue
@@ -949,6 +1015,9 @@ include(":app")"""
             if [ "${'$'}DOWNLOADED" -ne 1 ]; then
                 echo "✗ 所有镜像均下载失败，请检查网络后重试"
                 exit 1
+            fi
+            else
+                echo "✅ 已获得 JDK 包（仓库提供），跳过下载"
             fi
             echo "解压 JDK..."
             rm -rf "${'$'}JDK_DIR"; mkdir -p "${'$'}JDK_DIR"
@@ -969,7 +1038,8 @@ include(":app")"""
                 binds = listOf(wsBind),
                 env = mapOf(
                     "ANDROID_SDK_ROOT" to "/host-home/android-sdk",
-                    "GRADLE_USER_HOME" to "/host-home/gradle-cache"
+                    "GRADLE_USER_HOME" to "/host-home/gradle-cache",
+                    "AIDEV_REPO_MODE" to com.aidev.six.PreferencesManager(ctx).repoMode
                 ),
                 timeoutSec = 1800,
                 redirectErrorStream = true

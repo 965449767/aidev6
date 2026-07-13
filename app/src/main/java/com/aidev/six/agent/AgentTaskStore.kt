@@ -83,6 +83,8 @@ internal object AgentTaskStore {
     private val cache = ConcurrentHashMap<String, List<AgentTaskRecord>>()
     // 脏标记：哪些文件有未落盘的修改
     private val dirty = ConcurrentHashMap.newKeySet<String>()
+    // 待执行的延迟写盘任务（用于取消上一个、实现真正防抖）
+    private val pendingWrites = ConcurrentHashMap<String, java.util.concurrent.ScheduledFuture<*>>()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "AgentTaskStore-debounce").apply { isDaemon = true }
     }
@@ -106,6 +108,8 @@ internal object AgentTaskStore {
         synchronized(lock) {
             cache[key] = tasks
             dirty.remove(key)
+            pendingWrites[key]?.cancel(false)
+            pendingWrites.remove(key)
             file.parentFile?.mkdirs()
             file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
         }
@@ -148,6 +152,8 @@ internal object AgentTaskStore {
     /** 强制将所有脏数据立即写盘，用于进程退出前调用。 */
     fun flush() {
         synchronized(lock) {
+            pendingWrites.values.forEach { it.cancel(false) }
+            pendingWrites.clear()
             for (key in dirty.toList()) {
                 val tasks = cache[key] ?: continue
                 val file = File(key)
@@ -161,7 +167,10 @@ internal object AgentTaskStore {
     private fun scheduleDebounce(file: File) {
         val key = file.absolutePath
         dirty.add(key)
-        scheduler.schedule({
+        // 真正防抖：取消上一个待写任务，再排新的，避免连续更新排多次冗余落盘
+        pendingWrites[key]?.cancel(false)
+        pendingWrites[key] = scheduler.schedule({
+            pendingWrites.remove(key)
             if (!dirty.contains(key)) return@schedule
             val tasks = cache[key] ?: return@schedule
             runCatching {

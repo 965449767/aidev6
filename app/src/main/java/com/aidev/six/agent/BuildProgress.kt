@@ -23,7 +23,7 @@ internal object BuildProgress {
     )
     private val phaseOrder = Phase.entries
 
-    /** 根据结构化 [current] 阶段生成步骤列表。 */
+    /** 根据结构化 [current] 阶段生成完整步骤列表（含后续 pending 阶段）。 */
     fun deriveFromPhase(current: Phase): List<AgentTaskStepResult> {
         val idx = phaseOrder.indexOf(current)
         return phaseOrder.mapIndexed { i, phase ->
@@ -32,6 +32,19 @@ internal object BuildProgress {
                 i == idx -> AgentTaskStatus.RUNNING
                 else -> AgentTaskStatus.PENDING
             }
+            AgentTaskStepResult(name = phaseNames[phase] ?: phase.name, status = status)
+        }
+    }
+
+    /**
+     * 仅发布到 [current] 为止的阶段。
+     * 构建黑盒只拥有 PREPARE→COMPILE；安装/拉起由独立部署黑盒（DeployBridgeService）负责，
+     * 不应在此误报为已完成。故 finalize 也只收尾这些阶段，避免 SUCCESS 时把 INSTALL/LAUNCH 错标成 ✓。
+     */
+    fun deriveUpTo(current: Phase): List<AgentTaskStepResult> {
+        val idx = phaseOrder.indexOf(current)
+        return phaseOrder.take(idx + 1).mapIndexed { i, phase ->
+            val status = if (i < idx) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.RUNNING
             AgentTaskStepResult(name = phaseNames[phase] ?: phase.name, status = status)
         }
     }

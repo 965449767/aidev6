@@ -529,3 +529,69 @@ v124 已加 `clean_output` 并重建 six，但面板「安装并拉起」依旧 
 2. **关闭旧 five、打开 six** 让 six 成为 agent 宿主（`/host-home` 重新绑定到 six 的 home），`ensureDeployScripts` 即从 six 的 assets 萃取部署脚本；
 3. 之后面板「安装并拉起」应通过校验并成功拉起。
 （若坚持用 five 作宿主，则需把本仓库按 five 重编一次以带入 b126 改动。）
+
+## 2026-07-13 — 部署脚本执行路径用宿主绝对路径导致 PRoot 内「文件不存在」（#135, 提交 494a327）
+
+### Symptom
+面板点「安装并拉起 / 仅安装」后部署失败；用户在 PRoot 终端 `ls dev-env/bin` 能看到 `aidev-deploy`，但部署仍报文件不存在（脚本执行器找不到入口）。
+
+### Root Cause
+`DeployBridgeService` 组装执行命令时，`deployScript = File(PathConfig.aidevHome(ctx), "dev-env/bin/aidev-deploy").absolutePath`，即宿主绝对路径 `/data/user/0/com.aidev.six.dev/files/home/dev-env/bin/aidev-deploy`。而部署在 PRoot（`-r agent rootfs`）内执行，**仅 `/host-home`（→ files/home）被绑定**，宿主 `/data/...` 路径在 PRoot 视图中不可见 → `/bin/sh` 无法 exec 该脚本 → 报"文件不存在"。`validateDeployScript` 走 `/host-home`（v126 已改）与执行路径不一致，属同一类「校验/执行路径锚点不同」问题的后半段。
+
+### Fix（#135, 提交 494a327）
+- `deployScript` 改用 PRoot 视图路径 `/host-home/dev-env/bin/aidev-deploy`，与 `AIDEV_HOME=/host-home` 及 `validateDeployScript` 完全一致。
+- 配套（#137）：`ensureDeployScripts` 以 bundled assets 为准，MD5 不一致即覆盖脚本并刷新 `.md5`，避免脚本更新后 `.md5` 过期误拦；`aidev-deploy` 的 `pm list packages` 校验改非致命、以能否启动为准；`aidev-shizuku` 请求 ID 加 `$RANDOM`。
+
+### 验证
+- 构建 #135/#137/#139 BUILD SUCCESSFUL；用户实测「安装拉起都正常了」。
+- 真机复测部署 + `aidev-build-request` 返回值进行中。
+
+### 关键教训
+- **PRoot 内执行的任何路径都必须用 PRoot 绑定视图（`/host-home/...`、`/workspace/...`、`/sdcard/...`），绝不能用宿主 `ctx.filesDir` 绝对路径**——两者只在 `/host-home` 这个锚点重合，其余宿主路径在 guest 中不存在。
+- 校验路径与执行路径必须用同一个锚点，单改其一（如只改 validateDeployScript）会留下隐性 bug。
+
+## 2026-07-13 — material-icons-extended 离线拉不到（缺包编译失败）
+
+### Symptom
+在 AIDev 内置环境用 `Icon(Icons.Filled.Xxx)` 编译报 `Unresolved reference`；或在离线时新建 Compose 项目构建报 `Could not resolve androidx.compose.material:material-icons-extended`。
+
+### Root Cause
+- 离线优先 + 阿里云镜像需显式仓库声明；基线（旧 `create-compose-project` 用 BOM 2024.06.00）**未把 `material-icons-extended` 纳入默认依赖**，只有 `material-icons-core` 被缓存过，离线拉不到扩展图标库。
+- 根因不是"环境硬封锁"，而是**离线优先 + 基线不全**的偶发状况。联网时阿里云镜像其实返回 200，可拉取。
+
+### Fix
+- `ScaffoldBaseline.kt` 把 `material-icons-extended` 纳入模板基线依赖；`create-compose-project` 与 `ProjectScaffoldState.generateScript()` 对齐（BOM 2024.12.01 + 图标库）。
+- `aidev-precache` 预缓存基线依赖（含该库），离线自检确认可解析。
+
+### 关键教训
+- Compose 图标分 `core`（基础）/ `extended`（全量）；要画非常用图标必须显式依赖 `material-icons-extended`，且离线前必须预缓存。
+
+## 2026-07-13 — aidev-precache 只预热宿主缓存，宇宙B断网仍缺包
+
+### Symptom
+`aidev-precache` 跑完后，宿主侧离线构建 OK，但宇宙 B（编译器 rootfs）断网编译仍报 `Could not resolve`。
+
+### Root Cause
+真正编译发生在宇宙 B，其 `GRADLE_USER_HOME=/host-home/gradle-cache`（宿主真实路径 `filesDir/home/gradle-cache`）；
+而 `aidev-precache` 原先只把依赖缓存进宿主 `~/.gradle`，两套缓存不共享，宇宙 B 仓库里仍是空的。
+
+### Fix
+`aidev-precache` 自动探测 `filesDir/home/gradle-cache` 并**同步**基线缓存过去（先下到宿主，再 `cp` 到宇宙 B，避免双重拉取）；
+支持 `--gradle-home <DIR>` / `--universe-b` 显式指定。离线自检覆盖两个落点。
+
+### 关键教训
+- "预热依赖"必须落进**真正构建用的那个 Gradle 缓存**，不能想当然用宿主默认缓存。
+
+## 2026-07-13 — `./gradlew :app:testShellScripts` 任务不存在（文档过时）
+
+### Symptom
+按 AGENTS.md 跑 `./gradlew :app:testShellScripts` 报 `task 'testShellScripts' not found`。
+
+### Root Cause
+项目从未注册该 Gradle 任务；正确入口是 `bash app/src/test/sh/run.sh`（65 个 shell 测试，全过）。AGENTS.md 文档过时。
+
+### Fix
+AGENTS.md Testing 段改为 `bash app/src/test/sh/run.sh`，并加注勿用 `testShellScripts`。
+
+### 关键教训
+- 跑测试前先确认任务真实存在；文档里"应全过"的命令若报 task not found，多半是文档过时而非代码坏。

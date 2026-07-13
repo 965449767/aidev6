@@ -38,6 +38,18 @@ object BuildDiagnostics {
             hints.add("无法解析依赖「$dep」：检查网络连接和 Maven 仓库配置")
         }
 
+        // 离线/缺缓存导致依赖解析失败 → 提示预缓存（dev-workflow 基线保障）
+        val couldNotResolve = lines.filter { it.contains("Could not resolve", ignoreCase = true) }
+        if (couldNotResolve.isNotEmpty()) {
+            val offline = couldNotResolve.any {
+                it.contains("No cached version", ignoreCase = true) || it.contains("Could not get resource", ignoreCase = true)
+            }
+            val iconsMissing = log.contains("material-icons-extended")
+            if (offline || iconsMissing) {
+                hints.add("依赖无法解析（可能离线或缓存缺失）：联网后运行 `aidev-precache` 预缓存基线依赖（含 material-icons-extended），之后可断网构建；也可 `aidev-precache --universe-b` 预热宇宙 B 缓存。")
+            }
+        }
+
         // Missing class
         lines.filter { it.contains("Missing class") }.forEach { line ->
             val cls = line.substringAfter("Missing class").trim().split("\\s".toRegex()).first()
