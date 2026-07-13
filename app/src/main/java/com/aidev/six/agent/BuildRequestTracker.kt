@@ -4,9 +4,14 @@ import android.content.Context
 import com.aidev.six.BuildBridgeService
 import com.aidev.six.CrashReportBridgeService
 import com.aidev.six.PathConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.Executors
 
 /**
  * 自我进化闭环「提交构建请求」的可见状态追踪器（F02）。
@@ -18,9 +23,10 @@ import java.util.concurrent.Executors
  *     /sdcard/AIDev/logs/build-<project>-<id>-*.log（实时日志）与 result-<id>.json（最终结果），
  *     持续回调刷新 UI（解决 B1/B2/B4）。
  */
-internal class BuildRequestTracker {
+internal class BuildRequestTracker(
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+) {
 
-    private val executor = Executors.newCachedThreadPool()
     private var appContext: Context? = null
     // 记录已落盘（AgentTaskStore.upsertTask），这里直接回调即可，无需切主线程
     private fun postToMain(block: () -> Unit) = block()
@@ -82,29 +88,26 @@ internal class BuildRequestTracker {
             return
         }
 
-        executor.execute {
+        scope.launch {
             val resultFile = File(bridgeDir, "result-$id.json")
             val logsDir = PathConfig.logsDir(appCtx)
             val timeoutMs = 20 * 60 * 1000L
             val deadline = System.currentTimeMillis() + timeoutMs
 
-            while (System.currentTimeMillis() < deadline) {
+            while (isActive && System.currentTimeMillis() < deadline) {
                 if (resultFile.isFile) {
                     val result = runCatching { JSONObject(resultFile.readText()) }.getOrNull()
                     val success = result?.optBoolean("success", false) ?: false
-                    // 从 logsDir 子目录中查找最新的 build.log（覆盖模式，每次只有最新一条）
                     val logFile = logsDir.listFiles()?.mapNotNull { sub ->
                         File(sub, "build.log").takeIf { it.isFile }
                     }?.maxByOrNull { it.lastModified() }
                     val logText = runCatching { logFile?.readText() ?: "" }.getOrDefault("")
                     if (success && logText.contains("已拉起")) {
-                        // 闭环最后一环：若成功安装并拉起，等待崩溃回流报告并作为独立任务呈现（F04）
                         watchCrashReport(home, startedAt, stateFile, autonomous, onUpdate)
                     }
-                    // 构建失败回流已由 BuildBridgeService.finishAndPublish() 直接处理，无需此处重复
-                    return@execute
+                    return@launch
                 }
-                Thread.sleep(800)
+                delay(800)
             }
         }
     }
@@ -117,7 +120,7 @@ internal class BuildRequestTracker {
      * （`fix_applied=false`），自动触发下一轮构建，形成「崩溃 → 改码 → 重建」自动循环，
      * 直到 fix_applied=true（已修）或达到 [MAX_AUTO_ITERATIONS] 上限（防失控）。
      */
-    internal fun watchCrashReport(
+    internal suspend fun watchCrashReport(
         home: File,
         buildStartedAt: Long,
         stateFile: File,
@@ -127,20 +130,18 @@ internal class BuildRequestTracker {
         val mcpDir = File(home, ".aidev-mcp")
         var rebuildAt = buildStartedAt
         var iterations = 0
-        while (System.currentTimeMillis() - buildStartedAt < 60_000L) {
+        while (coroutineContext.isActive && System.currentTimeMillis() - buildStartedAt < 60_000L) {
             val fresh = mcpDir.listFiles { f ->
                 f.name.startsWith("crash-") && f.name.endsWith(".json") && f.lastModified() >= rebuildAt
             }?.maxByOrNull { it.lastModified() }
             if (fresh == null) {
-                Thread.sleep(1000)
+                delay(1000)
                 continue
             }
             publishCrashRecord(fresh, stateFile, onUpdate)
             val fixed = runCatching { JSONObject(fresh.readText()).optBoolean("fix_applied", false) }.getOrDefault(false)
-            // 已修复、或非自治、或已达上限 → 闭环收敛，停止
             if (!autonomous || fixed || iterations >= MAX_AUTO_ITERATIONS) return
             iterations++
-            // 自治：崩溃未修复 → OpenCode 接力（aidev-deploy 安装拉起 + aidev-verify-run 抓崩溃），并触发下一轮构建
             requestRebuild(appContext ?: return, "MyAndroidProject", stateFile, autonomous, onUpdate)
             rebuildAt = System.currentTimeMillis()
         }

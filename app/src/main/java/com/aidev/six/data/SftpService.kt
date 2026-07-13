@@ -37,7 +37,9 @@ class SftpService(
     fun disconnect(session: Session) {
         try {
             if (session.isConnected) session.disconnect()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+                Log.w("SftpService", "disconnect failed", e)
+            }
     }
 
     fun listFiles(session: Session, path: String): Result<List<SftpFile>> = runCatching {

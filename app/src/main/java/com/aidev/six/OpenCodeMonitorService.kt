@@ -24,12 +24,14 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class OpenCodeMonitorService : Service() {
 
     private var serviceScope: CoroutineScope? = null
-    private val sessionStates = HashMap<String, String>()
-    private var overallState = MonitorState.DISCONNECTED
+    private val sessionStates = ConcurrentHashMap<String, String>()
+    @Volatile private var overallState = MonitorState.DISCONNECTED
 
     private enum class MonitorState {
         DISCONNECTED, IDLE, BUSY
@@ -341,11 +343,10 @@ class OpenCodeMonitorService : Service() {
         private const val NOTIFICATION_ID = 4202
         private const val ACTION_ABORT = "com.aidev.six.OC_ABORT"
 
-        @Volatile
-        private var isRunning = false
+        private val isRunning = AtomicBoolean(false)
 
         fun start(context: Context) {
-            if (isRunning) {
+            if (!isRunning.compareAndSet(false, true)) {
                 AIDevLogger.d(TAG, "already running, skipping")
                 return
             }
@@ -355,12 +356,11 @@ class OpenCodeMonitorService : Service() {
             } else {
                 context.startService(intent)
             }
-            isRunning = true
         }
 
         fun stop(context: Context) {
             context.stopService(Intent(context, OpenCodeMonitorService::class.java))
-            isRunning = false
+            isRunning.set(false)
         }
     }
 }

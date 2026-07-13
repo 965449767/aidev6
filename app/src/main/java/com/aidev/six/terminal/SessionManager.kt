@@ -390,7 +390,9 @@ class SessionManager(
             try {
                 val content = pwdFile.readText().trim()
                 if (content.isNotBlank()) cachedCompletionPwd = content
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.w("SessionManager", "read pwd failed", e)
+            }
         }
         @Suppress("DEPRECATION")
         pwdFileObserver = object : FileObserver(pwdFile.absolutePath, FileObserver.CLOSE_WRITE or FileObserver.CREATE) {
@@ -399,7 +401,9 @@ class SessionManager(
                     try {
                         val content = pwdFile.readText().trim()
                         if (content.isNotBlank()) cachedCompletionPwd = content
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        Log.w("SessionManager", "FileObserver read pwd failed", e)
+                    }
                 }
             }
         }.apply { startWatching() }

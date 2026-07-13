@@ -73,11 +73,13 @@ class TerminalClientImpl(
             if (col >= line.length) return
             val word = extractWordAt(line, col) ?: return
             if (Patterns.WEB_URL.matcher(word).matches()) {
+                val url = if (word.startsWith("http")) word else "https://$word"
                 try {
-                    val url = if (word.startsWith("http")) word else "https://$word"
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     activity?.startActivity(intent)
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w("TerminalClient", "open URL failed: $url", e)
+                }
             }
         }
 

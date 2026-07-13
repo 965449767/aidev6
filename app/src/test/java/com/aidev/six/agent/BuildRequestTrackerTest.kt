@@ -1,5 +1,6 @@
 package com.aidev.six.agent
 
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Test
@@ -192,6 +193,8 @@ class BuildRequestTrackerTest {
 
     private fun invokeWatch(tracker: BuildRequestTracker, filesDir: File, crashFile: File, autonomous: Boolean) {
         val home = File(filesDir, "home")
-        tracker.watchCrashReport(home, crashFile.lastModified(), tempStateFile(), autonomous) {}
+        kotlinx.coroutines.runBlocking {
+            tracker.watchCrashReport(home, crashFile.lastModified(), tempStateFile(), autonomous) {}
+        }
     }
 }

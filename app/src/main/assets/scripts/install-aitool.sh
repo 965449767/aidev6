@@ -21,15 +21,21 @@ fi
 install_dir="$HOME/.opencode/bin"
 export OPENCODE_INSTALL_DIR="$install_dir"
 export SHELL="${SHELL:-/bin/bash}"
+OPENCODE_INSTALL_TMP=$(mktemp)
 for attempt in 1 2 3; do
   echo "官方安装尝试 $attempt/3 ..."
-  if curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 20 https://opencode.ai/install | bash; then
-    echo "安装成功。"
-    exit 0
+  if curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 20 -o "$OPENCODE_INSTALL_TMP" https://opencode.ai/install; then
+    chmod +x "$OPENCODE_INSTALL_TMP"
+    if bash "$OPENCODE_INSTALL_TMP"; then
+      rm -f "$OPENCODE_INSTALL_TMP"
+      echo "安装成功。"
+      exit 0
+    fi
   fi
   echo "本次安装失败，等待后重试。"
   sleep 2
 done
+rm -f "$OPENCODE_INSTALL_TMP"
 echo "opencode 官方安装脚本连续失败。"
 echo "建议运行：check-dev-env"
 exit 1

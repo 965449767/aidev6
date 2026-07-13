@@ -133,9 +133,15 @@ fi
 if [ "$WANT_RUST" = 1 ]; then
   echo "[4/4] Rust 工具链..."
   if ! command -v rustup >/dev/null 2>&1; then
-    echo "  安装 rustup..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>/dev/null && \
-    echo "  rustup 已安装" || echo "  rustup 安装失败（可手动安装）"
+    echo "  下载 rustup-init..."
+    RUSTUP_TMP=$(mktemp)
+    if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$RUSTUP_TMP" 2>/dev/null; then
+      chmod +x "$RUSTUP_TMP"
+      "$RUSTUP_TMP" -y 2>/dev/null && echo "  rustup 已安装" || echo "  rustup 安装失败（可手动安装）"
+    else
+      echo "  rustup 下载失败（可手动安装）"
+    fi
+    rm -f "$RUSTUP_TMP"
   fi
   if command -v rustup >/dev/null 2>&1; then
     . "$HOME/.cargo/env" 2>/dev/null || true
