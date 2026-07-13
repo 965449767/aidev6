@@ -6,8 +6,8 @@
 PROJECT_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" >/dev/null 2>&1 && git rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../.." && pwd)"
 
-CCP="/usr/local/bin/create-compose-project"
-PRECACHE="/usr/local/bin/aidev-precache"
+CCP="$PROJECT_ROOT/app/src/main/assets/scripts/create-compose-project.sh"
+PRECACHE="$PROJECT_ROOT/app/src/main/assets/scripts/aidev-precache.sh"
 BRIDGE="$PROJECT_ROOT/app/src/main/java/com/aidev/six/BuildBridgeService.kt"
 
 # --- create-compose-project: Gradle 分发 ---
