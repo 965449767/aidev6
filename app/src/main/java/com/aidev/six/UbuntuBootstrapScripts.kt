@@ -236,6 +236,7 @@ object UbuntuBootstrapScripts {
         "aidev-opencode" to """#!/bin/sh
             PORT=4096
             START=$(date +%s)
+            PORTFILE="${'$'}{AIDEV_HOME:-/host-home}/.aidev-opencode-port"
 
             # Parse --port flag
             while [ $# -gt 0 ]; do
@@ -252,9 +253,27 @@ object UbuntuBootstrapScripts {
                 exit 127
             fi
 
-            # Run opencode with fixed port (SSE event handling via OpenCodeMonitorService on Kotlin side)
-            "${'$'}OC" --port "${'$'}PORT" --hostname 127.0.0.1 "$@"
-            EC=$?
+            # 若默认 4096 已被占用（多半是 App 侧 headless serve 抢先拉起），
+            # 则让 opencode 自选空闲端口，并把终端 TUI 的真实端口写进 PORTFILE，
+            # 供 App 的「发送到 OpenCode」按钮精准注入，避免打到没有 TUI 的 serve 后端。
+            AUTO=0
+            if [ "${'$'}PORT" = "4096" ] && command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q "[.:]4096[[:space:]]"; then
+                AUTO=1
+            fi
+
+            if [ "${'$'}AUTO" = "1" ]; then
+                "${'$'}OC" --hostname 127.0.0.1 "$@" &
+                OCD=$!
+                sleep 2
+                P=$(ss -ltnp 2>/dev/null | grep "pid=${'$'}OCD" | grep -oE ':[0-9]+[[:space:]]' | grep -oE '[0-9]+' | head -1)
+                [ -n "${'$'}P" ] && echo "${'$'}P" > "${'$'}PORTFILE"
+                wait "${'$'}OCD"
+                EC=$?
+            else
+                echo "${'$'}PORT" > "${'$'}PORTFILE"
+                "${'$'}OC" --port "${'$'}PORT" --hostname 127.0.0.1 "$@"
+                EC=$?
+            fi
 
             # Exit notification (debounce < 5s, clock-skew guard)
             END=$(date +%s); DUR=${'$'}((END - START))
@@ -292,7 +311,7 @@ object UbuntuBootstrapScripts {
         if (!rootfs.isDirectory) return
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh", "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh", "aidev-crash-report.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "installapk.sh", "uninstallapp.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh", "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh", "aidev-crash-report.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "installapk.sh", "uninstallapp.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
@@ -778,6 +797,8 @@ AIDEV_PWD_HOOK_EOF
           opencode-check) run_ubuntu_command "/usr/local/bin/opencode-check" ;;
           opencode-install|setup-opencode) run_ubuntu_command "/usr/local/bin/setup-opencode" ;;
           aidev-build) run_ubuntu_command "/usr/local/bin/aidev-build" ;;
+          aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" ;;
+          aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" ;;
           aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" ;;
           aidev-create-android-project) run_ubuntu_command "/usr/local/bin/aidev-create-android-project" ;;
           aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" ;;

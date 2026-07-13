@@ -14,14 +14,17 @@ object NotifyBridgeService : BridgeService("NotifyBridge") {
         requestDir = File(homeDir, BRIDGE_DIR).also { it.mkdirs() }
     }
 
-    override fun poll() {
-        val reqDir = requestDir ?: return
+    override fun poll(): Boolean {
+        val reqDir = requestDir ?: return false
+        var hadWork = false
         reqDir.listFiles()?.filter {
             it.name.endsWith(".json") && !it.name.endsWith(".processing")
         }?.forEach { file ->
             val claimed = claimFile(reqDir, file) ?: return@forEach
+            hadWork = true
             scope?.launch { handleRequest(claimed) }
         }
+        return hadWork
     }
 
     private suspend fun handleRequest(processingFile: File) {

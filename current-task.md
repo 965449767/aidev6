@@ -17,6 +17,70 @@
 
 ---
 
+## 黑盒封装专项（标准分工）
+
+> 🎯 原则：每个复杂任务封装为**独立黑盒**，固定「标准入口 / 标准出口」契约，内部不被乱改。
+> 各黑盒待在自身天然环境：**宇宙 B = 编译隔离**（只管编译，不碰设备）；**部署/验证 = 设备侧**（由 App 的 Shizuku/Crash 桥承载，对 OpenCode 暴露成同款标准入口/出口命令）。
+> 不把所有逻辑堆进宇宙 B——部署/验证需要真实设备（Shizuku/logcat），硬塞进编译器反而破坏隔离、失稳。
+
+### 黑盒 1：构建黑盒（宇宙 B）— ✅ 已完成
+- 职责：编译出 APK，绝对稳定、不受其他环境干扰
+- 标准入口：`aidev-build-request --project <p> [--autoInstall --autoLaunch]`
+- 标准出口：`result-<id>.json` → `{ success, apk_path, log_path, message }`
+- 产物路径取自 `init.d/copy-apk.gradle` 的 `AIDev: APK -> <绝对路径>`（标准出口标记），消费方直接读，不再猜路径 / 不再用 mtime 启发式
+- 落地版本：**v117**（含成功时清理上次失败回流产物）
+- **v120 修正（真机暴露的误报）**：构建黑盒不再内置部署——移除 `installAndLaunch` 及 autoInstall/autoLaunch，
+  产物路径优先取 Gradle 标准输出（UP-TO-DATE 时即为有效产物）、其次 `AIDev: APK ->` 副本，且两者都_require 文件真实存在；
+  部署完全交由黑盒2（aidev-deploy）。根因：原先 `installAndLaunch` 在 APK 复制失败/UP-TO-DATE 时仍 `finishAndPublish(true)` 误报成功与拉起。
+
+### 黑盒 2：部署黑盒（设备侧 / Shizuku 桥）— ✅ 已实现（v119），v121 接入面板
+- 职责：把 APK 装到真机并启动，封装 Shizuku 安装、启动、权限等复杂性
+- 标准入口：`aidev-deploy --apk <绝对路径> --pkg <包名> [--launch | --no-launch]`
+- 标准出口：`{ installed, launched, activity, error }`（stdout JSON）
+- 实现：`aidev-deploy.sh`，委托 `aidev-install`（Shizuku 静默安装）+ `aidev-shizuku exec`（resolve-activity / am start），
+  安装后 `pm list packages` 二次校验落地；从构建黑盒成功分支解耦
+- 优先级：中（闭环次之）
+- **v121 接入「服务器中心」面板**：新增 `DeployBridgeService`（与 BuildBridgeService 同构的桥接服务）+
+  `DeployRequestTracker`，在「宇宙 B」页新增「部署到设备」区，提供「安装并拉起」「仅安装」两个按钮。
+  按钮写 `req-<id>.json` → DeployBridgeService 轮询、在 PRoot 内跑 `aidev-deploy`、解析标准出口、
+  把「安装/拉起」两步进度作为单一真源写 `agent-tasks.json`，面板轮询即看到一致结果（与构建按钮完全同款服务一致性）。
+  部署脚本（aidev-deploy/install/shizuku/verify-run）在 DeployBridgeService 启动时从 assets 落地到 `dev-env/bin`，
+  不依赖开终端即可 headless 调用。
+- **v121 构建结果带包名**：BuildBridgeService 用 aapt2 dump badging 解析产物包名，写入 `result-<id>.json` 的 `pkg` 字段，
+  面板部署按钮直接取用，不再靠猜。
+
+### 黑盒 3：运行验证黑盒（设备侧 / Crash 桥）— ✅ 已实现（v118）
+- 职责：窗口内监控目标包是否崩溃/ANR，返回**确定结论**（闭环最脆环节）
+- 标准入口：`aidev-verify-run --pkg <包名> [--window <秒>] [--launch]`
+- 标准出口：`{ pkg, running, crashed, crash_log_path, window_ms, error }`（stdout JSON）
+- 实现：`aidev-verify-run.sh`，委托 `aidev-logcat --watch-crash`（Shizuku 桥）窗口内监听，
+  捕获 FATAL EXCEPTION / ANR / Native crash / Process died 即 `crashed=true` 并落崩溃日志
+- 优先级：高（当前靠"等几秒 + 手查文件"最不可靠）
+
+### 闭环编排（ServerPanel 指令简化为三黑盒循环）— ✅ 整合完成（v119）
+```
+loop:
+  build(project)     → {success, apk_path, log_path, pkg}
+  if !success: 读 log_path 改码; continue
+  deploy(apk_path)   → {installed, launched}
+  verify(pkg)        → {crashed, crash_log_path}
+  if crashed: 读 crash_log_path 改码; continue
+```
+→ ServerPanel「生成修复命令」长 prompt 缩成"循环调用三个黑盒"一句话（v119）。
+→ 「服务器中心」面板按钮（v121）：构建按钮只编译出 APK；「部署到设备」区两个按钮直接调部署黑盒，
+  两者经 DeployBridgeService / BuildBridgeService 统一回写 `agent-tasks.json`，状态完全一致。
+
+### 执行顺序
+黑盒1(✅ v117) → 黑盒3(✅ v118) → 黑盒2(✅ v119) → 整合 ServerPanel 指令(✅ v119) → 逐项编译验证(✅)
+
+### 待真机验证（需设备，无法在此环境跑）
+- 终端重启后新脚本 `aidev-verify-run` / `aidev-deploy` 被强制覆盖生效
+- 端到端：触发失败 → 按钮 → OpenCode 自驱 build→deploy→verify 闭环，直到「构建通过+部署成功+运行不崩」
+- v121 面板部署按钮：点「提交构建请求」→ 出现「编译成功 + APK 路径 + 包名」记录 → 点「安装并拉起」，
+  面板出现 `deploy-<id>` 记录，如实显示「已安装/已拉起/失败原因」；需确认 Shizuku 授权与真机拉起。
+
+---
+
 ## P0 — 阻塞性 / 高收益
 
 ### OPT-01 JDK 192MB 下载多镜像 fallback + 缓存校验
@@ -139,4 +203,6 @@ OPT-01 → OPT-02 → OPT-03 → (编译验证)
 - b94-b99：ServerPanel 全面重设计（3 Tab 导航 + 9 项 Bug 修复 + 确认弹窗 + 日志滚动）+ Tasks Tab 9 项审计修复
 
 ## 已完成（本轮，构建流程优化）
-- （暂无，b100 起）
+- v121：服务器中心面板「部署到设备」按钮（安装并拉起 / 仅安装）接入部署黑盒；新增 DeployBridgeService + DeployRequestTracker，
+  与 BuildBridgeService 同构，统一回写 agent-tasks.json（服务一致性）；构建结果带包名 pkg 供部署直接使用；
+  任务取消逻辑接入 deploy 标签。编译安装成功（b121 / versionName 1.0.0-b121）。

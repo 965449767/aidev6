@@ -168,7 +168,7 @@ object TerminalShellAssets {
     private fun deployOpenCodeCommands(activity: Activity, rootfs: File) {
         val cmdsDir = File(rootfs, "root/.config/opencode/commands").apply { mkdirs() }
         listOf(
-            "aidev-build", "aidev-build-request", "aidev-crash-report", "aidev-apk-info", "aidev-create-android-project",
+            "aidev-build", "aidev-build-request", "aidev-crash-report", "aidev-verify-run", "aidev-deploy", "aidev-apk-info", "aidev-create-android-project",
             "aidev-gen", "aidev-error-why", "aidev-logcat", "aidev-index"
         ).forEach { name ->
             runCatching {

@@ -2,6 +2,7 @@ package com.aidev.six.ui.pages
 
 import android.app.Activity
 import android.content.Context
+import com.aidev.six.BuildConfig
 import android.os.Handler
 import android.view.View
 import android.widget.Toast
@@ -94,6 +95,8 @@ import com.aidev.six.navigation.LocalImeBottomPx
 import com.aidev.six.terminal.EmbeddedVirtualKey
 import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.ui.components.AppChip
+import com.aidev.six.ui.components.MainView
+import com.aidev.six.ui.components.MainViewSwitcher
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -101,6 +104,8 @@ import kotlin.math.roundToInt
 fun TerminalPanel(
     page: EmbeddedTerminalPage,
     visible: Boolean = true,
+    mainView: MainView = MainView.TERMINAL,
+    onSwitchView: (MainView) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalContext.current as Activity
@@ -153,6 +158,8 @@ fun TerminalPanel(
             if (visible) {
                 TerminalTopBar(
                     activity = activity,
+                    mainView = mainView,
+                    onSwitchView = onSwitchView,
                     onNewSession = { page.sessionManager.addSession() },
                     onCopy = {},
                     onPaste = {
@@ -255,6 +262,8 @@ fun TerminalPanel(
 @Composable
 private fun TerminalTopBar(
     activity: Activity,
+    mainView: MainView,
+    onSwitchView: (MainView) -> Unit,
     onNewSession: () -> Unit,
     onCopy: () -> Unit,
     onPaste: () -> Unit,
@@ -269,14 +278,16 @@ private fun TerminalTopBar(
             .padding(start = 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        MainViewSwitcher(
+            current = mainView,
+            onSelect = onSwitchView,
+        )
+        Spacer(modifier = Modifier.weight(1f))
         Text(
-            text = "终端",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            text = BuildConfig.VERSION_NAME,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(end = 8.dp),
         )
         TopBarButton("+", onClick = onNewSession)
         Spacer(modifier = Modifier.width(4.dp))

@@ -105,7 +105,22 @@ EOF
 
 install_silent() {
     echo "→ 静默安装 (Shizuku)..."
-    aidev-shizuku install "$APK_PATH"
+    local out rc
+    set +e
+    out=$(aidev-shizuku install "$APK_PATH" 2>&1)
+    rc=$?
+    set -e
+    echo "$out"
+    if [ "$rc" -ne 0 ]; then
+        echo "错误: Shizuku 安装桥返回非零 (rc=$rc)"
+        exit 1
+    fi
+    if echo "$out" | grep -qiE "Failure|INSTALL_FAILED|error|Exception"; then
+        local reason
+        reason=$(echo "$out" | grep -iE "Failure|INSTALL_FAILED|error|Exception" | head -1)
+        echo "错误: 安装被系统拒绝: $reason"
+        exit 1
+    fi
     echo "✓ 静默安装完成"
 }
 

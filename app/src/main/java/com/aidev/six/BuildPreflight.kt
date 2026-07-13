@@ -1,5 +1,7 @@
 package com.aidev.six
 
+import java.io.File
+
 /**
  * 预构建体检的纯逻辑（无 Android 依赖，可单测）。
  *
@@ -39,6 +41,122 @@ object BuildPreflight {
         }
 
         return Result(text, messages)
+    }
+
+    /**
+     * 源码预检：检查 import 引用、Manifest 组件声明、资源引用。
+     * @param projectDir 项目根目录
+     * @return 告警消息列表（空 = 无问题）
+     */
+    fun inspectSourceCode(projectDir: File): List<String> {
+        val messages = mutableListOf<String>()
+        val srcDir = File(projectDir, "app/src/main")
+        if (!srcDir.isDirectory) return emptyList()
+
+        // 收集所有 Kotlin/Java 源文件中的 import
+        val sourceFiles = srcDir.walkTopDown()
+            .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+            .toList()
+
+        // 收集项目中定义的所有全限定类名
+        val definedClasses = mutableSetOf<String>()
+        for (file in sourceFiles) {
+            val pkg = extractPackage(file.readText())
+            val className = file.nameWithoutExtension
+            if (pkg != null) definedClasses.add("$pkg.$className")
+        }
+
+        // 检查 import 是否引用了不存在的本地类（排除 Android/Java/Kotlin 标准库和第三方库）
+        for (file in sourceFiles) {
+            val content = file.readText()
+            val imports = Regex("""import\s+([\w.]+)""").findAll(content)
+            for (match in imports) {
+                val fqn = match.groupValues[1]
+                // 只检查项目包下的 import
+                val rootPkg = extractPackage(content)?.substringBeforeLast('.')
+                if (rootPkg != null && fqn.startsWith(rootPkg) && fqn !in definedClasses) {
+                    messages += "⚠ 源码预检：${file.name} import 了不存在的类「$fqn」，编译将报 Unresolved reference"
+                }
+            }
+        }
+
+        // 检查 Manifest 中声明的 Activity/Service 是否在源码中存在
+        val manifestFile = File(srcDir, "AndroidManifest.xml")
+        if (manifestFile.isFile) {
+            val manifest = manifestFile.readText()
+            val componentPattern = Regex("""android:name="(\.[\w.]+)"""")
+            for (match in componentPattern.findAll(manifest)) {
+                val name = match.groupValues[1]
+                if (name.startsWith(".")) {
+                    val manifestPkg = Regex("""package="([\w.]+)"""").find(manifest)?.groupValues?.get(1)
+                    if (manifestPkg != null) {
+                        val fqn = manifestPkg + name
+                        if (fqn !in definedClasses) {
+                            messages += "⚠ 源码预检：Manifest 声明了组件「$fqn」但源码中未找到对应类"
+                        }
+                    }
+                }
+            }
+        }
+
+        // 检查资源引用：扫描 layout XML 中的 @color/@drawable/@string/@dimen/@style 引用
+        messages.addAll(inspectResourceRefs(projectDir))
+
+        return messages
+    }
+
+    /**
+     * 扫描 layout XML 中的资源引用，检查是否在 res/values/ 中定义。
+     * 只检查 @color/、@string/ 两类（最常见的 vibe coding 缺失资源）。
+     */
+    private fun inspectResourceRefs(projectDir: File): List<String> {
+        val messages = mutableListOf<String>()
+        val srcDir = File(projectDir, "app/src/main")
+        val resDir = File(srcDir, "res")
+        if (!resDir.isDirectory) return emptyList()
+
+        // 1. 收集 res/values/ 中已定义的资源名
+        val definedResources = mutableMapOf<String, MutableSet<String>>() // type -> names
+        val valuesDir = File(resDir, "values")
+        if (valuesDir.isDirectory) {
+            for (f in valuesDir.listFiles()?.filter { it.extension == "xml" } ?: emptyList()) {
+                val content = f.readText()
+                // <string name="app_name">...</string>
+                Regex("""<(string|color|dimen|style|drawable|integer|bool|array|attr)\s+name="(\w+)"""")
+                    .findAll(content).forEach { match ->
+                        definedResources.getOrPut(match.groupValues[1]) { mutableSetOf() }.add(match.groupValues[2])
+                    }
+                // <style name="AppTheme" ...>（style 可能没有 type 属性）
+                Regex("""<style\s+name="(\w+)"""").findAll(content).forEach { match ->
+                    definedResources.getOrPut("style") { mutableSetOf() }.add(match.groupValues[1])
+                }
+            }
+        }
+
+        // 2. 扫描 layout XML 中的 @type/name 引用
+        val layoutDir = File(resDir, "layout")
+        if (layoutDir.isDirectory) {
+            for (f in layoutDir.listFiles()?.filter { it.extension == "xml" } ?: emptyList()) {
+                val content = f.readText()
+                // @color/calc_background, @string/app_name, @drawable/icon
+                Regex("""@(\w+)/(\w+)""").findAll(content).forEach { match ->
+                    val type = match.groupValues[1]
+                    val name = match.groupValues[2]
+                    // 只检查我们已收集的资源类型
+                    if (type in definedResources && name !in definedResources[type]!!) {
+                        messages += "⚠ 资源预检：${f.name} 引用了 @type/$name，但 res/values/ 中未定义该资源，编译将报 not found"
+                    }
+                }
+            }
+        }
+
+        return messages
+    }
+
+    private fun extractPackage(content: String): String? {
+        val match = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
+            .find(content) ?: return null
+        return match.groupValues[1]
     }
 
     /**

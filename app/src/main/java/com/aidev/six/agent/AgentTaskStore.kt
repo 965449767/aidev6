@@ -1,6 +1,9 @@
 package com.aidev.six.agent
 
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 internal enum class AgentTaskStatus {
     PENDING,
@@ -74,39 +77,85 @@ internal object AgentTaskStore {
     private const val LIST_SEPARATOR = "\u001E"
     private const val STEP_SEPARATOR = "\u001D"
     private const val STEP_FIELD_SEPARATOR = "\u001C"
+    private const val DEBOUNCE_MS = 2000L
+
+    // 内存缓存：file.absolutePath → tasks
+    private val cache = ConcurrentHashMap<String, List<AgentTaskRecord>>()
+    // 脏标记：哪些文件有未落盘的修改
+    private val dirty = ConcurrentHashMap.newKeySet<String>()
+    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "AgentTaskStore-debounce").apply { isDaemon = true }
+    }
 
     fun loadState(file: File): List<AgentTaskRecord> {
+        val key = file.absolutePath
+        cache[key]?.let { return it }
         if (!file.exists()) return emptyList()
         return runCatching {
             file.readLines()
                 .filter(String::isNotBlank)
                 .mapNotNull(::parseTaskLine)
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()).also { cache[key] = it }
     }
 
     fun saveState(file: File, tasks: List<AgentTaskRecord>) {
+        val key = file.absolutePath
+        cache[key] = tasks
+        dirty.remove(key)
         file.parentFile?.mkdirs()
         file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
     }
 
     fun upsertTask(file: File, task: AgentTaskRecord, limit: Int = 12): List<AgentTaskRecord> {
-        val existing = loadState(file).toMutableList()
+        val key = file.absolutePath
+        val existing = (cache[key] ?: loadState(file).toMutableList()).toMutableList()
         existing.removeAll { it.definition.id == task.definition.id }
         existing.add(0, task)
         val trimmed = existing.take(limit)
-        saveState(file, trimmed)
+        cache[key] = trimmed
+        scheduleDebounce(file)
         return trimmed
     }
 
     fun removeTask(file: File, id: String): List<AgentTaskRecord> {
-        val remaining = loadState(file).filterNot { it.definition.id == id }
-        saveState(file, remaining)
+        val key = file.absolutePath
+        val existing = (cache[key] ?: loadState(file)).toMutableList()
+        val remaining = existing.filterNot { it.definition.id == id }
+        cache[key] = remaining
+        scheduleDebounce(file)
         return remaining
     }
 
     fun clearTasks(file: File): List<AgentTaskRecord> {
-        saveState(file, emptyList())
+        val key = file.absolutePath
+        cache[key] = emptyList()
+        scheduleDebounce(file)
         return emptyList()
+    }
+
+    /** 强制将所有脏数据立即写盘，用于进程退出前调用。 */
+    fun flush() {
+        for (key in dirty.toList()) {
+            val tasks = cache[key] ?: continue
+            val file = File(key)
+            file.parentFile?.mkdirs()
+            file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+        }
+        dirty.clear()
+    }
+
+    private fun scheduleDebounce(file: File) {
+        val key = file.absolutePath
+        dirty.add(key)
+        scheduler.schedule({
+            if (!dirty.contains(key)) return@schedule
+            val tasks = cache[key] ?: return@schedule
+            runCatching {
+                file.parentFile?.mkdirs()
+                file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+            }
+            dirty.remove(key)
+        }, DEBOUNCE_MS, TimeUnit.MILLISECONDS)
     }
 
     private fun serializeTask(task: AgentTaskRecord): String {

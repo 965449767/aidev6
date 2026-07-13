@@ -22,17 +22,20 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         resultDir = File(bridgeDir, RESULT_DIR).also { it.mkdirs() }
     }
 
-    override fun poll() {
-        val reqDir = requestDir ?: return
-        val resDir = resultDir ?: return
+    override fun poll(): Boolean {
+        val reqDir = requestDir ?: return false
+        val resDir = resultDir ?: return false
+        var hadWork = false
         reqDir.listFiles()?.filter {
             (it.name.startsWith("log_") || it.name.startsWith("camera_") ||
              it.name.startsWith("exec_") || it.name.startsWith("hb_")) &&
             !it.name.endsWith(".processing")
         }?.forEach { file ->
             val claimed = claimFile(reqDir, file) ?: return@forEach
+            hadWork = true
             scope?.launch { handleRequest(reqDir, resDir, claimed) }
         }
+        return hadWork
     }
 
     private suspend fun handleRequest(requestDir: File, resultDir: File, processingFile: File) {
@@ -47,7 +50,14 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
             parts[0] to if (parts.size > 1) parts[1] else ""
         }
 
-        val type = fields["TYPE"] ?: ""
+        var type = fields["TYPE"] ?: ""
+        if (type.isBlank()) {
+            // 请求文件缺 TYPE 时按文件名兜底，避免被误判为 log 请求而返回 logcat（假成功）
+            type = when {
+                origName.startsWith("exec_") || origName.startsWith("hb_") -> "exec"
+                else -> ""
+            }
+        }
         AIDevLogger.i("ShizukuBridge", "Processing: type=$type, file=$origName")
 
         when (type) {
@@ -58,7 +68,7 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
     }
 
     private val ALLOWED_COMMAND_PREFIXES = listOf(
-        "pm ", "input ", "svc ", "dumpsys ", "cmd "
+        "pm ", "input ", "svc ", "dumpsys ", "cmd ", "cp ", "am ", "monkey "
     )
 
     private fun isCommandAllowed(command: String): Boolean {

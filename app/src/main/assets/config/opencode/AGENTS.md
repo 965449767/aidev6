@@ -38,6 +38,28 @@
 - 只产 **debug** APK（`assembleDebug`），无需配签名。
 - 构建日志会导出到手机 `/sdcard/AIDev/last-build.log`，失败时先看它定位根因。
 
+### ⚠ 必须用「执行命令」方式触发构建（铁律）
+
+当用户要求你"构建 / 编译 / 打包 / 出 APK / 安装到手机"时，**你必须在终端真正执行下面的 shell 命令**，而**不是**只在回复里写"已交给宇宙B构建""正在为你构建"这类话。
+
+```sh
+aidev-build-request --project /workspace/<应用名>
+```
+
+正确做法：
+```
+> 我帮你提交构建请求。
+（执行）aidev-build-request --project /workspace/MyApp
+（输出）已提交构建请求：project=MyApp install=true launch=true (id=1700000000000)
+```
+
+错误做法（仅文本、不执行，导致 App 里完全看不到进度）：
+```
+> 已交给宇宙B构建，请稍候。   ← 这条等于没做，宿主不会收到任何请求
+```
+
+执行后请确认输出包含"已提交构建请求"一行；只有出现这行，宿主的 BuildBridge 才会认领并在聊天里实时显示"准备→编译→安装→拉起"进度。若你不确定项目名，先用 `ls /workspace` 列出可用项目。
+
 ## 代码约定
 
 - 包名小写、`com.xxx.yyy` 形式；`namespace`、`applicationId`、源码 `package`、目录结构必须一致。

@@ -92,7 +92,7 @@ class BuildRequestTrackerTest {
 
         invokePublish(tracker, report, tempStateFile())
 
-        val loopFile = File(filesDir, "home/workspace/.aidev-loop/crash-${report.nameWithoutExtension}.json")
+        val loopFile = File(filesDir, "home/.aidev-loop/crash-${report.nameWithoutExtension}.json")
         assertTrue(loopFile.exists(), "应在共享工作区写出崩溃回流文件")
         val payload = JSONObject(loopFile.readText())
         assertEquals("self-evolution/crash", payload.optString("type"))

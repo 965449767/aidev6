@@ -15,7 +15,7 @@ import java.util.concurrent.Executors
  *  1) 确保 BuildBridge / CrashReportBridge 已在轮询（解决 B3：不进终端也能跑）。
  *  2) 写入 req-<id>.json（与 aidev-build-request.sh 同格式）。
  *  3) 立即在任务流中插入一条 RUNNING 记录，并轮询 BuildBridge 的
- *     logs/build-<id>.log（实时日志）与 result-<id>.json（最终结果），
+ *     /sdcard/AIDev/logs/build-<project>-<id>-*.log（实时日志）与 result-<id>.json（最终结果），
  *     持续回调刷新 UI（解决 B1/B2/B4）。
  */
 internal class BuildRequestTracker {
@@ -66,7 +66,7 @@ internal class BuildRequestTracker {
             val record = AgentTaskRecord(
                 definition = AgentTaskDefinition(
                     id = "build-$id", name = "构建 $project",
-                    description = "宇宙 B 编译 → 静默安装 → 自动拉起",
+                    description = "宇宙 B 编译 → 产出 APK（安装/拉起由 aidev-deploy 独立黑盒接力）",
                     command = "aidev-build-request --project $project",
                     workingDirectory = PathConfig.workspaceDir(appCtx).absolutePath,
                     tags = listOf("build", "self-evolution")
@@ -84,7 +84,7 @@ internal class BuildRequestTracker {
 
         executor.execute {
             val resultFile = File(bridgeDir, "result-$id.json")
-            val logFile = File(bridgeDir, "logs/build-$id.log")
+            val logsDir = PathConfig.logsDir(appCtx)
             val timeoutMs = 20 * 60 * 1000L
             val deadline = System.currentTimeMillis() + timeoutMs
 
@@ -92,11 +92,16 @@ internal class BuildRequestTracker {
                 if (resultFile.isFile) {
                     val result = runCatching { JSONObject(resultFile.readText()) }.getOrNull()
                     val success = result?.optBoolean("success", false) ?: false
-                    val logText = runCatching { if (logFile.isFile) logFile.readText() else "" }.getOrDefault("")
-                    // 闭环最后一环：若成功安装并拉起，等待崩溃回流报告并作为独立任务呈现（F04）
+                    // 从 logsDir 子目录中查找最新的 build.log（覆盖模式，每次只有最新一条）
+                    val logFile = logsDir.listFiles()?.mapNotNull { sub ->
+                        File(sub, "build.log").takeIf { it.isFile }
+                    }?.maxByOrNull { it.lastModified() }
+                    val logText = runCatching { logFile?.readText() ?: "" }.getOrDefault("")
                     if (success && logText.contains("已拉起")) {
+                        // 闭环最后一环：若成功安装并拉起，等待崩溃回流报告并作为独立任务呈现（F04）
                         watchCrashReport(home, startedAt, stateFile, autonomous, onUpdate)
                     }
+                    // 构建失败回流已由 BuildBridgeService.finishAndPublish() 直接处理，无需此处重复
                     return@execute
                 }
                 Thread.sleep(800)
@@ -104,10 +109,6 @@ internal class BuildRequestTracker {
         }
     }
 
-    /**
-     * 构建拉起后，等待 CrashReportBridge 生成的崩溃回流报告（.aidev-mcp/crash-*.json），
-     * 并作为独立任务记录呈现在同一任务流中，闭合「运行 → 崩溃 → 回流」这一环（F04）。
-     */
     /**
      * 构建拉起后，等待 CrashReportBridge 生成的崩溃回流报告（.aidev-mcp/crash-*.json），
      * 并作为独立任务记录呈现在同一任务流中，闭合「运行 → 崩溃 → 回流」这一环（F04）。
@@ -139,7 +140,7 @@ internal class BuildRequestTracker {
             // 已修复、或非自治、或已达上限 → 闭环收敛，停止
             if (!autonomous || fixed || iterations >= MAX_AUTO_ITERATIONS) return
             iterations++
-            // 自治：崩溃未修复 → 自动触发下一轮「宇宙B 编译 → 安装 → 拉起 → 抓崩溃」
+            // 自治：崩溃未修复 → OpenCode 接力（aidev-deploy 安装拉起 + aidev-verify-run 抓崩溃），并触发下一轮构建
             requestRebuild(appContext ?: return, "MyAndroidProject", stateFile, autonomous, onUpdate)
             rebuildAt = System.currentTimeMillis()
         }
@@ -193,13 +194,13 @@ internal class BuildRequestTracker {
     }
 
     /**
-     * 把崩溃回流写到 `home/workspace/.aidev-loop/crash-<id>.json`（G01）。
+     * 把崩溃回流写到 `home/.aidev-loop/crash-<id>.json`（G01）。
      * 这是「宇宙 A 反向驱动」的入口文件：OpenCode 读它 → 改码 → 调 [requestRebuild] 触发下一轮构建。
      */
     private fun writeLoopCrash(reportFile: File, source: JSONObject, crashed: Boolean, pkg: String, stack: List<String>) {
         val ctx = appContext ?: return
         runCatching {
-            val loopDir = File(PathConfig.workspaceDir(ctx), ".aidev-loop").apply { mkdirs() }
+            val loopDir = File(PathConfig.aidevHome(ctx), ".aidev-loop").apply { mkdirs() }
             val out = File(loopDir, "crash-${reportFile.nameWithoutExtension}.json")
             val payload = JSONObject().apply {
                 put("type", "self-evolution/crash")
@@ -216,10 +217,11 @@ internal class BuildRequestTracker {
         }
     }
 
-    /**
-     * 宇宙 A（OpenCode）改完码后调用，触发下一轮「宇宙 B 编译 → 安装 → 拉起 → 抓崩溃」（G03）。
-     * 等价于在「服务器中心」点一次「提交构建请求」，但由闭环自动发起。
-     */
+/**
+ * 宇宙 A（OpenCode）改完码后调用，触发下一轮构建（G03）。
+ * 等价于在「服务器中心」点一次「提交构建请求」，但由闭环自动发起；
+ * 安装/拉起/抓崩溃由 OpenCode 经 aidev-deploy + aidev-verify-run 独立黑盒接力。
+ */
     fun requestRebuild(
         context: Context,
         project: String = "MyAndroidProject",

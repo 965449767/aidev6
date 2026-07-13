@@ -445,3 +445,27 @@ aidev-install app/build/outputs/apk/debug/app-debug.apk                         
 - `current-task.md`：重写为构建流程优化 14 项（b100 起）
 - `session-state.json`：phase 改为 `build-pipeline-optimization`，frozen_tasks 冻结所有其他任务
 - 所有其他任务（Phase I/ServerPanel/Tasks Tab audit/Phase H/Phase G）一律冻结
+
+## 2026-07-13 — 构建/部署/验证三黑盒解耦 + 面板部署按钮（v117-v121）
+
+### Summary
+
+重构自我进化闭环：宇宙 B = 编译黑盒（只出 APK + pkg），部署/验证拆成独立设备侧黑盒；OpenCode 经三黑盒循环自驱「改码→构建→部署→验证」。废弃 aidev-self-evolution 后台守护。用户要求「服务器中心」面板提供独立的「安装/拉起」控制，底层由部署黑盒驱动且保证服务一致性（单一真源 agent-tasks.json）。
+
+### 关键改动
+
+- v120：删除 BuildBridgeService.installAndLaunch，构建黑盒不再谎报安装/拉起，result 只产出 APK（真存在）+ pkg。
+- v121：新增 DeployBridgeService（同构 BuildBridgeService），轮询 `.aidev-deploy-bridge/req-<id>.json`，PRoot(agent rootfs) 内跑 aidev-deploy，解析标准出口，单一真源写 agent-tasks.json；DeployRequestTracker 写 req；ServerPanel「宇宙 B」新增「部署到设备」区（安装并拉起 / 仅安装）；SessionManager 启动 DeployBridgeService；部署脚本从 assets 落地 dev-env/bin（headless 可用）；BuildBridgeService 用 aapt2 解析 pkg，result 带 pkg/project。
+
+### 状态变更
+
+- current-task.md：黑盒2 补 v121 面板接入；闭环编排补面板按钮说明；待验证补 v121 步骤。
+- docs/decisions.md：新增「三黑盒解耦 + 部署经 DeployBridgeService 接入面板」决策。
+- docs/error-journal.md：新增 v120/v121 解耦+面板条目；新增 aidev-install exit non-zero 待修条目。
+- docs/verification.md：新增 Phase I 面板部署黑盒验证（本环境可验 + 真机冻结）。
+- session-state.json：phase → self-evolution-build-deploy-decouple；completed_phases 补 v117-v121。
+- 编译安装成功：versionName 1.0.0-b121，APK /sdcard/AIDev/app-debug.apk。
+
+### 下一步
+
+修真机 aidev-deploy 安装失败（aidev-install exit non-zero）：排查 Shizuku 授权 / PRoot 内 aidev-install 路径依赖 / APK 路径设备侧可见性。

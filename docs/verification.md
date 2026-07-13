@@ -117,5 +117,25 @@ Do not initialize Git or create commits without explicit user approval.
 - [ ] B9：parseCrash 误报 / 截断率
 - [ ] 设备开机后 OpenCode `serve` + 守护自启（目前需手动起）
 
-判据：以上默认冻结，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
+ 判据：以上默认冻结，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
+
+## Phase I — 面板部署黑盒（DeployBridgeService）验证
+
+「宇宙 B → 部署到设备」按钮（v121）的验证分两层。
+
+### 本环境可验（已自动化 / 可模拟）
+
+1. **构建**：`assembleDebug`（aapt2 覆盖）—— 产物生成且 result json 含 `pkg`（aapt2 dump badging 解析）。
+2. **契约模拟**（无真机）：手投 `home/.aidev-deploy-bridge/req-<id>.json` → 确认 `DeployBridgeService` 轮询、写 `agent-tasks.json` 单一真源、面板轮询读到该记录。
+3. **脚本落地**：`DeployBridgeService.onStart()` 后确认 `dev-env/bin` 含 `aidev-deploy`/`aidev-install`/`aidev-shizuku`/`aidev-verify-run` 且可执行（headless 可用）。
+
+### 必须真机 / Shizuku（冻结为待办，非漏做）
+
+- [ ] 「仅安装」：点按 → `aidev-deploy --no-launch` → `installed:true`、`launched:false`、`error:null`，设备已装该包（pm list 校验）
+- [ ] 「安装并拉起」：点按 → `aidev-deploy --launch` → `installed:true`、`launched:true`、回带 `activity`
+- [ ] 取消：部署进行中点「取消」→ `DeployBridgeService.cancel` 生效，状态回到空闲
+- [ ] 安装失败可读根因：`aidev-install` exit non-zero 时面板显示 `error` 文本（非「假成功」）
+
+判据：安装失败路径（见 `error-journal.md` 2026-07-13 aidev-install exit non-zero）需先解决再解冻「仅安装」实战验收。
+
 

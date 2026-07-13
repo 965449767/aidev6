@@ -172,7 +172,29 @@ Introduce `MenuBottomSheet` (a custom bottom-sheet Dialog using the project's de
 
 ### Consequences
 
-- `AlertDialog` is still retained for content dialogs (`detail()`, `sliderDialog()`, `themePresetDialog()`, `backgroundModeDialog()`, `devCheckAndRepair()`, etc.) because they need custom views or single-choice items.
+- `AlertDialog` is still retained for content dialogs (`detail()`, `sliderDialog()`, `themePresetDialog()`, `devCheckAndRepair()`, etc.) because they need custom views or single-choice items.
 - `MenuBottomSheet` is self-contained and reusable for other pages if needed.
 - Each menu item now has a title and an optional description, improving UX.
 - Future bottom-sheet enhancements should be made in `MenuBottomSheet.kt` to keep `EmbeddedSettingsPage` focused on business logic.
+
+## 2026-07-13 - 三黑盒解耦 + 部署经 DeployBridgeService 接入面板
+
+### Context
+
+构建黑盒原先把"编译→安装→拉起"揉在一起，且用 fire-and-forget 导致误报成功（见 error-journal 2026-07-11 安装/拉起误报）。用户要求「服务器中心」面板有独立按钮控制安装/拉起，底层由部署黑盒提供，且保证与构建一致的**服务一致性**（单一真源 `agent-tasks.json`）。
+
+### Decision
+
+- 构建黑盒只产出 APK（`apk_path`）+ 包名（`pkg`），部署完全交由独立的 `aidev-deploy` 黑盒（黑盒2）。
+- 「服务器中心 → 宇宙 B」新增「部署到设备」区：「安装并拉起」「仅安装」两个按钮，写入 `home/.aidev-deploy-bridge/req-<id>.json`。
+- 新增 `DeployBridgeService`（与 `BuildBridgeService` 同构的 `BridgeService` 子类）：轮询该目录，在 PRoot（agent rootfs）内跑 `aidev-deploy`，解析其标准出口 JSON（`installed`/`launched`/`activity`/`error`），把「安装/拉起」两步进度作为单一真源写 `agent-tasks.json`；面板轮询即看到一致结果。
+- 部署脚本（`aidev-deploy`/`aidev-install`/`aidev-shizuku`/`aidev-verify-run`）在 `DeployBridgeService.onStart()` 时从 assets 落地到 `dev-env/bin`，headless 可用（不依赖开终端）。
+- 构建结果 `result-<id>.json` 新增 `pkg` 字段（`aapt2 dump badging` 解析产物包名），部署按钮直接取用，不再靠猜。
+- 任务取消逻辑接入 `deploy` 标签（`DeployBridgeService.cancel`）。
+
+### Consequences
+
+- 面板「提交构建请求」只编译出 APK，**不再谎报安装/拉起**（旧记录缓存会自然被新记录覆盖）。
+- 部署状态与构建状态同样经 `agent-tasks.json` 回流，闭环编排一致（黑盒1/2/3 三黑盒循环）。
+- 改动文件：`DeployBridgeService.kt`（新增）、`DeployRequestTracker.kt`（新增）、`BuildBridgeService.kt`（产物解析 pkg + result 带 project/pkg）、`ServerPanel.kt`（部署区 + lastBuildArtifact）、`SessionManager.kt`（启动 DeployBridgeService）。
+- 落地版本：**v121**（versionName 1.0.0-b121）。

@@ -1,6 +1,7 @@
 package com.aidev.six.agent
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -88,5 +89,59 @@ class AgentTaskStoreTest {
         assertEquals("旧任务", loaded.definition.name)
         assertEquals(AgentTaskStatus.SUCCEEDED, loaded.status)
         assertEquals(0, loaded.steps.size)
+    }
+
+    @Test
+    fun upsertTaskUsesCacheAndFlushWritesToDisk() {
+        val tempDir = Files.createTempDirectory("agent-task-cache").toFile()
+        val stateFile = File(tempDir, "tasks.json")
+
+        val task1 = AgentTaskRecord(
+            definition = AgentTaskDefinition(
+                id = "t1", name = "任务1", description = "desc",
+                command = "ls", workingDirectory = "/tmp"
+            ),
+            status = AgentTaskStatus.RUNNING
+        )
+
+        // upsertTask 应立即更新缓存，loadState 从缓存读取
+        val result = AgentTaskStore.upsertTask(stateFile, task1)
+        assertEquals(1, result.size)
+        assertEquals("任务1", result[0].definition.name)
+
+        // 立即 loadState 应从缓存返回（无需等 debounce）
+        val loaded = AgentTaskStore.loadState(stateFile)
+        assertEquals(1, loaded.size)
+
+        // flush 后磁盘应有数据
+        AgentTaskStore.flush()
+        assertTrue("flush 后文件应存在", stateFile.exists())
+        assertTrue("flush 后文件应非空", stateFile.length() > 0)
+
+        tempDir.deleteRecursively()
+    }
+
+    @Test
+    fun clearTasksUpdatesCache() {
+        val tempDir = Files.createTempDirectory("agent-task-clear").toFile()
+        val stateFile = File(tempDir, "tasks.json")
+
+        val task = AgentTaskRecord(
+            definition = AgentTaskDefinition(
+                id = "t1", name = "任务", description = "desc",
+                command = "ls", workingDirectory = "/tmp"
+            ),
+            status = AgentTaskStatus.SUCCEEDED
+        )
+        AgentTaskStore.saveState(stateFile, listOf(task))
+        assertEquals(1, AgentTaskStore.loadState(stateFile).size)
+
+        AgentTaskStore.clearTasks(stateFile)
+        assertEquals(0, AgentTaskStore.loadState(stateFile).size)
+
+        AgentTaskStore.flush()
+        assertTrue("clearTasks 后 flush 文件应为空", stateFile.readText().isBlank())
+
+        tempDir.deleteRecursively()
     }
 }

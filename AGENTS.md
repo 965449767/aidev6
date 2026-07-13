@@ -11,8 +11,14 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 - Gradle 9.1.0 / AGP 9.0.1 / Kotlin 2.0.21 / Java 17
 - Aliyun Maven mirrors (`settings.gradle.kts`), no VPN needed
 - Modern AGP setup with built-in Kotlin and new DSL-compatible configuration
-- Debug APK → `app/build/outputs/apk/debug/app-debug.apk`, auto-copied to `/sdcard/AIDev/`
+- Debug APK → `app/build/outputs/apk/debug/app-debug.apk`, auto-copied to `/sdcard/AIDev/`（`/sdcard` 即 `/storage/emulated/0`）
 - Build counter auto-increments in `app/build-counter.properties`
+
+## 交付规则（APK 安装）
+
+- **禁止自动安装 APK**。构建完成后，只把产物复制到 `/storage/emulated/0/AIDev/`（等价于 `/sdcard/AIDev/`）由用户自行安装。
+- 除非用户**主动要求**，否则一律不要执行安装（不要用 aidev-install / installapk / am start 安装器 / 任何方式触发安装）。
+- 验证类操作也只把 APK 放到上述目录，安装动作交给用户。
 - Optional `downloadCurlMusl` task downloads static curl-musl for arm64 into `assets/tools/`
 
 ## Testing (run in order)

@@ -1,12 +1,13 @@
 #!/bin/bash
 # aidev-build: 智能 Android 构建包装
 # 自动选择最轻验证方式，处理 AAPT2 死锁，诊断构建错误
-# 用法: aidev-build [--full|--test|--compile] [--clean]
+# 用法: aidev-build [--full|--test|--compile] [--clean] [--no-deploy]
 
 set -eo pipefail
 
 MODE="auto"
 CLEAN=false
+NO_DEPLOY=false
 ARGS=""
 
 for arg in "$@"; do
@@ -15,6 +16,7 @@ for arg in "$@"; do
         --test)   MODE="test"   ;;
         --compile) MODE="compile" ;;
         --clean)  CLEAN=true    ;;
+        --no-deploy) NO_DEPLOY=true ;;
         --help|-h)
             echo "用法: aidev-build [选项]"
             echo ""
@@ -23,6 +25,7 @@ for arg in "$@"; do
             echo "  --test       编译 + 单元测试"
             echo "  --compile    仅 kotlin 编译"
             echo "  --clean      先 clean 再构建"
+            echo "  --no-deploy  仅构建（部署已拆为独立黑盒 aidev-deploy，本脚本不再安装/启动）"
             echo "  --help       显示此帮助"
             echo ""
             echo "模式选择:"
@@ -30,11 +33,15 @@ for arg in "$@"; do
             echo "  改完跑测试     → --test"
             echo "  UI/首次/依赖变更 → --full"
             echo ""
+            echo "部署（独立黑盒）:"
+            echo "  本脚本只负责构建出产物；安装+启动请用 aidev-deploy --apk <路径> --pkg <包名>。"
+            echo "  闭环：build → deploy → verify(aidev-verify-run)。"
+            echo ""
             echo "示例:"
-            echo "  aidev-build               # 自动选最轻方式"
+            echo "  aidev-build               # 自动选最轻方式，仅构建"
             echo "  aidev-build --full        # 全量编译"
             echo "  aidev-build --test        # 编译 + 单元测试"
-            echo "  aidev-build --clean       # clean 后增量编译"
+            echo "  aidev-deploy --apk app/build/outputs/apk/debug/app-debug.apk --pkg <包名>   # 部署"
             exit 0
             ;;
         *) ARGS="$ARGS $arg" ;;
@@ -150,9 +157,10 @@ if [ $BUILD_EXIT -eq 0 ]; then
         APK_SIZE_KB=$((APK_SIZE / 1024))
         echo "  BUILD SUCCESSFUL (${BUILD_MIN}m${BUILD_SEC}s)"
         echo "  APK: $APK_PATH (${APK_SIZE_KB}KB)"
-        echo "  Install: cp $APK_PATH /sdcard/ && installapk /sdcard/app-debug.apk"
+        echo "  → 部署请用独立黑盒: aidev-deploy --apk $APK_PATH --pkg <包名>"
     else
         echo "  BUILD SUCCESSFUL (${BUILD_MIN}m${BUILD_SEC}s)"
+        echo "  ⚠ 未找到产物 $APK_PATH（构建可能未真正产出 APK）"
     fi
 
     if [ "$MODE" = "test" ] || [ "$MODE" = "auto" ]; then
@@ -197,6 +205,43 @@ else
 
     echo ""
     echo "  完整日志: $BUILD_LOG"
+
+    # ── 回流：写入 .aidev-loop，供宇宙 A（OpenCode）自动/手动修复 ──
+    LOOP_HOME="${AIDEV_HOME:-/host-home}"
+    LOOP_DIR="$LOOP_HOME/.aidev-loop"
+    mkdir -p "$LOOP_DIR" 2>/dev/null || true
+    BF_PROJECT=$(basename "$PWD")
+    BF_ID="term-$(date +%s)"
+    BF_ERR_JSON=""
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        esc=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        if [ -z "$BF_ERR_JSON" ]; then BF_ERR_JSON="\"$esc\""; else BF_ERR_JSON="$BF_ERR_JSON, \"$esc\""; fi
+    done <<< "$(grep -E 'error:|FAILED|What went wrong|Exception in' "$BUILD_LOG" 2>/dev/null | head -20)"
+    BF_TAIL=$(tail -60 "$BUILD_LOG" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+
+    # 把【完整失败日志】落到稳定、不可变路径，避免被后续构建覆盖 build.log 而读到旧日志
+    BF_LOGS_DIR="/sdcard/AIDev/logs/$BF_PROJECT"
+    mkdir -p "$BF_LOGS_DIR" 2>/dev/null || true
+    cp "$BUILD_LOG" "$BF_LOGS_DIR/last-build-failure.log" 2>/dev/null || true
+    cp "$BUILD_LOG" "$LOOP_DIR/build-failure-$BF_ID.log" 2>/dev/null || true
+
+    cat > "$LOOP_DIR/build-failure-$BF_ID.json" 2>/dev/null <<JSON || true
+{
+  "type": "self-evolution/build-failure",
+  "id": "$BF_ID",
+  "project": "$BF_PROJECT",
+  "time": $(date +%s)000,
+  "failed": true,
+  "errors": [${BF_ERR_JSON}],
+  "hints": [],
+  "log_tail": "$BF_TAIL",
+  "log_file": "$LOOP_DIR/build-failure-$BF_ID.log",
+  "fix_applied": false
+}
+JSON
+    echo "  已写入构建失败回流: $LOOP_DIR/build-failure-$BF_ID.json"
+    echo "  完整失败日志: $BF_LOGS_DIR/last-build-failure.log"
 fi
 
 echo "═══ 日志: $BUILD_LOG ═══"

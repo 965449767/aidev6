@@ -27,8 +27,10 @@ import com.aidev.six.ShellActivity.Companion.TAB_SERVER
 import com.aidev.six.ShellActivity.Companion.TAB_SETTINGS
 import com.aidev.six.ShellActivity.Companion.TAB_TERMINAL
 import com.aidev.six.ui.components.EdgeSwipePanel
+import com.aidev.six.ui.components.MainView
 import com.aidev.six.ui.components.PanelIndicatorDots
 import com.aidev.six.ui.components.PanelType
+import com.aidev.six.ui.pages.ChatPanel
 import com.aidev.six.ui.pages.KnowledgeBasePanel
 import com.aidev.six.ui.pages.ServerPanel
 import com.aidev.six.ui.pages.SettingsPanel
@@ -47,6 +49,8 @@ fun AppNavHost(
     val imeActive = LocalImeBottomPx.current > 0
 
     var currentPanel by remember { mutableStateOf<PanelType?>(null) }
+    var mainView by remember { mutableStateOf(MainView.TERMINAL) }
+    val chatState = remember { com.aidev.six.ui.pages.ChatUiState() }
 
     Column(
         modifier = Modifier
@@ -56,7 +60,7 @@ fun AppNavHost(
     ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             EdgeSwipePanel(
-                enabled = true,
+                enabled = mainView == MainView.TERMINAL,
                 currentPanel = currentPanel,
                 onPanelOpen = { currentPanel = it },
                 onPanelClose = { currentPanel = null },
@@ -82,9 +86,20 @@ fun AppNavHost(
                 content = {
                     TerminalPanel(
                         page = terminalPage,
-                        visible = true,
+                        visible = mainView == MainView.TERMINAL,
+                        mainView = mainView,
+                        onSwitchView = { mainView = it },
                         modifier = Modifier.fillMaxSize(),
                     )
+
+                    if (mainView == MainView.CHAT) {
+                        ChatPanel(
+                            state = chatState,
+                            mainView = mainView,
+                            onSwitchView = { mainView = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
 
                     AnimatedContent(
                         targetState = currentTab,

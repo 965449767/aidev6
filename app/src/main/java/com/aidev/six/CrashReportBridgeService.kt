@@ -29,45 +29,80 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         File(homeDir, MCP_DIR).mkdirs()
     }
 
-    override fun poll() {
-        val reqDir = requestDir ?: return
+    override fun poll(): Boolean {
+        val reqDir = requestDir ?: return false
+        var hadWork = false
         reqDir.listFiles()?.filter {
             it.name.endsWith(".json") && !it.name.endsWith(".processing") && !it.name.startsWith("result-")
         }?.forEach { file ->
             val claimed = claimFile(reqDir, file) ?: return@forEach
+            hadWork = true
             scope?.launch { handleRequest(claimed) }
         }
+        return hadWork
     }
 
     private suspend fun handleRequest(processingFile: File) {
+        val ctx = appCtx ?: run { processingFile.delete(); return }
+        val logsDir = PathConfig.logsDir(ctx)
+        // 先写入临时位置，解析出 pkg 后移到 logs/<pkg>/crash.log
+        val logWriter = LogHub.openCrashLog(logsDir, processingFile.nameWithoutExtension)
+        val timer = LogHub.StepTimer(logWriter)
+
+        timer.beginStep("解析请求")
+        logWriter.append("目标文件: ${processingFile.name}")
+
         val content = runCatching { processingFile.readText() }
-            .onFailure { AIDevLogger.e("CrashReportBridge", "read request failed", it) }
+            .onFailure { logWriter.append("✗ 读取请求文件失败: ${it.message}") }
             .getOrNull() ?: run { processingFile.delete(); return }
 
         val json = runCatching { JSONObject(content) }
-            .onFailure { AIDevLogger.e("CrashReportBridge", "parse json failed", it) }
+            .onFailure { logWriter.append("✗ 解析 JSON 失败: ${it.message}") }
             .getOrNull() ?: run { processingFile.delete(); return }
 
-        val ctx = appCtx ?: run { processingFile.delete(); return }
         val pkg = json.optString("package", "").ifBlank { "" }
         val lines = json.optInt("lines", 1000).coerceIn(100, 5000)
 
         if (pkg.isBlank()) {
-            finish(ctx, processingFile, false, "缺少 package 字段", "")
+            logWriter.append("✗ 缺少 package 字段")
+            timer.endStep("失败")
+            logWriter.finish()
+            finish(ctx, processingFile, false, "缺少 package 字段", "", logWriter)
             return
         }
+
+        // 知道包名后移到 logs/<pkg>/crash.log
+        runCatching { logWriter.moveTo(LogHub.subdir(logsDir, pkg), "crash.log") }
+
+        logWriter.append("目标包名: $pkg, 抓取行数: $lines")
+        timer.endStep("pkg=$pkg, lines=$lines")
+
+        timer.beginStep("抓取 logcat")
+        logWriter.append("通过 Shizuku 抓取 logcat...")
 
         val report = kotlin.runCatching {
             suspendCancellableCoroutine<CrashReport> { cont ->
                 ShizukuLogcat.fetchCrashLog(
                     lines = lines,
                     callback = { res ->
-                        res.onSuccess { raw -> cont.resume(parseCrash(pkg, raw)) }
-                        res.onFailure { e -> cont.resume(CrashReport(pkg, emptyList(), "logcat 抓取失败: ${e.message}", "")) }
+                        res.onSuccess { raw ->
+                            logWriter.append("logcat 原始数据 ${raw.length} 字符")
+                            timer.endStep("抓取成功, ${raw.length} 字符")
+                            cont.resume(parseCrash(pkg, raw))
+                        }
+                        res.onFailure { e ->
+                            logWriter.append("✗ logcat 抓取失败: ${e.message}")
+                            timer.endStep("失败: ${e.message}")
+                            cont.resume(CrashReport(pkg, emptyList(), "logcat 抓取失败: ${e.message}", ""))
+                        }
                     }
                 )
             }
-        }.getOrElse { CrashReport(pkg, emptyList(), "异常: ${it.message}", "") }
+        }.getOrElse {
+            logWriter.append("✗ 异常: ${it.message}")
+            timer.endStep("异常: ${it.message}")
+            CrashReport(pkg, emptyList(), "异常: ${it.message}", "")
+        }
 
         val reportJson = buildReportJson(report)
         val mcpDir = File(PathConfig.aidevHome(ctx), MCP_DIR)
@@ -79,8 +114,11 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
 
         val ok = report.stack.isNotEmpty()
         val msg = if (ok) "捕获到崩溃堆栈（${report.stack.size} 行）" else "未捕获到崩溃（应用可能正常运行）"
-        AIDevLogger.i("CrashReportBridge", "crash report for $pkg ok=$ok -> ${outFile.name}")
-        finish(ctx, processingFile, true, msg, outFile.name)
+        logWriter.append("${msg} -> ${outFile.name}")
+        timer.endStep(msg)
+        logWriter.finish()
+        runCatching { LogHub.saveProfile(PathConfig.logsDir(ctx), timer.profileJson(), "crash", pkg) }
+        finish(ctx, processingFile, true, msg, outFile.name, logWriter)
     }
 
     /**
@@ -148,11 +186,13 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         }.toString(2)
     }
 
-    private fun finish(ctx: Context, reqFile: File, success: Boolean, message: String, fileName: String) {
+    private fun finish(ctx: Context, reqFile: File, success: Boolean, message: String, fileName: String, logWriter: LogHub.LogWriter? = null) {
+        val logPath = logWriter?.file?.absolutePath ?: ""
         val result = JSONObject().apply {
             put("success", success)
             put("message", message)
             put("file", fileName)
+            put("log", logPath)
             put("time", System.currentTimeMillis())
         }
         runCatching { File(requestDir, "result-${reqFile.nameWithoutExtension}.json").writeText(result.toString(2)) }

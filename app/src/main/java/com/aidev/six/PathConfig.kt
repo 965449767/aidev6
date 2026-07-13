@@ -20,6 +20,9 @@ object PathConfig {
 
     fun tasksDir(ctx: Context) = File(aidevHome(ctx), "tasks")
 
+    /** 统一日志目录：所有构建/崩溃/桥接服务的日志集中存放（外部存储，方便调试分享） */
+    fun logsDir(ctx: Context) = File("/sdcard/AIDev/logs").apply { mkdirs() }
+
     /**
      * PRoot 可执行体（libproot.so / libproot_loader.so）+ 依赖 .so（libtalloc.so /
      * libandroid-shmem.so）的真实所在目录。
