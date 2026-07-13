@@ -95,17 +95,12 @@ import com.aidev.six.navigation.LocalImeBottomPx
 import com.aidev.six.terminal.EmbeddedVirtualKey
 import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.ui.components.AppChip
-import com.aidev.six.ui.components.MainView
-import com.aidev.six.ui.components.MainViewSwitcher
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
 fun TerminalPanel(
     page: EmbeddedTerminalPage,
-    visible: Boolean = true,
-    mainView: MainView = MainView.TERMINAL,
-    onSwitchView: (MainView) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalContext.current as Activity
@@ -138,30 +133,19 @@ fun TerminalPanel(
     var themeDragAccumulator by remember { mutableFloatStateOf(0f) }
     val decorView = activity.window?.decorView
 
-    LaunchedEffect(visible) {
-        if (visible) {
-            page.sessionManager.ensureSession()
-            page.completionEngine.focusTerminalInput()
-        } else {
-            showFontSlider = false
-        }
+    LaunchedEffect(Unit) {
+        page.sessionManager.ensureSession()
+        page.completionEngine.focusTerminalInput()
     }
 
-    Box(
-        modifier = modifier.then(
-            if (!visible) Modifier.graphicsLayer { alpha = 0f } else Modifier
-        )
-    ) {
+    Box(modifier = modifier) {
         Column(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
         ) {
-            if (visible) {
-                TerminalTopBar(
-                    activity = activity,
-                    mainView = mainView,
-                    onSwitchView = onSwitchView,
-                    onNewSession = { page.sessionManager.addSession() },
-                    onCopy = {},
+            TerminalTopBar(
+                activity = activity,
+                onNewSession = { page.sessionManager.addSession() },
+                onCopy = {},
                     onPaste = {
                         try {
                             val text = ClipboardHelper.paste(activity)
@@ -223,20 +207,17 @@ fun TerminalPanel(
                     },
                     onThemeDragEnd = { showThemeOverlay = false },
                 )
-            }
 
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
                 AndroidView(
                     factory = { coreView },
-                    update = { it.visibility = if (visible) View.VISIBLE else View.INVISIBLE },
+                    update = { it.visibility = View.VISIBLE },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-                if (visible) {
-                    TerminalCompletionBar(page)
-                    TerminalKeyboard(page)
-                }
+                TerminalCompletionBar(page)
+                TerminalKeyboard(page)
             }
         }
     }
@@ -262,8 +243,6 @@ fun TerminalPanel(
 @Composable
 private fun TerminalTopBar(
     activity: Activity,
-    mainView: MainView,
-    onSwitchView: (MainView) -> Unit,
     onNewSession: () -> Unit,
     onCopy: () -> Unit,
     onPaste: () -> Unit,
@@ -278,10 +257,6 @@ private fun TerminalTopBar(
             .padding(start = 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MainViewSwitcher(
-            current = mainView,
-            onSelect = onSwitchView,
-        )
         Spacer(modifier = Modifier.weight(1f))
         Text(
             text = BuildConfig.VERSION_NAME,

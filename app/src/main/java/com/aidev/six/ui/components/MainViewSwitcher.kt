@@ -13,7 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-enum class MainView { TERMINAL, CHAT }
+enum class MainView { TERMINAL }
 
 @Composable
 fun MainViewSwitcher(
@@ -21,14 +21,6 @@ fun MainViewSwitcher(
     onSelect: (MainView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        SwitcherSegment("终端", current == MainView.TERMINAL) { onSelect(MainView.TERMINAL) }
-        SwitcherSegment("AI", current == MainView.CHAT) { onSelect(MainView.CHAT) }
-    }
 }
 
 @Composable
