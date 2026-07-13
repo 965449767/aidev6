@@ -86,7 +86,7 @@ case "$SUBCOMMAND" in
     ;;
 esac
 
-REQ_ID="exec_$(date +%s)_$$"
+REQ_ID="exec_$(date +%s)_$$_$RANDOM"
 REQ_FILE="$REQUEST_DIR/$REQ_ID"
 RES_FILE="$RESULT_DIR/$REQ_ID"
 

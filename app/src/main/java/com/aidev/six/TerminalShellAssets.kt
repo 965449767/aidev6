@@ -271,7 +271,7 @@ object TerminalShellAssets {
             aidev-logcat() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-logcat "${'$'}@"; }
             aidev-apk-info() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-apk-info "${'$'}@"; }
             aidev-build() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-build "${'$'}@"; }
-            aidev-build-request() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-build-request" "${'$'}@"; }
+            aidev-build-request() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-build-request" "${'$'}@"; }
             aidev-crash-report() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-crash-report" "${'$'}@"; }
             aidev-create-android-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-create-android-project "${'$'}@"; }
             aidev-gen() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-gen "${'$'}@"; }

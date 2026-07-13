@@ -81,9 +81,11 @@ object DeployBridgeService : BridgeService("DeployBridge") {
     }
 
     private fun ensureDeployScripts(home: File) {
-        // 自举架构：部署脚本优先由 Agent（构建后）单向写入共享 home 的 dev-env/bin，
-        // 并附 .md5 校验文件。宿主 A 只做「盲盒执行器」：校验存在 + MD5 一致后按绝对路径调起。
-        // 这里仅作为首次兜底（当 Agent 尚未投递脚本时），且绝不覆盖已有的 Agent 投递副本。
+        // 部署脚本由 bundled assets 兜底落地到 dev-env/bin（PRoot 内 /host-home/dev-env/bin）。
+        // 为使脚本修复（如新增重试）能自动生效，这里以 bundled 版本为准：
+        //   脚本 MD5 与 bundled 一致 → 仅确保 .md5 存在；
+        //   不一致（缺失/被旧副本覆盖/自演进投递旧版）→ 用 bundled 覆盖并刷新 .md5，
+        //   保证 validateDeployScript 永不因「脚本更新但 .md5 过期」而误拦。
         // 共享 home 与 PRoot 内 AIDEV_HOME 一致（均为 /host-home），避免 Android 侧真实
         // files/home 与绑定视图不一致时校验/执行错位。
         val ctx = appCtx ?: return
@@ -97,11 +99,11 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         assets.forEach { (asset, name) ->
             val dst = File(bin, name)
             val md5File = File(bin, "$name.md5")
-            if (dst.exists() && md5File.exists()) return@forEach // Agent 已投递 + 校验文件完整
-            if (dst.exists() && !md5File.exists()) {
-                // 脚本存在但校验文件缺失 → 补全 md5（不覆盖脚本本身）
-                md5Of(dst).takeIf { it.isNotEmpty() }?.let { md5File.writeText(it) }
-                AIDevLogger.i("DeployBridge", "补齐 $name.md5")
+            val assetMd5 = md5OfAsset(ctx, asset)
+            if (assetMd5.isEmpty()) return@forEach
+            val installedMd5 = if (dst.exists()) md5Of(dst) else ""
+            if (dst.exists() && installedMd5 == assetMd5) {
+                if (!md5File.exists()) md5File.writeText(assetMd5)
                 return@forEach
             }
             runCatching {
@@ -109,9 +111,22 @@ object DeployBridgeService : BridgeService("DeployBridge") {
                     dst.outputStream().use { output -> input.copyTo(output) }
                 }
                 dst.setExecutable(true, false)
-                md5Of(dst).takeIf { it.isNotEmpty() }?.let { md5File.writeText(it) }
+                md5File.writeText(assetMd5)
+                AIDevLogger.i("DeployBridge", "更新部署脚本 $name (md5=$assetMd5)")
             }.onFailure { AIDevLogger.e("DeployBridge", "deploy script $name failed", it) }
         }
+    }
+
+    private fun md5OfAsset(ctx: Context, asset: String): String {
+        return runCatching {
+            val md = MessageDigest.getInstance("MD5")
+            ctx.assets.open("scripts/$asset").use { fis ->
+                val buf = ByteArray(8192)
+                var n: Int
+                while (fis.read(buf).also { n = it } > 0) md.update(buf, 0, n)
+            }
+            md.digest().joinToString("") { "%02x".format(it) }
+        }.getOrDefault("")
     }
 
     /**
@@ -190,7 +205,9 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             return
         }
 
-        val deployScript = File(PathConfig.aidevHome(ctx), "dev-env/bin/aidev-deploy").absolutePath
+        // 部署在 PRoot 内执行，宿主绝对路径（/data/user/0/.../files/home/...）在 PRoot 视图中不可见；
+        // 必须用 PRoot 绑定视图路径 /host-home/...（与 line 259 的 AIDEV_HOME 一致）。
+        val deployScript = "/host-home/dev-env/bin/aidev-deploy"
         val definition = AgentTaskDefinition(
             id = "deploy-$id",
             name = "部署 $pkg",

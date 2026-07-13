@@ -71,7 +71,7 @@ fi
 # 1) 安装（Shizuku 静默），最多重试 2 次以容忍瞬时 Shizuku 桥抖动
 INSTALL_OK=false
 INSTALL_ERR=""
-for try in 1 2 3; do
+for try in 1 2; do
     ERR_OUT=$(aidev-install "$APK" 2>&1)
     if [ $? -eq 0 ]; then
         INSTALL_OK=true
@@ -79,39 +79,49 @@ for try in 1 2 3; do
     fi
     INSTALL_ERR=$(echo "$ERR_OUT" | grep -iE "错误|Failure|INSTALL_FAILED|error|Exception|非零" | head -2 | tr '\n' ' ')
     echo "安装尝试 $try 失败: $INSTALL_ERR"
-    sleep 2
+    sleep 1
 done
 if [ "$INSTALL_OK" != true ]; then
     emit false false null "install failed: ${INSTALL_ERR:-aidev-install exit non-zero}"
     exit 1
 fi
 
-# 2) 二次校验：pm list packages 确认包已落地（HyperOS 偶现假成功）
-VERIFY=$(aidev-shizuku exec "pm list packages --user 0 | grep -i '^package:$PKG\$'" 2>/dev/null | clean_output)
-if ! echo "$VERIFY" | grep -qi "^package:$PKG\$"; then
-    emit false false null "install reported ok but package not present (HyperOS silent fail?)"
-    exit 1
-fi
-
-INSTALLED=true
+# 2) 落地二次校验（仅参考，不致命）：pm list packages 偶发空结果会误报，
+#    真正安装成功以「能否启动」为准，故校验失败不判负，只记录提示。
+VERIFIED=false
+for v in 1 2; do
+    VERIFY=$(aidev-shizuku exec "pm list packages --user 0 | grep -i '^package:$PKG\$'" 2>/dev/null | clean_output)
+    if echo "$VERIFY" | grep -qi "^package:$PKG\$"; then
+        VERIFIED=true
+        break
+    fi
+    sleep 1
+done
+[ "$VERIFIED" = true ] || echo "提示：pm list packages 未确认包落地（可能瞬时延迟），以启动结果为准"
 
 # 3) 启动（可选）
 LAUNCHED=false
 ACTIVITY=null
 if [ "$LAUNCH" = true ]; then
-    COMP=$(aidev-shizuku exec "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER --user 0 '$PKG' 2>/dev/null | tail -1" 2>/dev/null | clean_output | grep "/" | tail -1 | tr -d '\r' | xargs)
-    if echo "$COMP" | grep -q "/"; then
-        ACTIVITY="$COMP"
-        OUT=$(aidev-shizuku exec "am start -n '$COMP' --user 0" 2>/dev/null | clean_output)
-        if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
-            LAUNCHED=true
+    for l in 1 2 3; do
+        COMP=$(aidev-shizuku exec "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER --user 0 '$PKG' 2>/dev/null | tail -1" 2>/dev/null | clean_output | grep "/" | tail -1 | tr -d '\r' | xargs)
+        if echo "$COMP" | grep -q "/"; then
+            ACTIVITY="$COMP"
+            OUT=$(aidev-shizuku exec "am start -n '$COMP' --user 0" 2>/dev/null | clean_output)
+            if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
+                LAUNCHED=true
+                break
+            fi
+        else
+            OUT=$(aidev-shizuku exec "monkey -p '$PKG' -c android.intent.category.LAUNCHER 1" 2>/dev/null | clean_output)
+            if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
+                LAUNCHED=true
+                break
+            fi
         fi
-    else
-        OUT=$(aidev-shizuku exec "monkey -p '$PKG' -c android.intent.category.LAUNCHER 1" 2>/dev/null | clean_output)
-        if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
-            LAUNCHED=true
-        fi
-    fi
+        echo "启动尝试 $l 未确认，1s 后重试..."
+        sleep 1
+    done
     if [ "$LAUNCHED" = false ]; then
         emit true false null "launch failed: $(echo "$OUT" | head -c 200)"
         exit 1

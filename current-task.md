@@ -265,6 +265,44 @@ Phase 5 (代码质量) → 单元测试 + 构建验证
 Phase 6 (测试补齐) → 全部测试通过
 ```
 
+## Phase 7 — 部署可靠性 + 终端构建请求返回值（实测修复）
+
+> 实测「服务器中心」安装/拉起与终端 `aidev-build-request` 时发现的真实缺陷，不属原 98 项审计，
+> 但直接影响交付可用性，已修复并在 #135/#137/#139 构建验证。
+
+### P7-01 DeployBridgeService 部署脚本 PRoot 路径错误（#135）
+- **问题**: `deployScript` 用宿主绝对路径 `files/home/dev-env/bin/aidev-deploy`，但部署在 PRoot 内执行，
+  仅 `/host-home` 被绑定，宿主路径在 PRoot 视图不可见 → 脚本"文件不存在"，安装/拉起必失败。
+- **文件**: `app/src/main/java/com/aidev/six/DeployBridgeService.kt:193`
+- **修复**: `deployScript = "/host-home/dev-env/bin/aidev-deploy"`（与 `AIDEV_HOME=/host-home` 一致）。
+
+### P7-02 aidev-deploy 误报失败 + 等待过久（#137）
+- **问题**: `pm list packages` 二次校验为**致命**步骤，Shizuku 单次查询偶发空结果即 `exit 1` 报失败，
+  但 App 实际已装好；且重试/sleep 过多导致等待久。
+- **文件**: `app/src/main/assets/scripts/aidev-deploy.sh`
+- **修复**:
+  - 校验改为**非致命**（仅提示），最终判定以"能否启动"为准（启动成功即证明已安装）。
+  - 安装重试 3→2、间隔 2s→1s；校验重试 3→2、间隔 2s→1s；启动重试间隔 2s→1s。
+
+### P7-03 ensureDeployScripts 不会刷新变更的脚本（#137）
+- **问题**: 脚本与 `.md5` 都在时直接跳过，导致 bundled 脚本修复后 `.md5` 过期 → `validateDeployScript`
+  MD5 不匹配误拦部署。
+- **文件**: `app/src/main/java/com/aidev/six/DeployBridgeService.kt:83`(`ensureDeployScripts`)
+- **修复**: 以 bundled assets 为准，MD5 不一致则覆盖脚本并刷新 `.md5`，保证修复生效且校验永不错拦。
+
+### P7-04 aidev-shizuku 请求 ID 碰撞（#137）
+- **文件**: `app/src/main/assets/scripts/aidev-shizuku.sh`
+- **修复**: `REQ_ID` 加 `$RANDOM`，避免同 PID 同秒请求复用 result 文件被误读。
+
+### P7-05 aidev-build-request 无返回值（#139）
+- **问题**: 仅 fire-and-forget 提交请求，不等待/不返回构建结果。
+- **文件**: `app/src/main/assets/scripts/aidev-build-request.sh`、`TerminalShellAssets.kt:274`
+- **修复**:
+  - 脚本阻塞等待 `result-$ID.json`（≤900s）：成功打印 `构建成功`+APK（exit 0）；
+    失败打印消息并 **cat 完整构建日志** `/sdcard/AIDev/logs/<project>/build.log`（exit 1）；超时 exit 2。
+  - 终端函数改用 `${AIDEV_ROOTFS}/usr/local/bin/aidev-build-request`（同 aidev-shizuku），
+    由 `copyAssetScripts` 每次终端会话刷新，确保新脚本生效。
+
 ## 冻结说明
 
 当前任务推进期间，以下内容冻结：
