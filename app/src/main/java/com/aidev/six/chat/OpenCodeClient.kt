@@ -2,8 +2,6 @@ package com.aidev.six.chat
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -255,14 +253,15 @@ class OpenCodeClient(
         directory?.let { conn.setRequestProperty("x-opencode-directory", it) }
         try {
             if (conn.responseCode !in 200..299) return
-            val reader = BufferedReader(InputStreamReader(conn.inputStream))
-            while (shouldContinue()) {
-                val l = reader.readLine() ?: break
-                if (!l.startsWith("data:")) continue
-                val json = l.substringAfter("data:").trim()
-                if (json.isEmpty()) continue
-                val ev = runCatching { parseEvent(JSONObject(json)) }.getOrNull() ?: continue
-                onEvent(ev)
+            conn.inputStream.bufferedReader().use { reader ->
+                while (shouldContinue()) {
+                    val l = reader.readLine() ?: break
+                    if (!l.startsWith("data:")) continue
+                    val json = l.substringAfter("data:").trim()
+                    if (json.isEmpty()) continue
+                    val ev = runCatching { parseEvent(JSONObject(json)) }.getOrNull() ?: continue
+                    onEvent(ev)
+                }
             }
         } catch (_: Exception) {
             // 连接断开/超时：由调用方决定重连
@@ -686,7 +685,7 @@ class OpenCodeClient(
             conn.setRequestProperty("Content-Type", "application/json")
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = conn.responseCode
-            val txt = if (code in 200..299) BufferedReader(InputStreamReader(conn.inputStream)).readText() else null
+            val txt = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else null
             conn.disconnect()
             txt?.let { JSONObject(it).optString("id").takeIf { id -> id.isNotBlank() } }
         }.getOrDefault(null)

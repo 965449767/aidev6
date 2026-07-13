@@ -132,6 +132,7 @@ class ShellActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        terminalPage.onDestroy(this)
         super.onDestroy()
     }
 

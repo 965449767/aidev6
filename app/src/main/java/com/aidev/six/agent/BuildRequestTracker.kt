@@ -155,7 +155,7 @@ internal class BuildRequestTracker {
         val pkg = json.optString("package", "?")
         val fatal = json.optString("fatal", "")
         val stackArr = json.optJSONArray("stack")
-        val stackLines = (0 until (stackArr?.length() ?: 0)).map { stackArr!!.optString(it) }
+        val stackLines = (0 until (stackArr?.length() ?: 0)).map { i -> stackArr?.optString(i) ?: "" }
         val crashed = stackLines.isNotEmpty()
 
         val log = buildString {

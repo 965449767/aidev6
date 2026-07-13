@@ -385,7 +385,7 @@ object UbuntuBootstrapScripts {
           mkdir -p "${'$'}(dirname "${'$'}out")"
           echo "下载地址：${'$'}url"
           if command -v curl >/dev/null 2>&1; then
-            curl -fsSL -k --retry 3 -C - -o "${'$'}part" "${'$'}url" || return ${'$'}?
+            curl -fsSL --retry 3 -C - -o "${'$'}part" "${'$'}url" || return ${'$'}?
           elif command -v wget >/dev/null 2>&1; then
             wget -q -c -O "${'$'}part" "${'$'}url" || return ${'$'}?
           elif /system/bin/toybox wget --help >/dev/null 2>&1; then

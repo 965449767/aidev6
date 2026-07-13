@@ -217,6 +217,22 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             processingFile.delete()
             return
         }
+        if (!isValidApkPath(apk)) {
+            val log = "✗ apk 路径包含非法字符或非 .apk 文件: $apk"
+            publish(AgentTaskStatus.FAILED, 1, System.currentTimeMillis(),
+                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = "apk 校验失败")), log)
+            writeResult(ctx, id, false, "apk 路径校验失败", apk, pkg, false, false, null, log)
+            processingFile.delete()
+            return
+        }
+        if (!isValidPkg(pkg)) {
+            val log = "✗ package name 格式非法: $pkg"
+            publish(AgentTaskStatus.FAILED, 1, System.currentTimeMillis(),
+                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = "pkg 校验失败")), log)
+            writeResult(ctx, id, false, "package name 格式非法", apk, pkg, false, false, null, log)
+            processingFile.delete()
+            return
+        }
 
         // 初始进度（与构建按钮同款步骤呈现，保证面板一致）
         val initSteps = if (launch) listOf(
@@ -227,7 +243,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         notify(ctx, "AIDev 部署", "开始部署 $pkg", "default")
 
         val (prootApk, extraBinds) = toProotPath(apk, PathConfig.workspaceDir(ctx))
-        val cmd = "$deployScript --apk '$prootApk' --pkg '$pkg' ${if (launch) "--launch" else "--no-launch"}"
+        val cmd = "$deployScript --apk '${shEscape(prootApk)}' --pkg '${shEscape(pkg)}' ${if (launch) "--launch" else "--no-launch"}"
         val opts = ProotLauncher.Options(
             rootfs = PathConfig.agentRootfs(ctx).absolutePath,
             cwd = "/workspace",
@@ -296,6 +312,22 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         notify(ctx, if (success) "AIDev 部署完成" else "AIDev 部署失败", message, if (success) "default" else "high")
         AIDevLogger.i("DeployBridge", "request $id done success=$success msg=$message")
         processingFile.delete()
+    }
+
+    /** 对 shell 单引号字符串中的值进行转义：将 ' 替换为 '\'' 以便安全拼接。 */
+    private fun shEscape(value: String): String = value.replace("'", "'\\''")
+
+    /** 验证 apk 路径不含非法字符。 */
+    private fun isValidApkPath(path: String): Boolean {
+        if (path.isBlank()) return false
+        if (!path.endsWith(".apk", ignoreCase = true)) return false
+        return path.none { c -> c in ";&|`\$\"'(){}[]<>#!*?~" }
+    }
+
+    /** 验证 package name 格式（字母/数字/下划线/点，不含 shell 元字符）。 */
+    private fun isValidPkg(pkg: String): Boolean {
+        if (pkg.isBlank()) return false
+        return pkg.all { c -> c.isLetterOrDigit() || c == '.' || c == '_' }
     }
 
     /** 宿主绝对路径 → PRoot 内可见路径 + 必要的额外 bind。 */

@@ -86,62 +86,76 @@ internal object AgentTaskStore {
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "AgentTaskStore-debounce").apply { isDaemon = true }
     }
+    private val lock = Any()
 
     fun loadState(file: File): List<AgentTaskRecord> {
         val key = file.absolutePath
-        cache[key]?.let { return it }
-        if (!file.exists()) return emptyList()
-        return runCatching {
-            file.readLines()
-                .filter(String::isNotBlank)
-                .mapNotNull(::parseTaskLine)
-        }.getOrDefault(emptyList()).also { cache[key] = it }
+        synchronized(lock) {
+            cache[key]?.let { return it }
+            if (!file.exists()) return emptyList()
+            return runCatching {
+                file.readLines()
+                    .filter(String::isNotBlank)
+                    .mapNotNull(::parseTaskLine)
+            }.getOrDefault(emptyList()).also { cache[key] = it }
+        }
     }
 
     fun saveState(file: File, tasks: List<AgentTaskRecord>) {
         val key = file.absolutePath
-        cache[key] = tasks
-        dirty.remove(key)
-        file.parentFile?.mkdirs()
-        file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+        synchronized(lock) {
+            cache[key] = tasks
+            dirty.remove(key)
+            file.parentFile?.mkdirs()
+            file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+        }
     }
 
     fun upsertTask(file: File, task: AgentTaskRecord, limit: Int = 12): List<AgentTaskRecord> {
         val key = file.absolutePath
-        val existing = (cache[key] ?: loadState(file).toMutableList()).toMutableList()
-        existing.removeAll { it.definition.id == task.definition.id }
-        existing.add(0, task)
-        val trimmed = existing.take(limit)
-        cache[key] = trimmed
+        synchronized(lock) {
+            val existing = (cache[key] ?: loadState(file).toMutableList()).toMutableList()
+            existing.removeAll { it.definition.id == task.definition.id }
+            existing.add(0, task)
+            val trimmed = existing.take(limit)
+            cache[key] = trimmed
+        }
         scheduleDebounce(file)
-        return trimmed
+        return cache[key] ?: emptyList()
     }
 
     fun removeTask(file: File, id: String): List<AgentTaskRecord> {
         val key = file.absolutePath
-        val existing = (cache[key] ?: loadState(file)).toMutableList()
-        val remaining = existing.filterNot { it.definition.id == id }
-        cache[key] = remaining
+        val remaining: List<AgentTaskRecord>
+        synchronized(lock) {
+            val existing = (cache[key] ?: loadState(file)).toMutableList()
+            remaining = existing.filterNot { it.definition.id == id }
+            cache[key] = remaining
+        }
         scheduleDebounce(file)
         return remaining
     }
 
     fun clearTasks(file: File): List<AgentTaskRecord> {
         val key = file.absolutePath
-        cache[key] = emptyList()
+        synchronized(lock) {
+            cache[key] = emptyList()
+        }
         scheduleDebounce(file)
         return emptyList()
     }
 
     /** 强制将所有脏数据立即写盘，用于进程退出前调用。 */
     fun flush() {
-        for (key in dirty.toList()) {
-            val tasks = cache[key] ?: continue
-            val file = File(key)
-            file.parentFile?.mkdirs()
-            file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+        synchronized(lock) {
+            for (key in dirty.toList()) {
+                val tasks = cache[key] ?: continue
+                val file = File(key)
+                file.parentFile?.mkdirs()
+                file.writeText(tasks.joinToString(separator = "\n") { serializeTask(it) })
+            }
+            dirty.clear()
         }
-        dirty.clear()
     }
 
     private fun scheduleDebounce(file: File) {

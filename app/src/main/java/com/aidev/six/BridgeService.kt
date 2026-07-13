@@ -12,8 +12,8 @@ import java.io.File
 
 abstract class BridgeService(private val tag: String) {
 
-    protected var scope: CoroutineScope? = null
-    protected var appCtx: Context? = null
+    @Volatile protected var scope: CoroutineScope? = null
+    @Volatile protected var appCtx: Context? = null
 
     val isRunning: Boolean get() = scope != null
 
@@ -29,8 +29,9 @@ abstract class BridgeService(private val tag: String) {
         AIDevLogger.i(tag, "start polling")
         lastActiveMs = System.currentTimeMillis()
         currentDelayMs = 500L
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        scope!!.launch {
+        val s = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope = s
+        s.launch {
             while (isActive) {
                 val hadWork = runCatching { poll() }.getOrElse {
                     AIDevLogger.w(tag, "poll failed", it)
@@ -53,9 +54,10 @@ abstract class BridgeService(private val tag: String) {
     }
 
     fun stop() {
-        scope?.cancel()
+        val s = scope
         scope = null
         appCtx = null
+        s?.cancel()
         onStop()
     }
 

@@ -3,8 +3,8 @@ package com.aidev.six
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
 import android.graphics.drawable.GradientDrawable
+import android.util.Log
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -12,17 +12,21 @@ import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import java.lang.ref.WeakReference
 
 class GestureFeedbackManager(
-    private val activity: Activity,
+    activity: Activity,
     private val prefs: SharedPreferences
 ) {
+    private val activityRef = WeakReference(activity)
     private val enabled: Boolean
         get() = prefs.getBoolean(Constants.PrefKeys.HAPTIC_TAP, true)
 
+    private fun act(): Activity? = activityRef.get()
+
     fun tick() {
         if (!enabled) return
-        activity.window?.decorView?.performHapticFeedback(
+        act()?.window?.decorView?.performHapticFeedback(
             HapticFeedbackConstants.CLOCK_TICK,
             HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
         )
@@ -30,7 +34,7 @@ class GestureFeedbackManager(
 
     fun pickup() {
         if (!enabled) return
-        activity.window?.decorView?.performHapticFeedback(
+        act()?.window?.decorView?.performHapticFeedback(
             HapticFeedbackConstants.LONG_PRESS,
             HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
         )
@@ -38,7 +42,7 @@ class GestureFeedbackManager(
 
     fun confirm() {
         if (!enabled) return
-        activity.window?.decorView?.performHapticFeedback(
+        act()?.window?.decorView?.performHapticFeedback(
             HapticFeedbackConstants.CONFIRM,
             HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
         )
@@ -46,7 +50,7 @@ class GestureFeedbackManager(
 
     fun reject() {
         if (!enabled) return
-        activity.window?.decorView?.performHapticFeedback(
+        act()?.window?.decorView?.performHapticFeedback(
             HapticFeedbackConstants.REJECT,
             HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
         )
@@ -55,7 +59,7 @@ class GestureFeedbackManager(
     fun drop() {
         if (!enabled) return
         runCatching {
-            val vibrator = vibrator()
+            val vibrator = vibrator() ?: return@runCatching
             if (Build.VERSION.SDK_INT >= 26) {
                 vibrator.vibrate(
                     VibrationEffect.createWaveform(
@@ -72,7 +76,7 @@ class GestureFeedbackManager(
 
     fun error() {
         if (!enabled) return
-        val vibrator = vibrator()
+        val vibrator = vibrator() ?: return
         if (Build.VERSION.SDK_INT >= 26) {
             vibrator.vibrate(
                 VibrationEffect.createWaveform(
@@ -134,16 +138,19 @@ class GestureFeedbackManager(
             .start()
     }
 
-    private fun vibrator(): Vibrator {
+    private fun vibrator(): Vibrator? {
+        val a = act() ?: return null
         return if (Build.VERSION.SDK_INT >= 31) {
-            val mgr = activity.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            val mgr = a.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager ?: return null
             mgr.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
-            activity.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            a.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
     }
 
-    private fun dp(value: Float): Int =
-        (value * activity.resources.displayMetrics.density).toInt()
+    private fun dp(value: Float): Int {
+        val a = act() ?: return 0
+        return (value * a.resources.displayMetrics.density).toInt()
+    }
 }

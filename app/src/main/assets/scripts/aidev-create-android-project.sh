@@ -373,7 +373,7 @@ echo "  下载 Gradle Wrapper..."
 WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
 WRAPPER_JAR_URL="https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar"
 if command -v curl &>/dev/null; then
-    curl -fsSL -k -o "$WRAPPER_JAR" "$WRAPPER_JAR_URL" 2>/dev/null || true
+    curl -fsSL -o "$WRAPPER_JAR" "$WRAPPER_JAR_URL" 2>/dev/null || true
 elif command -v wget &>/dev/null; then
     wget -q -O "$WRAPPER_JAR" "$WRAPPER_JAR_URL" 2>/dev/null || true
 fi
@@ -399,7 +399,7 @@ if [ ! -f "$JARFILE" ]; then
     GRADLE_VERSION=$(grep "distributionUrl" "$DIRNAME/gradle/wrapper/gradle-wrapper.properties" | sed 's/.*gradle-\([0-9.]*\)-bin.zip.*/\1/')
     JAR_URL="https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -k -o "$JARFILE" "$JAR_URL" || true
+        curl -fsSL -o "$JARFILE" "$JAR_URL" || true
     elif command -v wget >/dev/null 2>&1; then
         wget -q -O "$JARFILE" "$JAR_URL" || true
     fi

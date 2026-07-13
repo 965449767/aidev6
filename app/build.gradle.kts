@@ -104,6 +104,20 @@ android {
                 keyPassword = it.getProperty("keyPassword", "aidev123")
             }
         }
+        create("release") {
+            keystoreProps?.let { p ->
+                storeFile = rootProject.file(
+                    p.getProperty("releaseStoreFile")
+                        ?: p.getProperty("storeFile", "keystore/debug.keystore")
+                )
+                storePassword = p.getProperty("releaseStorePassword")
+                    ?: p.getProperty("storePassword", "aidev123")
+                keyAlias = p.getProperty("releaseKeyAlias")
+                    ?: p.getProperty("keyAlias", "aidev-debug")
+                keyPassword = p.getProperty("releaseKeyPassword")
+                    ?: p.getProperty("keyPassword", "aidev123")
+            }
+        }
     }
 
     buildFeatures {
@@ -124,7 +138,8 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
