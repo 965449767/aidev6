@@ -96,14 +96,20 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         )
         assets.forEach { (asset, name) ->
             val dst = File(bin, name)
-            if (dst.exists()) return@forEach // Agent 已投递，绝不覆盖
+            val md5File = File(bin, "$name.md5")
+            if (dst.exists() && md5File.exists()) return@forEach // Agent 已投递 + 校验文件完整
+            if (dst.exists() && !md5File.exists()) {
+                // 脚本存在但校验文件缺失 → 补全 md5（不覆盖脚本本身）
+                md5Of(dst).takeIf { it.isNotEmpty() }?.let { md5File.writeText(it) }
+                AIDevLogger.i("DeployBridge", "补齐 $name.md5")
+                return@forEach
+            }
             runCatching {
                 ctx.assets.open("scripts/$asset").use { input ->
                     dst.outputStream().use { output -> input.copyTo(output) }
                 }
                 dst.setExecutable(true, false)
-                // 生成 MD5 校验文件，供握手校验（Agent 投递的副本自带 .md5，此处补齐兜底副本）
-                md5Of(dst).takeIf { it.isNotEmpty() }?.let { File(bin, "$name.md5").writeText(it) }
+                md5Of(dst).takeIf { it.isNotEmpty() }?.let { md5File.writeText(it) }
             }.onFailure { AIDevLogger.e("DeployBridge", "deploy script $name failed", it) }
         }
     }
