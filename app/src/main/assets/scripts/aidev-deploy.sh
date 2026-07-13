@@ -65,6 +65,8 @@ if [ ! -f "$APK" ]; then
     emit false false null "apk not found: $APK"
     exit 1
 fi
+# 包名安全校验
+[[ "$PKG" =~ ^[a-zA-Z0-9._]+$ ]] || { emit false false null "invalid package name: $PKG"; exit 1; }
 
 # 1) 安装（Shizuku 静默），最多重试 2 次以容忍瞬时 Shizuku 桥抖动
 INSTALL_OK=false
@@ -81,14 +83,14 @@ for try in 1 2 3; do
 done
 if [ "$INSTALL_OK" != true ]; then
     emit false false null "install failed: ${INSTALL_ERR:-aidev-install exit non-zero}"
-    exit 0
+    exit 1
 fi
 
 # 2) 二次校验：pm list packages 确认包已落地（HyperOS 偶现假成功）
 VERIFY=$(aidev-shizuku exec "pm list packages --user 0 | grep -i '^package:$PKG\$'" 2>/dev/null | clean_output)
 if ! echo "$VERIFY" | grep -qi "^package:$PKG\$"; then
     emit false false null "install reported ok but package not present (HyperOS silent fail?)"
-    exit 0
+    exit 1
 fi
 
 INSTALLED=true
@@ -97,22 +99,22 @@ INSTALLED=true
 LAUNCHED=false
 ACTIVITY=null
 if [ "$LAUNCH" = true ]; then
-    COMP=$(aidev-shizuku exec "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER --user 0 $PKG 2>/dev/null | tail -1" 2>/dev/null | clean_output | grep "/" | tail -1 | tr -d '\r' | xargs)
+    COMP=$(aidev-shizuku exec "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER --user 0 '$PKG' 2>/dev/null | tail -1" 2>/dev/null | clean_output | grep "/" | tail -1 | tr -d '\r' | xargs)
     if echo "$COMP" | grep -q "/"; then
         ACTIVITY="$COMP"
-        OUT=$(aidev-shizuku exec "am start -n $COMP --user 0" 2>/dev/null | clean_output)
+        OUT=$(aidev-shizuku exec "am start -n '$COMP' --user 0" 2>/dev/null | clean_output)
         if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
             LAUNCHED=true
         fi
     else
-        OUT=$(aidev-shizuku exec "monkey -p $PKG -c android.intent.category.LAUNCHER 1" 2>/dev/null | clean_output)
+        OUT=$(aidev-shizuku exec "monkey -p '$PKG' -c android.intent.category.LAUNCHER 1" 2>/dev/null | clean_output)
         if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
             LAUNCHED=true
         fi
     fi
     if [ "$LAUNCHED" = false ]; then
         emit true false null "launch failed: $(echo "$OUT" | head -c 200)"
-        exit 0
+        exit 1
     fi
 fi
 

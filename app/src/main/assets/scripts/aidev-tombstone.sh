@@ -14,8 +14,8 @@ usage() {
     echo "  clear               删除所有 tombstone"
 }
 
-shizuku_cat() { $SHIZUKU exec "cat $1" 2>/dev/null || true; }
-shizuku_ls()  { $SHIZUKU exec "ls -lt $TS_DIR" 2>/dev/null || true; }
+shizuku_cat() { $SHIZUKU exec "cat '$1'" 2>/dev/null || true; }
+shizuku_ls()  { $SHIZUKU exec "ls -lt '$TS_DIR'" 2>/dev/null || true; }
 
 cmd_list() {
     local list

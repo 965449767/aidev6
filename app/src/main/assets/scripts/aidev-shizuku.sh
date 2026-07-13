@@ -37,9 +37,11 @@ case "$SUBCOMMAND" in
     APK_PATH=$(readlink -f "$APK_PATH")
     SAFE_NAME=$(basename "$APK_PATH" | sed 's/[^a-zA-Z0-9._-]/_/g')
     TMP_PATH="/data/local/tmp/aidev-install-$SAFE_NAME"
+    # 转义 APK_PATH 中的单引号防止 shell 逃逸
+    APK_PATH_ESC=$(echo "$APK_PATH" | sed "s/'/'\\\\''/g")
     # HyperOS/MIUI: pm install 需 --user 0 否则查用户报 MANAGE_USERS 权限错；
     # 用 pm 的真实退出码判断成败，不再取末尾 rm 的退出码（否则永远显示成功）
-    CMD="cp '$APK_PATH' '$TMP_PATH' && pm install -r -d --user 0 '$TMP_PATH'; RC=\$?; rm -f '$TMP_PATH'; exit \$RC"
+    CMD="cp '$APK_PATH_ESC' '$TMP_PATH' && pm install -r -d --user 0 '$TMP_PATH'; RC=\$?; rm -f '$TMP_PATH'; exit \$RC"
     ;;
   input)
     CMD="input $*"

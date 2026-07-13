@@ -215,10 +215,10 @@ else
     BF_ERR_JSON=""
     while IFS= read -r line; do
         [ -z "$line" ] && continue
-        esc=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        esc=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g; s/\n/\\n/g')
         if [ -z "$BF_ERR_JSON" ]; then BF_ERR_JSON="\"$esc\""; else BF_ERR_JSON="$BF_ERR_JSON, \"$esc\""; fi
     done <<< "$(grep -E 'error:|FAILED|What went wrong|Exception in' "$BUILD_LOG" 2>/dev/null | head -20)"
-    BF_TAIL=$(tail -60 "$BUILD_LOG" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+    BF_TAIL=$(tail -60 "$BUILD_LOG" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g' | tr '\n' ' ' | head -c 10000)
 
     # 把【完整失败日志】落到稳定、不可变路径，避免被后续构建覆盖 build.log 而读到旧日志
     BF_LOGS_DIR="/sdcard/AIDev/logs/$BF_PROJECT"

@@ -9,4 +9,6 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-exec aidev-shizuku exec "pm uninstall -k --user 0 $1"
+PKG="$1"
+[[ "$PKG" =~ ^[a-zA-Z0-9._]+$ ]] || { echo "错误: 非法包名 '$PKG'"; exit 1; }
+exec aidev-shizuku exec "pm uninstall -k --user 0 '$PKG'"

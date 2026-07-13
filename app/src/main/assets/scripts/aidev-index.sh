@@ -31,8 +31,9 @@ build_index() {
     echo "扫描项目: $PROJECT_DIR"
     echo "索引文件: $INDEX_FILE"
 
-    mkdir -p /tmp/aidev-index-$$ 2>/dev/null || true
     local tmp="/tmp/aidev-index-$$"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp" 2>/dev/null || true
 
     # — 类 / 对象 / 接口（排除 build/ 和 generated/） —
     find "$SRC_DIR/java" \( -name "build" -o -name "generated" -o -name ".gradle" \) -prune -o \( -name "*.kt" -o -name "*.java" \) -print 2>/dev/null | while read -r f; do

@@ -15,8 +15,8 @@ usage() {
     echo "  clear               删除所有 ANR traces"
 }
 
-shizuku_cat() { $SHIZUKU exec "cat $1" 2>/dev/null || true; }
-shizuku_ls()  { $SHIZUKU exec "ls -lt $ANR_DIR" 2>/dev/null || true; }
+shizuku_cat() { $SHIZUKU exec "cat '$1'" 2>/dev/null || true; }
+shizuku_ls()  { $SHIZUKU exec "ls -lt '$ANR_DIR'" 2>/dev/null || true; }
 
 cmd_list() {
     local list
