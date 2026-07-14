@@ -2,8 +2,10 @@ package com.aidev.six
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.resume
 import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -15,6 +17,8 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
 
     private var requestDir: File? = null
     private var resultDir: File? = null
+
+    override val bridgeName: String get() = "shizuku"
 
     override fun onStart(homeDir: File) {
         val bridgeDir = File(homeDir, BRIDGE_DIR)
@@ -38,6 +42,32 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         return hadWork
     }
 
+    /**
+     * Socket 通道入口：payload 承载原 KEY=VALUE 文本，复用 [computeExec]/[computeLog]，
+     * 把结果直接放在响应帧里返回（即时响应，不走 result 文件）。
+     * 注意：本函数非 suspend，桥接处理线程为普通线程，故用 [runBlocking] 驱动内部 suspend 逻辑。
+     */
+    override fun dispatch(frame: BridgeFrame): BridgeFrame? {
+        val result = runCatching { computePayload(frame.payload) }
+            .onFailure { AIDevLogger.w("ShizukuBridge", "dispatch failed", it) }
+            .getOrNull()
+        return BridgeFrame("shizuku", frame.id, result ?: "ERROR: 处理失败")
+    }
+
+    private fun computePayload(content: String): String {
+        val fields = parseFields(content)
+        var type = fields["TYPE"] ?: ""
+        if (type.isBlank()) {
+            // 无 TYPE 时默认按 exec（socket 路径无文件名可推断，exec 为主用场景）
+            type = "exec"
+        }
+        AIDevLogger.i("ShizukuBridge", "dispatch type=$type")
+        return when (type) {
+            "exec" -> runBlocking { computeExec(fields["COMMAND"] ?: "") }
+            else -> runBlocking { computeLog(fields) }
+        }
+    }
+
     private suspend fun handleRequest(requestDir: File, resultDir: File, processingFile: File) {
         val origName = processingFile.name.removeSuffix(".processing")
         val resFile = File(resultDir, origName)
@@ -45,10 +75,7 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         val content = runCatching { processingFile.readText() }
             .onFailure { AIDevLogger.e("ShizukuBridge", "read processing file failed", it) }
             .getOrNull() ?: return
-        val fields = content.lines().associate {
-            val parts = it.split("=", limit = 2)
-            parts[0] to if (parts.size > 1) parts[1] else ""
-        }
+        val fields = parseFields(content)
 
         var type = fields["TYPE"] ?: ""
         if (type.isBlank()) {
@@ -60,12 +87,19 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         }
         AIDevLogger.i("ShizukuBridge", "Processing: type=$type, file=$origName")
 
-        when (type) {
-            "exec" -> handleExecRequest(resFile, fields["COMMAND"] ?: "")
-            else -> handleLogRequest(resFile, fields)
+        val out = when (type) {
+            "exec" -> computeExec(fields["COMMAND"] ?: "")
+            else -> computeLogToFile(resFile, fields)
         }
+        atomicWriteText(resFile, out)
         processingFile.delete()
     }
+
+    private fun parseFields(content: String): Map<String, String> =
+        content.lines().associate {
+            val parts = it.split("=", limit = 2)
+            parts[0] to if (parts.size > 1) parts[1] else ""
+        }
 
     private val ALLOWED_COMMAND_PREFIXES = listOf(
         "pm ", "input ", "svc ", "dumpsys ", "cmd ", "cp ", "am ", "monkey "
@@ -78,14 +112,13 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         return trimmed.all { it.isLetterOrDigit() || it in allowedChars }
     }
 
-    private suspend fun handleExecRequest(resFile: File, command: String) {
+    private suspend fun computeExec(command: String): String {
         if (!isCommandAllowed(command)) {
-            atomicWriteText(resFile, "ERROR: 命令被安全策略拒绝（仅允许已知命令前缀或安全字符）\n")
-            return
+            return "ERROR: 命令被安全策略拒绝（仅允许已知命令前缀或安全字符）\n"
         }
         AIDevLogger.i("ShizukuBridge", "Executing: $command")
         val result = ShizukuLogcat.executeCommand(command)
-        val output = buildString {
+        return buildString {
             if (result.exitCode == 0) {
                 append(result.stdout.ifBlank { "命令执行成功（无输出）" })
             } else {
@@ -94,27 +127,16 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
                 if (result.stdout.isNotBlank()) appendLine("stdout: ${result.stdout}")
             }
         }
-        atomicWriteText(resFile, output)
     }
 
-    private suspend fun handleLogRequest(resFile: File, fields: Map<String, String>) {
-        val packageName = fields["PACKAGE"] ?: "com.aidev.six"
-        val lineCount = fields["LINES"]?.toIntOrNull() ?: 200
+    private suspend fun computeLogToFile(resFile: File, fields: Map<String, String>): String {
         val follow = fields["FOLLOW"]?.isNotEmpty() == true
-        val level = fields["LEVEL"] ?: ""
-        val tag = fields["TAG"] ?: ""
-        val clear = fields["CLEAR"]?.isNotEmpty() == true
-
-        if (clear) {
-            ShizukuLogcat.clearLogBuffer()
-        }
-
         if (follow) {
             atomicWriteText(resFile, "[持续监听中... 按 Ctrl+C 停止]\n")
             ShizukuLogcat.startLogStream(
-                packageName = packageName,
-                level = level,
-                tag = tag,
+                packageName = fields["PACKAGE"] ?: "com.aidev.six",
+                level = fields["LEVEL"] ?: "",
+                tag = fields["TAG"] ?: "",
                 onLine = { line ->
                     runCatching { resFile.appendText("$line\n") }
                         .onFailure { AIDevLogger.w("ShizukuBridge", "append log line failed", it) }
@@ -124,29 +146,40 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
                         .onFailure { AIDevLogger.w("ShizukuBridge", "append log error failed", it) }
                 }
             )
-        } else {
-            val logs = try {
-                withTimeout(30_000L) {
-                    suspendCancellableCoroutine<String> { cont ->
-                        ShizukuLogcat.fetchLog(
-                            packageName = packageName,
-                            lines = lineCount,
-                            level = level,
-                            tag = tag
-                        ) { result ->
-                            result.onSuccess { logs ->
-                                cont.resume(logs, onCancellation = null)
-                            }.onFailure { e ->
-                                AIDevLogger.e("ShizukuBridge", "fetchLog failed", e)
-                                cont.resume("ERROR: ${e.message}\n", onCancellation = null)
-                            }
+            return "[持续监听中... 按 Ctrl+C 停止]\n"
+        }
+        return fetchLogs(fields)
+    }
+
+    private suspend fun computeLog(fields: Map<String, String>): String = fetchLogs(fields)
+
+    private suspend fun fetchLogs(fields: Map<String, String>): String {
+        val packageName = fields["PACKAGE"] ?: "com.aidev.six"
+        val lineCount = fields["LINES"]?.toIntOrNull() ?: 200
+        val level = fields["LEVEL"] ?: ""
+        val tag = fields["TAG"] ?: ""
+        val clear = fields["CLEAR"]?.isNotEmpty() == true
+        if (clear) ShizukuLogcat.clearLogBuffer()
+        return try {
+            withTimeout(30_000L) {
+                suspendCancellableCoroutine<String> { cont ->
+                    ShizukuLogcat.fetchLog(
+                        packageName = packageName,
+                        lines = lineCount,
+                        level = level,
+                        tag = tag
+                    ) { result ->
+                        result.onSuccess { logs ->
+                            cont.resume(logs, onCancellation = null)
+                        }.onFailure { e ->
+                            AIDevLogger.e("ShizukuBridge", "fetchLog failed", e)
+                            cont.resume("ERROR: ${e.message}\n", onCancellation = null)
                         }
                     }
                 }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                "ERROR: 请求超时\n"
             }
-            atomicWriteText(resFile, logs)
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            "ERROR: 请求超时\n"
         }
     }
 

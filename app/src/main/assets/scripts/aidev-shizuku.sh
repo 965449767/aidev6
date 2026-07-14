@@ -86,6 +86,24 @@ case "$SUBCOMMAND" in
     ;;
 esac
 
+# 构建 KEY=VALUE 载荷
+PAYLOAD="TYPE=exec"$'\n'"COMMAND=$CMD"
+
+# 优先走 Socket（即时响应）；失败回退文件通道（原逻辑）
+if command -v aidev-bridge >/dev/null 2>&1; then
+  RESP=$(aidev-bridge send shizuku "$PAYLOAD" 2>/dev/null)
+  if [ -n "$RESP" ]; then
+    echo "Shizuku 请求已发送 (socket)"
+    echo "命令: $CMD"
+    printf '%s\n' "$RESP"
+    case "$RESP" in
+      ERROR:*) exit 1 ;;
+    esac
+    exit 0
+  fi
+fi
+
+# ── 文件通道兜底（原有逻辑）──
 REQ_ID="exec_$(date +%s)_$$_$RANDOM"
 REQ_FILE="$REQUEST_DIR/$REQ_ID"
 RES_FILE="$RESULT_DIR/$REQ_ID"

@@ -22,6 +22,9 @@
      - **Phase 0 — 基础设施（✅ 完成）**：新增 `BridgeFrame`/`BridgeTransport`(`TcpBridgeTransport`+`TcpBridgeClient`)/`BridgeSocketServer`/`BridgeRegistry`；`BridgeService` 加 `bridgeName`/`dispatch` 默认 + 注册/注销 + 按 flag 起停 socket。单测 `BridgeFrameTest`/`BridgeSocketServerTest`/`BridgeRegistryTest` 全过；全量 186 单测仅 3 个预存失败（无新增）。
      - **Phase 1 — 试点 NotifyBridge（✅ 完成）**：`NotifyBridgeService` 覆盖 `bridgeName="notify"` 与 `dispatch`（复用 `handleJson`，payload=原 JSON）；生产传输由抽象 UDS 改为 **TCP loopback 127.0.0.1:14096**（`Constants.BRIDGE_SOCKET_PORT`，PRoot 侧 `nc`/`/dev/tcp` 零依赖连）；新增客户端 `aidev-bridge.sh`（python3 发帧，失败回退文件 drop）并登记进 rootfs `usr/local/bin`。单测 `NotifyBridgeDispatchTest` 全过；全量 188 单测仅 3 个预存失败（无新增）。
        - 实机验证点（用户执行）：① AIDev 内触发任意通知（如构建完成）→ 即时弹出；② PRoot 内 `aidev-bridge status` 应为 ONLINE，`aidev-bridge send notify '{"title":"t","message":"m"}'` → 通知秒出；③ 设 `BRIDGE_SOCKET_ENABLED=false` → 回退文件，通知仍正常。
+     - **Phase 2 — ShizukuBridge（✅ 完成）**：`ShizukuBridgeService` 覆盖 `bridgeName="shizuku"` 与 `dispatch`；把 `handleExecRequest`/`handleLogRequest` 重构为可复用的 `computeExec`/`fetchLogs`（返回 String），文件通道与 Socket 通道共用同一逻辑（follow 日志仍走文件流式）。`aidev-shizuku.sh` 改为优先 `aidev-bridge send shizuku`，失败回退文件 drop。单测 `ShizukuBridgeDispatchTest` 全过（含安全策略即时拒绝）；全量 191 单测仅 3 个预存失败。
+       - 已知限制（预存，非本次引入）：`isCommandAllowed` 的字符白名单允许 `rm` 等危险命令（仅按字符集判断），Socket/文件通道行为一致；后续可收紧前缀白名单，但需评估是否影响合法命令，故本次不动。
+       - 实机验证点：PRoot 内 `aidev-shizuku exec 'input tap 100 100'` / `dumpsys` 应秒级返回；`aidev-shizuku status` 走 socket；socket 失败回退文件仍可执行。
      - **Phase 2 — ShizukuBridge**（exec/log + 白名单）：实现 `dispatch` 复用 `handleExecRequest`/`handleLogRequest`；改写 `aidev-shizuku.sh` 走 socket。
      - **Phase 3 — Build/Deploy/Crash**（复杂：cancel/streaming/MD5）：各自实现 `dispatch`；改写 `aidev-build-request.sh`/`aidev-deploy.sh`/`aidev-crash-report.sh`。
      - **Phase 4 — 清理/文档/收尾**：更新 `docs/architecture.md` 桥接章节、`docs/decisions.md` 记录决策。
