@@ -15,7 +15,7 @@
 1. Safe Bash Guard（AI 命令沙箱，P0）：接入 Agent 命令结构化入口（AgentTaskRunner.execProcess），加 /sdcard 写屏障与危险命令拦截。
 2. 编译内存看门狗（P1）：BuildPreflight 预检按可用内存动态下调 org.gradle.workers.max，防 LMK 杀进程。
 3. (已核实·无需改动) Edge-to-Edge：经核查当前**已实现** edge-to-edge——`ShellActivity` 调 `WindowCompat.setDecorFitsSystemWindows(window, false)` 开启，且 `AppNavHost` 根 Column 已加 `windowInsetsPadding(WindowInsets.systemBars)` + `imePadding()`。an.txt 所述"临时规避 windowOptOutEdgeToEdgeEnforcement"在本仓库**不存在**（同文档对 chat 已移除、targetSdk=35 的过时前提一致），故本项无需改动。
-4. (进行中·2026-07-14 起) 通信升级（Socket）：BridgeService 由 500ms 文件轮询升级为 **Unix Domain Socket 主用 + 文件轮询灾备**。
+4. (已完成·2026-07-14) 通信升级（Socket）：BridgeService 由 500ms 文件轮询升级为 **TCP loopback Socket 主用 + 文件轮询灾备**（5 桥全接入，可回滚开关 `BRIDGE_SOCKET_ENABLED`）。见下方分阶段与整体 DoD。
    - 方案（已与用户确认）：真 UDS（`android.net.LocalServerSocket` 抽象命名空间 `aidev_bridge`）+ 自带静态客户端二进制 `aidev-bridge`（PRoot 侧推送）；文件 drop 永久保留为兜底；全局回滚开关 `BRIDGE_SOCKET_ENABLED`（默认 true，关=false=纯轮询=旧行为）。
    - 测试策略：因 `LocalSocket` 仅真机/inst 可用，核心逻辑（帧编解码 `BridgeFrame`、路由 `BridgeRegistry`、收发 `BridgeSocketServer`+`LoopbackTcpTransport`/`LoopbackTcpClient`）用注入式传输在 **JVM 单测**覆盖；真机再验 LocalSocket 实现。
    - 分阶段（每阶段独立 commit、可回滚、有实机验证点）：
@@ -25,6 +25,9 @@
      - **Phase 2 — ShizukuBridge（✅ 完成）**：`ShizukuBridgeService` 覆盖 `bridgeName="shizuku"` 与 `dispatch`；把 `handleExecRequest`/`handleLogRequest` 重构为可复用的 `computeExec`/`fetchLogs`（返回 String），文件通道与 Socket 通道共用同一逻辑（follow 日志仍走文件流式）。`aidev-shizuku.sh` 改为优先 `aidev-bridge send shizuku`，失败回退文件 drop。单测 `ShizukuBridgeDispatchTest` 全过（含安全策略即时拒绝）；全量 191 单测仅 3 个预存失败。
        - 已知限制（预存，非本次引入）：`isCommandAllowed` 的字符白名单允许 `rm` 等危险命令（仅按字符集判断），Socket/文件通道行为一致；后续可收紧前缀白名单，但需评估是否影响合法命令，故本次不动。
        - 实机验证点：PRoot 内 `aidev-shizuku exec 'input tap 100 100'` / `dumpsys` 应秒级返回；`aidev-shizuku status` 走 socket；socket 失败回退文件仍可执行。
+     - **Phase 3 — Build/Deploy/Crash（✅ 完成）**：三桥各加 `bridgeName` 与 `dispatch`（payload 落盘 `req-<id>.json` + 返回 `"accepted"`，复用既有 poll→handleRequest→cancel，零改动重逻辑）。`aidev-build-request.sh` 改为优先 `aidev-bridge send build`（socket）+ 文件兜底；Deploy/Crash 请求由 App/Kotlin 侧提交（无 shell 客户端），Socket 接收路径已就绪。单测 `LongBridgeDispatchTest` 全过（入队落盘 + accepted）；全量 195 单测仅 3 个预存失败。
+     - **Phase 4 — 清理/文档/收尾（✅ 完成）**：更新 `docs/architecture.md` 桥接章节（Socket 主用 + 轮询灾备、各桥 dispatch 策略）、`docs/decisions.md` 新增决策记录（为何 TCP loopback + 自带客户端 + 可回滚开关）。
+     - **通信升级整体验收（DoD）**：① 5 桥全部具备 `bridgeName` 且接入 `BridgeRegistry` 路由；② 交互桥（notify/shizuku）经 socket 即时响应，长任务桥（build/deploy/crash）经 socket 入队；③ 文件轮询永久兜底，`BRIDGE_SOCKET_ENABLED=false` 一键回退；④ 单测覆盖帧编解码/路由/收发/各桥 dispatch（195 单测仅 3 预存失败，无新增）；⑤ 客户端 `aidev-bridge` 文件兜底就绪。
      - **Phase 2 — ShizukuBridge**（exec/log + 白名单）：实现 `dispatch` 复用 `handleExecRequest`/`handleLogRequest`；改写 `aidev-shizuku.sh` 走 socket。
      - **Phase 3 — Build/Deploy/Crash**（复杂：cancel/streaming/MD5）：各自实现 `dispatch`；改写 `aidev-build-request.sh`/`aidev-deploy.sh`/`aidev-crash-report.sh`。
      - **Phase 4 — 清理/文档/收尾**：更新 `docs/architecture.md` 桥接章节、`docs/decisions.md` 记录决策。

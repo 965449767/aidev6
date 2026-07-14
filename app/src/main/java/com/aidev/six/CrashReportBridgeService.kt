@@ -42,6 +42,23 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         return hadWork
     }
 
+    override val bridgeName: String get() = "crash"
+
+    /**
+     * Socket 通道入口：payload 承载原 req JSON（含 package/lines）。落盘 `req-<id>.json`，
+     * 交给既有 poll→handleRequest 流程，立即返回 "accepted" 确认帧。零改动既有重逻辑。
+     */
+    override fun dispatch(frame: BridgeFrame): BridgeFrame? {
+        val dir = requestDir
+        if (dir == null) {
+            AIDevLogger.w("CrashReportBridge", "dispatch: 桥未启动")
+            return BridgeFrame("crash", frame.id, "ERROR: 桥未就绪")
+        }
+        runCatching { File(dir, "req-${frame.id}.json").writeText(frame.payload) }
+            .onFailure { AIDevLogger.w("CrashReportBridge", "dispatch 入队失败", it) }
+        return BridgeFrame("crash", frame.id, "accepted")
+    }
+
     private suspend fun handleRequest(processingFile: File) {
         val ctx = appCtx ?: run { processingFile.delete(); return }
         val logsDir = PathConfig.logsDir(ctx)

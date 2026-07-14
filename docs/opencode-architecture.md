@@ -318,11 +318,33 @@ sysnotify --priority high "OpenCode" "$MSG"
 exit $EC
 ```
 
+### 桥接通信（BridgeService：Socket 主用 + 轮询灾备）
+
+所有「宿主 App ↔ PRoot 宇宙」的请求桥（Notify / Shizuku / Build / Deploy / Crash）统一继承
+`BridgeService`（`app/src/main/java/com/aidev/six/BridgeService.kt`）：
+
+- **文件轮询（兜底，长期保留）**：`poll()` 每 500ms 扫描各自 `BRIDGE_DIR`，`claimFile` 重命名锁防重复消费。
+- **Socket 主用（2026-07-14 通信升级引入）**：`BridgeService.start` 按开关 `BRIDGE_SOCKET_ENABLED`
+  （默认 true）起一个 `TcpBridgeTransport`，绑定本机 `127.0.0.1:14096`
+  （`Constants.BRIDGE_SOCKET_PORT`）。PRoot 侧客户端 `aidev-bridge` 经 TCP loopback 把请求帧
+  （4 字节长度头 + JSON 信封 `BridgeFrame{b,i,p}`）推给宿主，宿主经 `BridgeRegistry` 即时路由到
+  对应桥的 `dispatch(frame)` 并返回响应帧。
+- **各桥 dispatch 策略**：
+  - `NotifyBridgeService`：`dispatch` 直接复用 `handleJson` 同步返回结果帧。
+  - `ShizukuBridgeService`：`dispatch` 复用 `computeExec`/`fetchLogs` 返回结果（follow 日志仍走文件流式）。
+  - `Build`/`Deploy`/`Crash`：长任务桥的 `dispatch` 仅把 payload 落盘为 `req-<id>.json` 并立即返回
+    `"accepted"` 确认帧，交由既有 `poll→handleRequest→cancel` 流程处理（结果仍经 `result-<id>.json` 异步回传）。
+- **客户端回退**：`aidev-bridge send <bridge> '<payload>'` 优先 TCP；若 python3 不可用或连接失败，
+  自动回退写文件（与旧轮询通道一致）。`aidev-shizuku.sh`/`aidev-build-request.sh` 已改为优先走 `aidev-bridge`。
+- **回滚**：`BRIDGE_SOCKET_ENABLED=false` → 完全回到纯文件轮询（等价升级前行为）。
+
+> 注：选用 TCP loopback 而非 Unix Domain Socket，是为了 PRoot 侧 bash 客户端可用 `nc`/`/dev/tcp`
+> 零依赖连接，避免 socat/python3/UDS 工具依赖与 SELinux 复杂度；仍属本机局部通信。
+
 ### sysnotify 通知桥接
 
-- Shell 脚本写 JSON 到 `$AIDEV_HOME/.aidev-notify/req-*.json`
-- `NotifyBridgeService`（Kotlin coroutine）每 500ms 轮询读取并删除
-- 调用 `AIDevCommandDispatcher.notify()` 发送 Android 通知
+- Shell 脚本经 `aidev-bridge send notify '<json>'`（或回退文件）送达宿主
+- `NotifyBridgeService.dispatch` 调用 `AIDevCommandDispatcher.notify()` 发送 Android 通知
 - sysnotify 在 PRoot 内可通过 `/host-home/dev-env/bin/sysnotify` 访问（PATH 已包含）
 
 ---

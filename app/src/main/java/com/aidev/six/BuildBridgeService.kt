@@ -91,6 +91,24 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         return hadWork
     }
 
+    override val bridgeName: String get() = "build"
+
+    /**
+     * Socket 通道入口：payload 承载原 req JSON（含 id/project/flavor 等）。
+     * 直接把请求落盘到桥目录 `req-<id>.json`，交给既有 poll→handleRequest→cancel 流程处理，
+     * 立即返回 "accepted" 确认帧（结果仍经 result-<id>.json 异步回传）。零改动既有重逻辑，纯加法。
+     */
+    override fun dispatch(frame: BridgeFrame): BridgeFrame? {
+        val dir = requestDir
+        if (dir == null) {
+            AIDevLogger.w("BuildBridge", "dispatch: 桥未启动")
+            return BridgeFrame("build", frame.id, "ERROR: 桥未就绪")
+        }
+        runCatching { File(dir, "req-${frame.id}.json").writeText(frame.payload) }
+            .onFailure { AIDevLogger.w("BuildBridge", "dispatch 入队失败", it) }
+        return BridgeFrame("build", frame.id, "accepted")
+    }
+
     private suspend fun handleRequest(processingFile: File) {
         val content = runCatching { processingFile.readText() }
             .onFailure { AIDevLogger.e("BuildBridge", "read request failed", it) }

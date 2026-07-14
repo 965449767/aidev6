@@ -35,7 +35,7 @@ json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g'; }
 PROJ_ESC=$(printf '%s' "$PROJECT" | json_escape)
 LP_ESC=$(printf '%s' "$LAUNCH_PKG" | json_escape)
 
-cat > "$BRIDGE/req-$ID.json" <<EOF
+PAYLOAD=$(cat <<EOF
 {
   "id": "$ID",
   "project": "$PROJ_ESC",
@@ -45,6 +45,21 @@ cat > "$BRIDGE/req-$ID.json" <<EOF
   "launchPackage": "$LP_ESC"
 }
 EOF
+)
+
+# 优先走 Socket（即时入队，服务器落盘 req-<id>.json 后由既有 BuildBridge 处理），失败回退文件 drop
+if command -v aidev-bridge >/dev/null 2>&1; then
+  ACK=$(aidev-bridge send build "$PAYLOAD" 2>/dev/null)
+  if [ -n "$ACK" ]; then
+    echo "已通过 Socket 提交构建请求 (ack: $ACK)"
+  else
+    printf '%s\n' "$PAYLOAD" > "$BRIDGE/req-$ID.json"
+    echo "Socket 不可用，已回退文件通道提交"
+  fi
+else
+  printf '%s\n' "$PAYLOAD" > "$BRIDGE/req-$ID.json"
+  echo "未找到 aidev-bridge，已用文件通道提交"
+fi
 
 RESULT="$BRIDGE/result-$ID.json"
 echo "已提交构建请求：project=$PROJECT install=$AUTO_INSTALL launch=$AUTO_LAUNCH (id=$ID)"

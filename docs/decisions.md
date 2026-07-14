@@ -2,6 +2,40 @@
 
 Use this file to record stable project decisions.
 
+## 2026-07-14 - 桥接通信升级：TCP loopback Socket 主用 + 文件轮询兜底
+
+### Context
+
+原 5 个桥（Notify/Shizuku/Build/Deploy/Crash）均由 `BridgeService` 以 500ms 文件轮询驱动，
+PRoot 侧写请求文件、宿主轮询读取。长任务（Build/Deploy）对延迟不敏感，但交互型桥（Shizuku exec、
+Notify）有 500ms~3s 的感知延迟；且轮询在空闲时仍周期性唤醒。
+
+### Decision
+
+- 通信升级为 **TCP loopback（127.0.0.1:14096）Socket 主用 + 文件轮询灾备**，二者长期并存。
+- 选用 TCP loopback 而非 Unix Domain Socket（抽象命名空间）：PRoot 侧 bash 客户端可用
+  `nc` / bash `/dev/tcp` 零依赖连接，避免 socat/python3/UDS 工具依赖与 SELinux 复杂度；仍属本机局部通信。
+- 统一信封 `BridgeFrame{b,i,p}`（4 字节长度头 + JSON），传输抽象 `BridgeTransport`
+  （`TcpBridgeTransport` 生产/测试共用），路由 `BridgeRegistry`，核心编解码/路由/收发在 JVM 单测覆盖
+  （因 `LocalSocket` 仅真机可用）。
+- 各桥 `dispatch`：Notify/Shizuku 同步返回结果；Build/Deploy/Crash 仅落盘 `req-<id>.json` + 返回
+  `"accepted"`，复用既有 `poll→handleRequest→cancel`，零改动重逻辑。
+- PRoot 客户端 `aidev-bridge`：python3 发帧，失败自动回退文件 drop；`aidev-shizuku.sh`/`aidev-build-request.sh` 已优先走 socket。
+- 全局回滚开关 `BRIDGE_SOCKET_ENABLED`（默认 true），关=false 即纯文件轮询（等价升级前行为）。
+
+### Consequences
+
+- 交互型桥请求从「500ms~3s 轮询延迟」降至即时推送；空闲不再周期性唤醒。
+- 每阶段独立 commit、可回滚；文件通道永久保留作灾备。
+- 已知限制（预存，非本次引入）：`ShizukuBridgeService.isCommandAllowed` 字符白名单允许 `rm` 等
+  危险命令（仅按字符集判断），Socket/文件通道行为一致；后续可收紧前缀白名单，但需评估是否影响合法命令。
+- 改动：`BridgeFrame.kt`/`BridgeTransport.kt`/`BridgeSocketServer.kt`/`BridgeRegistry.kt`、
+  `BridgeService.kt`（bridgeName/dispatch/注册）、`Constants`/`PreferencesManager`（开关）、
+  5 个 `*BridgeService`（bridgeName + dispatch）、`aidev-bridge.sh`、`aidev-shizuku.sh`/`aidev-build-request.sh`、
+  `UbuntuBootstrapScripts.kt`（部署 aidev-bridge）。
+- 实机验证点：① `aidev-bridge status` 应为 ONLINE；② `aidev-bridge send notify '{"title":"t","message":"m"}'`
+  通知秒出；③ `aidev-shizuku exec 'input tap 100 100'` 秒级返回；④ `BRIDGE_SOCKET_ENABLED=false` 回退文件仍正常。
+
 ## 2026-06-14 - Use ShellActivity as the single terminal entry
 
 ### Context

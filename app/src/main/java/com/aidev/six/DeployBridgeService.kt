@@ -80,6 +80,23 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         return hadWork
     }
 
+    override val bridgeName: String get() = "deploy"
+
+    /**
+     * Socket 通道入口：payload 承载原 req JSON（含 id/apk/pkg/launch）。落盘 `req-<id>.json`，
+     * 交给既有 poll→handleRequest→cancel 流程，立即返回 "accepted" 确认帧。零改动既有重逻辑。
+     */
+    override fun dispatch(frame: BridgeFrame): BridgeFrame? {
+        val dir = requestDir
+        if (dir == null) {
+            AIDevLogger.w("DeployBridge", "dispatch: 桥未启动")
+            return BridgeFrame("deploy", frame.id, "ERROR: 桥未就绪")
+        }
+        runCatching { File(dir, "req-${frame.id}.json").writeText(frame.payload) }
+            .onFailure { AIDevLogger.w("DeployBridge", "dispatch 入队失败", it) }
+        return BridgeFrame("deploy", frame.id, "accepted")
+    }
+
     private fun ensureDeployScripts(home: File) {
         // 部署脚本由 bundled assets 兜底落地到 dev-env/bin（PRoot 内 /host-home/dev-env/bin）。
         // 为使脚本修复（如新增重试）能自动生效，这里以 bundled 版本为准：
