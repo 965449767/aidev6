@@ -13,6 +13,7 @@
 | `ARCHITECTURE.md` | **架构治理**：架构属于人类，AI 只实现；AI 无权决定 MVVM/MVI/Clean/模块化/包结构/DI/导航/状态管理/持久化/线程模型；大文件≠坏架构；架构变更须先给"现状/问题/证据/替代/收益/风险/迁移成本/回滚"并等批准。 |
 | `PROJECT.md` | **项目知识库（single source of truth）**：改代码前必读。当前为**模板**（含 `<Project Name>` 等占位符），需填充为 aidev6 实际信息（见下方"待办"）。 |
 | `ANDROID.md` | **Android 工程标准**：生命周期优先；Kotlin/Compose；SSOT；ViewModel 拥有业务状态；不阻塞主线程；Shizuku/Root 可选须有 fallback；Shell 必须经 Shell Layer；日志不记 token/secret。 |
+| `UI.md` | **UI 设计标准（宪法级）**：开发工具定位（稳定>信息密度>层级>效率>动画）；从信息架构出发；NavigationRail/≤5 Tab；Card+Grid 非留白；颜色只用 Token（禁止散落 `Color(0xFF…)`）；间距 4/8/12/16/24/32、圆角 12/16/28；图标 Material Symbols Rounded；动效仅 4 种。详细依据 `docs/DESIGN_SYSTEM.md`。 |
 | `人类.md` | **人类技术负责人手册**：定义人与 AI 的协作契约（方向/优先级/架构/风险/质量归人；单任务规则；审批事项；要求证据；结构化沟通）。AI 应理解，但不"遵守"其人类侧职责。 |
 
 ### `workflow/` —— 工作流 SOP（每类操作的标准流程）
@@ -25,6 +26,7 @@
 | `debug.md` | **调试标准**：证据优先，禁止猜测；Observe→Reproduce→Collect→Locate→RootCause→MinimalFix→Verify→Regression；栈帧自底向上读；修复只修一个问题、不顺手重构/优化。 |
 | `refactor.md` | **重构标准**：默认不重构；仅当重复代码/结构致 bug/可量化可维护性收益/性能瓶颈/人类明确要求；大文件不因"长"拆；提取顺序常量>工具>纯函数>独立类>业务；行为锁（不改行为/API/生命周期/线程/构建）；核心模块受保护。 |
 | `review.md` | **评审标准**：提交前必自审；清单覆盖正确性/安全/可维护性/回归/Android/Compose/线程/空安全/错误/日志/性能/内存/安全/架构；类 >1000 行不自动拆；风险分 + 置信度；证据不足拒绝合并。 |
+| `WORKFLOW.md` | **工作流 SOP（强制闭环）**：Plan→Code→Review→Verify→Commit→Handoff；内嵌 **Context Routing 表**（任务类型→必须加载的文件），使 AI 接任务先按表取上下文再动手。详细解释 `docs/AI-CONTEXT.md`。 |
 
 ## 与项目根 `AGENTS.md` 的关系
 - 项目根 `AGENTS.md` 是 **aidev6 特定的环境/交付约束**（Gradle 版本锁定、单模块/无 Hilt、手动安装 APK、PRoot 集成、架构入口等），属于"项目事实"。
@@ -36,5 +38,7 @@
 
 ## 使用约定
 - 开始任何开发任务前，先读 `core/AGENTS.md` + `core/PROJECT.md`（填充后）+ 相关 `workflow/` 文件。
+- **UI / 主题 / 组件改动**：额外遵守 `core/UI.md`，依据见 `docs/DESIGN_SYSTEM.md`。
+- **每次任务**：遵守 `workflow/WORKFLOW.md` 的强制闭环与 Context Routing（按任务类型只加载相关文件，禁止全量）。
 - 每个任务结束按 `EXECUTION.md` / `AGENTS.md` 的格式输出结构化报告。
 - 任何触及"核心模块 / 架构 / Gradle / 依赖 / 公共 API / >5 文件 / 删除核心代码"的改动，先停手请求人类批准。

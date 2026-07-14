@@ -2,7 +2,7 @@
 
 An on-device AI dev environment for Android (Xiaomi 14 Pro / HyperOS / Android 16 / arm64-v8a). Kotlin + Jetpack Compose, single-module, bundled Ubuntu via PRoot.
 
-> 📜 **AI 工程纪律（强制）**：任何代码改动 / 调试 / 重构 / 评审都须遵守 [`rules/`](rules/) 下的工程宪法与工作流 SOP（`AGENTS.md` 为开发宪法，`ARCHITECTURE`/`PROJECT`/`ANDROID`/`SHELL`/`EXECUTION`/`VERIFY`/`REVIEW`/`DEBUG`/`REFACTOR`/`TASK` 为各标准）。本文件（根 `AGENTS.md`）的硬约束（Gradle 版本锁定、单模块/无 Hilt、手动安装 APK、PRoot 集成）与之冲突时**优先本文件**。
+> 📜 **AI 工程纪律（强制）**：任何代码改动 / 调试 / 重构 / 评审都须遵守 [`rules/`](rules/) 下的工程宪法与工作流 SOP（`AGENTS.md` 为开发宪法，`ARCHITECTURE`/`PROJECT`/`ANDROID`/`UI`/`SHELL`/`EXECUTION`/`VERIFY`/`REVIEW`/`DEBUG`/`REFACTOR`/`TASK`/`WORKFLOW` 为各标准）。其中 **`rules/core/UI.md`**（UI 设计系统）与 **`rules/workflow/WORKFLOW.md`**（强制闭环 + Context Routing）为**每次任务必守**；UI/主题/组件改动先读 `docs/DESIGN_SYSTEM.md`，接任务先按 `WORKFLOW.md` 路由表取上下文。本文件（根 `AGENTS.md`）的硬约束（Gradle 版本锁定、单模块/无 Hilt、手动安装 APK、PRoot 集成）与之冲突时**优先本文件**。
 
 ## Build
 

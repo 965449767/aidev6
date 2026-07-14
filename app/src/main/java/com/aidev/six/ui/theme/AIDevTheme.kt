@@ -17,46 +17,75 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 
+// ── 设计 Token（single source of truth，见 rules/core/UI.md + docs/DESIGN_SYSTEM.md）──
+// 颜色只用 Token，禁止在业务代码写 Color(0xFF…)。
+// Material 3 无 success/warning 槽位 → Success 映射 secondary、Warning 映射 tertiary。
 val AIDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF00E676),
-    onPrimary = Color(0xFF003300),
-    primaryContainer = Color(0xFF006600),
-    onPrimaryContainer = Color(0xFFA8FFC8),
-    secondary = Color(0xFF00E676),
-    onSecondary = Color(0xFF003300),
-    tertiary = Color(0xFFFFD740),
-    onTertiary = Color(0xFF332200),
-    background = Color(0xFF000000),
+    primary = Color(0xFF4C8DFF),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF15315E),
+    onPrimaryContainer = Color(0xFFA8C7FF),
+    secondary = Color(0xFF3FB950),           // Success
+    onSecondary = Color(0xFF06281A),
+    tertiary = Color(0xFFE3B341),            // Warning
+    onTertiary = Color(0xFF3A2A00),
+    background = Color(0xFF101114),
     onBackground = Color(0xFFFFFFFF),
-    surface = Color(0xFF000000),
+    surface = Color(0xFF17191D),
     onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFF111111),
+    surfaceVariant = Color(0xFF24262B),
     onSurfaceVariant = Color(0xFFCCCCCC),
-    outline = Color(0xFF333333),
-    error = Color(0xFFFF5252),
+    outline = Color(0xFF4A4D52),
+    error = Color(0xFFF85149),
     onError = Color(0xFFFFFFFF),
 )
 
 val AILightColorScheme = lightColorScheme(
-    primary = Color(0xFF00B86E),
+    primary = Color(0xFF1A73E8),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD1FAE5),
-    onPrimaryContainer = Color(0xFF064E3B),
-    secondary = Color(0xFF059669),
+    primaryContainer = Color(0xFFD3E3FF),
+    onPrimaryContainer = Color(0xFF0B1F3A),
+    secondary = Color(0xFF1E8E3E),           // Success
     onSecondary = Color(0xFFFFFFFF),
-    tertiary = Color(0xFFD97706),
+    tertiary = Color(0xFFB8860B),            // Warning
     onTertiary = Color(0xFFFFFFFF),
     background = Color(0xFFF8F9FA),
     onBackground = Color(0xFF1F2937),
     surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF1F2937),
-    surfaceVariant = Color(0xFFF3F4F6),
-    onSurfaceVariant = Color(0xFF6B7280),
-    outline = Color(0xFFD1D5DB),
-    error = Color(0xFFDC2626),
+    surfaceVariant = Color(0xFFE7EAEE),
+    onSurfaceVariant = Color(0xFF5F6B7A),
+    outline = Color(0xFFC2C7CD),
+    error = Color(0xFFC0392B),
     onError = Color(0xFFFFFFFF),
 )
+
+// 语义色别名（业务代码优先用这些，而非记 hex）
+val SuccessColor @Suppress("unused") get() = AIDarkColorScheme.secondary
+val WarningColor @Suppress("unused") get() = AIDarkColorScheme.tertiary
+
+// 间距阶梯：只取 4/8/12/16/24/32 dp
+object Spacing {
+    val s4 = 4.dp
+    val s8 = 8.dp
+    val s12 = 12.dp
+    val s16 = 16.dp
+    val s24 = 24.dp
+    val s32 = 32.dp
+}
+
+// 圆角：Button 12 / Card 16 / Dialog 28 dp
+object Radius {
+    val button = 12.dp
+    val card = 16.dp
+    val dialog = 28.dp
+}
+
+// 等宽字体：代码/数字/终端。目标 JetBrains Mono；资源就位前用系统 Monospace。
+val CodeFont = FontFamily.Monospace
 
 @Immutable
 data class BackgroundConfig(
@@ -75,16 +104,16 @@ fun rememberBackgroundConfig(prefs: SharedPreferences): BackgroundConfig {
     return remember(mode, imageUri) {
         val gradient = if (mode == "gradient") {
             val palette = com.aidev.six.WorkbenchPalette(
-                bg = 0xFF000000.toInt(),
-                surface = 0xFF000000.toInt(),
-                surfaceAlt = 0xFF111111.toInt(),
+                bg = 0xFF101114.toInt(),
+                surface = 0xFF17191D.toInt(),
+                surfaceAlt = 0xFF24262B.toInt(),
                 text = 0xFFFFFFFF.toInt(),
                 muted = 0xFFCCCCCC.toInt(),
-                outline = 0xFF333333.toInt(),
-                accent = 0xFF00E676.toInt(),
-                success = 0xFF00E676.toInt(),
-                warning = 0xFFFFD740.toInt(),
-                danger = 0xFFFF5252.toInt(),
+                outline = 0xFF4A4D52.toInt(),
+                accent = 0xFF4C8DFF.toInt(),
+                success = 0xFF3FB950.toInt(),
+                warning = 0xFFE3B341.toInt(),
+                danger = 0xFFF85149.toInt(),
             )
             listOf(Color(palette.bg), Color(palette.surfaceAlt), Color(palette.bg))
         } else emptyList()
