@@ -70,7 +70,13 @@ abstract class BridgeService(private val tag: String) {
         val ctx = appCtx ?: return
         runCatching {
             if (PreferencesManager(ctx).bridgeSocketEnabled && bridgeName.isNotBlank()) {
-                val srv = BridgeSocketServer(TcpBridgeTransport(host = "127.0.0.1", port = Constants.BRIDGE_SOCKET_PORT))
+                val srv = BridgeSocketServer(
+                    TcpBridgeTransport(
+                        host = "127.0.0.1",
+                        port = Constants.BRIDGE_SOCKET_PORT,
+                        authToken = Constants.BRIDGE_SOCKET_TOKEN
+                    )
+                )
                 srv.start { frame -> BridgeRegistry.dispatch(frame) }
                 socketServer = srv
                 AIDevLogger.i(tag, "socket bridge started on 127.0.0.1:${Constants.BRIDGE_SOCKET_PORT}")

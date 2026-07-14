@@ -77,6 +77,11 @@ object Constants {
     // 桥接通信：本机 TCP loopback 端口（仅 127.0.0.1 绑定，属局部 IPC）
     const val BRIDGE_SOCKET_PORT = 14096
 
+    // 桥接 Socket 静态共享密钥：仅作本机 IPC 源认证，防止其他本地 App 向宿主注入 build/deploy/crash 请求帧。
+    // 非密码学机密（APK 内可读），但可把「谁能发桥请求」限定为持有该 token 的客户端（宿主自带的 aidev-bridge）。
+    // 若调整此处，须同步 assets/scripts/aidev-bridge.sh 中的 TOKEN。
+    const val BRIDGE_SOCKET_TOKEN = "aidev-bridge-2026"
+
     // 自我进化「宇宙A 改码」可用的 OpenCode 免费模型（用户可在服务器中心手动切换）。
     // 额度耗尽时 opencode 会 exit 0 且空返回、不报错，故无法自动识别——由用户看对话内容判断后手动切换。
     val SELF_EVOLUTION_MODELS = listOf(

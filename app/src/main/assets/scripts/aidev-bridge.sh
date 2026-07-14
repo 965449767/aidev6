@@ -13,12 +13,15 @@ PORT=14096
 HOST=127.0.0.1
 TIMEOUT=30
 
+# 桥接 Socket 静态共享密钥：须与宿主 Constants.BRIDGE_SOCKET_TOKEN 一致，否则服务端丢弃请求帧。
+TOKEN="aidev-bridge-2026"
+
 send_via_tcp() {
-  python3 - "$BRIDGE" "$ID" "$PAYLOAD" "$PORT" <<'PY'
+  python3 - "$BRIDGE" "$ID" "$PAYLOAD" "$PORT" "$TOKEN" <<'PY'
 import socket, sys, json, struct
-bridge, mid, payload, port = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+bridge, mid, payload, port, token = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
 try:
-    frame = json.dumps({"b": bridge, "i": mid, "p": payload}).encode()
+    frame = json.dumps({"b": bridge, "i": mid, "p": payload, "a": token}).encode()
     s = socket.create_connection(("127.0.0.1", port), timeout=5)
     s.sendall(struct.pack(">I", len(frame)) + frame)
     hdr = b""

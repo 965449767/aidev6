@@ -16,16 +16,19 @@ import java.nio.charset.StandardCharsets
  *  - [bridge] 目标桥名：`shizuku`|`build`|`deploy`|`notify`|`crash`
  *  - [id]     请求 id（透传，便于客户端匹配）
  *  - [payload] 原始内容（直接承载原有 KEY=VALUE 或 JSON 文本，业务层零改造）
+ *  - [auth]   静态共享密钥（见 [Constants.BRIDGE_SOCKET_TOKEN]），服务端校验来源；留空表示不校验
  */
 data class BridgeFrame(
     val bridge: String,
     val id: String,
-    val payload: String
+    val payload: String,
+    val auth: String = ""
 ) {
     fun toJsonString(): String = JSONObject().apply {
         put("b", bridge)
         put("i", id)
         put("p", payload)
+        put("a", auth)
     }.toString()
 
     fun writeTo(out: OutputStream) {
@@ -47,7 +50,8 @@ data class BridgeFrame(
             BridgeFrame(
                 bridge = o.optString("b", ""),
                 id = o.optString("i", ""),
-                payload = o.optString("p", "")
+                payload = o.optString("p", ""),
+                auth = o.optString("a", "")
             )
         }.getOrNull()
 
