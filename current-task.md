@@ -26,7 +26,14 @@
        - 已知限制（预存，非本次引入）：`isCommandAllowed` 的字符白名单允许 `rm` 等危险命令（仅按字符集判断），Socket/文件通道行为一致；后续可收紧前缀白名单，但需评估是否影响合法命令，故本次不动。
        - 实机验证点：PRoot 内 `aidev-shizuku exec 'input tap 100 100'` / `dumpsys` 应秒级返回；`aidev-shizuku status` 走 socket；socket 失败回退文件仍可执行。
      - **Phase 3 — Build/Deploy/Crash（✅ 完成）**：三桥各加 `bridgeName` 与 `dispatch`（payload 落盘 `req-<id>.json` + 返回 `"accepted"`，复用既有 poll→handleRequest→cancel，零改动重逻辑）。`aidev-build-request.sh` 改为优先 `aidev-bridge send build`（socket）+ 文件兜底；Deploy/Crash 请求由 App/Kotlin 侧提交（无 shell 客户端），Socket 接收路径已就绪。单测 `LongBridgeDispatchTest` 全过（入队落盘 + accepted）；全量 195 单测仅 3 个预存失败。
-     - **Phase 4 — 清理/文档/收尾（✅ 完成）**：更新 `docs/architecture.md` 桥接章节（Socket 主用 + 轮询灾备、各桥 dispatch 策略）、`docs/decisions.md` 新增决策记录（为何 TCP loopback + 自带客户端 + 可回滚开关）。
+      - **Phase 4 — 清理/文档/收尾（✅ 完成）**：更新 `docs/architecture.md` 桥接章节（Socket 主用 + 轮询灾备、各桥 dispatch 策略）、`docs/decisions.md` 新增决策记录（为何 TCP loopback + 自带客户端 + 可回滚开关）。
+      - **实机修复轮次（b159→b161，✅ 完成并验证）**：真机验证暴露两类缺陷，已修复并经用户确认"通过验证，继续任务"：
+        1. **脚本未部署 + 错误 shebang**：`copyAssetScripts` 每次启动重拷，但用户仅装 APK 未重启 AIDev（旧进程不部署新脚本）；`aidev-bridge.sh` shebang 误写 `#!/system/bin/sh`（PRoot Ubuntu 无此文件）。已改 `#!/bin/sh` 并明确"装后须强制停止再重开"。
+        2. **PRoot bash 实际不可用**：本环境 `/bin/sh -> dash`，28 个 `#!/bin/bash` 脚本会被 dash 解析失败。桥接路径 5 个脚本（`aidev-bridge`/`aidev-shizuku`/`aidev-deploy`/`aidev-install`/`aidev-logcat`）已转 POSIX sh（`dash -n` 全过）；并修复 `aidev-bridge.sh` **函数前向定义在 dash 下报 command not found** 导致 socket 静默回退文件通道的关键 bug（函数移至 `case` 前）。
+        3. **缺用户态 notify 命令**：新增 `aidev-notify.sh`（Socket 主用 + 文件兜底），登记进 `copyAssetScripts` 部署清单；`aidev-build-request notify` 为误用（无该子命令，被当 project 名触发错误构建）。
+        - 实机复测（universe A）：`aidev-bridge status`→ONLINE；`aidev-notify "测试"`→即时弹通知；`aidev-shizuku exec`→秒级返回；`aidev-build-request --project <真实>`→「已通过 Socket 提交构建请求 (ack: accepted)」。
+        - 最终验证：compileDebugKotlin ✅；shell 测试 76 passed/0 failed（含 syntax 36）；单元 195 仅 3 预存失败（BuildDiagnosticsTest/BuildPreflightSourceTest/BuildRequestTrackerTest），无新增。
+        - 遗留（按范围1 故意 deferred，已入 `docs/error-journal.md`）：其余 23 个 `#!/bin/bash` 脚本（aid-boot/aid-run/aid-sh/auto-adb/linux-enable/local-install/python-share-wizard/record-screen/screenshot/server/set-ime/setup-*/shizuku-bridge-test/storage-permission/ubuntu-core/ubuntu-install/windows-*/xdg-open/xfce 等）仍依赖 bash，真机执行会踩同坑，后续按需逐个转 POSIX sh。
      - **通信升级整体验收（DoD）**：① 5 桥全部具备 `bridgeName` 且接入 `BridgeRegistry` 路由；② 交互桥（notify/shizuku）经 socket 即时响应，长任务桥（build/deploy/crash）经 socket 入队；③ 文件轮询永久兜底，`BRIDGE_SOCKET_ENABLED=false` 一键回退；④ 单测覆盖帧编解码/路由/收发/各桥 dispatch（195 单测仅 3 预存失败，无新增）；⑤ 客户端 `aidev-bridge` 文件兜底就绪。
      - **Phase 2 — ShizukuBridge**（exec/log + 白名单）：实现 `dispatch` 复用 `handleExecRequest`/`handleLogRequest`；改写 `aidev-shizuku.sh` 走 socket。
      - **Phase 3 — Build/Deploy/Crash**（复杂：cancel/streaming/MD5）：各自实现 `dispatch`；改写 `aidev-build-request.sh`/`aidev-deploy.sh`/`aidev-crash-report.sh`。

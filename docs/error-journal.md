@@ -595,3 +595,65 @@ AGENTS.md Testing 段改为 `bash app/src/test/sh/run.sh`，并加注勿用 `tes
 
 ### 关键教训
 - 跑测试前先确认任务真实存在；文档里"应全过"的命令若报 task not found，多半是文档过时而非代码坏。
+
+## 2026-07-14 — PRoot 内 bash 实际不可用，所有 `#!/bin/bash` 脚本被 dash 解析失败
+
+### Symptom
+真机 universe A（OpenCode 终端）跑 `aidev-bridge` / `aidev-shizuku` 等脚本报错：
+- `aidev-bridge`: `cannot execute: required file not found`（shebang 写成 `#!/system/bin/sh`，PRoot Ubuntu 无此文件）。
+- `aidev-shizuku exec ...`: `/host-home/ubuntu-rootfs/usr/local/bin/aidev-shizuku: 14: set: Illegal option -o pipefail`（dash 拒绝 bash 语法）。
+
+### Root Cause
+本 PRoot 的 `/bin/sh -> dash`，而 `/bin/bash` 在该环境下实际不可用：
+探测显示 `bash --version` 报 `Exec format error`，说明 rootfs 里的 bash 是损坏/不兼容架构；
+于是内核按 shebang 启动 bash 失败，回退到 `/bin/sh`(dash) 解析，dash 不认 `set -o pipefail`/`[[`/`<<<`/`read -a` 等 bashism。
+结论：assets/scripts 下 **28 个 `#!/bin/bash` 脚本全部存在潜在故障**，只有 `#!/bin/sh` 脚本（aidev-build-request/build/notify 等）正常。
+
+### Fix（本轮范围：桥接路径 5 个脚本转 POSIX sh）
+- `aidev-bridge.sh`: shebang `#!/system/bin/sh` → `#!/bin/sh`；`$RANDOM` → `$(date +%s%N)`。
+- `aidev-shizuku.sh`: shebang `#!/bin/sh`；`set -eo pipefail` → `set -e`；`$'\n'` → 字面换行；`$RANDOM` → `date +%s%N`。
+- `aidev-deploy.sh`: shebang `#!/bin/sh`；`set -uo pipefail` → `set -u`；`[[ =~ ]]` → `grep -E`。
+- `aidev-install.sh`: shebang `#!/bin/sh`；`set -eo pipefail` → `set -e`；`[[ =~ ]]` 与 `[[ != && ]]` → `grep -E` / `case`。
+- `aidev-logcat.sh`: shebang `#!/bin/sh`；`set -eo pipefail` → `set -e`；`IFS=',' read -ra ... <<<` → `IFS=','; for f in $TAGS; do ...; done`。
+- 全部通过 `dash -n` 语法检查。部署无需改 Kotlin（`copyAssetScripts` 每次启动重拷）。
+
+### 已知遗留（不在本轮）
+其余 23 个 `#!/bin/bash` 脚本（aid-boot/aid-run/aid-sh/auto-adb/linux-enable/local-install/python-share-wizard/record-screen/screenshot/server/set-ime/setup-*/shizuku-bridge-test/storage-permission/ubuntu-core/ubuntu-install/windows-*/xdg-open/xfce 等）仍依赖 bash，真机执行会踩同样坑。后续按需逐个转 POSIX sh。
+
+### 关键教训
+- 改码后必须**强制停止并重启 AIDev** 才能部署新脚本：`copyAssetScripts` 只在 App 启动时跑，仅安装 APK 不重启进程不会更新 `/host-home/ubuntu-rootfs/usr/local/bin/` 下的脚本。
+- PRoot 环境优先用 `#!/bin/sh` + POSIX 写法；bashism（`pipefail`/`[[`/`<<<`/`read -a`/`$RANDOM`）一律视为不可用。
+
+## 2026-07-14 — `aidev-bridge` 函数前向定义在 dash 下报 command not found，导致 Socket 静默回退文件通道
+
+### Symptom
+`aidev-bridge status` 显示 ONLINE，但 `aidev-build-request` 仍打印「Socket 不可用，已回退文件通道提交」，
+且 `aidev-bridge send build/shizuku` 在构建主机实测报：
+`aidev-bridge.sh: line 27: send_via_tcp: command not found` / `send_via_file: command not found`。
+
+### Root Cause
+`aidev-bridge.sh` 把 `send_via_tcp` / `send_via_file` 两个函数定义在文件末尾、`case` 调用之后。
+bash 在解析期注册函数（前向调用可用），但本 PRoot 的 `/bin/sh` 是 **dash**，函数须在执行到定义行后才注册；
+`case` 先于定义执行 → 调用时函数尚不存在 → `command not found`（返回 127）→ `if send_via_tcp` 为假 → 回退 `send_via_file`
+（同样失败）→ ACK 为空 → 上层脚本判定「Socket 不可用」。错误经 `2>/dev/null` 被吞，表现成静默回退。
+
+### Fix
+将 `send_via_tcp` / `send_via_file` 定义移到 `case` 之前（函数先定义后调用）；并在 socket 失败时向 stderr 打印提示。
+复测（直连本机运行中的 AIDev 桥，端口 14096 已监听）：`send build`→`accepted`、`send shizuku`→命令输出，均走 Socket 成功。
+
+### 关键教训
+- dash 不像 bash 那样提升函数前向声明；POSIX sh 脚本必须「先定义后调用」，不能依赖 bash 行为。
+- 客户端 `2>/dev/null` 会吞掉真实错误，排查时先去掉或改打 stderr。
+
+## 2026-07-14 — 缺少用户态 notify 命令（`aidev-build-request notify` 是误用）
+
+### Symptom
+用户跑 `aidev-build-request notify "测试"` 期望发通知，实际被当成构建请求（project=测试）并构建失败。
+
+### Root Cause
+`aidev-build-request` 仅有构建请求语义、无 `notify` 子命令；`notify` 落入 `*` 分支变成 project 名。
+通知桥（NotifyBridgeService）虽已实现，但**没有对应的用户态脚本**，只能经 `aidev-bridge send notify` 调。
+
+### Fix
+新增 `aidev-notify.sh`（POSIX sh，Socket 主用 + 文件兜底），已登记进 `UbuntuBootstrapScripts.copyAssetScripts` 部署清单；
+用法 `aidev-notify [-t 标题] [-p low|default|high|max] "消息"`。正确验证命令应为 `aidev-notify "测试"`。
