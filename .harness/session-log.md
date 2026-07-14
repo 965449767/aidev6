@@ -576,3 +576,35 @@ aidev-install app/build/outputs/apk/debug/app-debug.apk                         
 - 核查发现 OPT-02 核心早已实现：`AgentTaskStore` 已有 `ConcurrentHashMap` 内存缓存 + 2000ms 延迟写盘调度器 + `flush()`。
 - 打磨：原实现每次写都 `scheduler.schedule` 排新定时任务，连续更新会排队多个冗余落盘；改为**真正防抖**（新增 `pendingWrites` 记录待写任务，排新前先 `cancel` 上一个），减少重复 IO。纯内部优化、低风险。宿主 b154 编译通过。
 - 结论：OPT-02 已完成（含防抖打磨）。
+
+---
+
+## 2026-07-14 — 依 rules/ 工程宪法的稳定性与专业度加固（P0/P1/P2 全完成）
+
+### 起因
+- 前序「专业审计」（current-task.md 末尾 ④⑤⑥⑦）与 `rules/` 工程宪法（AGENTS.md、ARCHITECTURE、ANDROID、EXECUTION、VERIFY 等）收敛出同一份计划：把 aidev6 从「单人维护的本地工具」提升到「生产级稳定交付」。
+- 用户批准：全部 P0（稳定性）→ P1（专业度）→ P2（深化）一次性执行；允许引入成熟测试/调试依赖（AndroidX Test、LeakCanary、MockK，限 test/debug 作用域）。
+
+### 关键决策与执行
+- **P0-1 宿主全局崩溃护栏**：`CrashGuard` 全局 `UncaughtExceptionHandler` 写入 `home/.aidev-crash-bridge/req-<id>.json`（带宿主包名）后委派原 handler，自身不吞异常；`AIDevApp.onCreate` 安装并 `consumeLegacyCrashes`；`BuildRequestTracker.consumeLegacyCrashes` 启动后把无对应 `.aidev-loop` 的 `crash-*.json` 发布到 agent-tasks 闭环（自我修正）。`CrashReportBridgeService` 生成宿主自身崩溃后立即回流宿主包名，避免误报为 agent 崩溃。
+- **P0-2 Shizuku 命令白名单 + 注入防护**：`isCommandAllowed` 收紧为前缀白名单 + 拒绝 shell 注入元字符（`;|&$\`()<>\\\n`），方法降为 `internal` 便于单测。即审计待续 ⑥。
+- **P0-3 脚本 POSIX 核查**：37 个 `assets/scripts` 脚本全 `#!/bin/sh`，无真实 bashism（`dash -n` 全过），无需改动。
+- **P1-4 Lint 基线**：`app/build.gradle.kts` 加 `lint { baseline = file("lint-baseline.xml"); abortOnError=true }` + 关闭翻译/Typography 噪声；生成 `app/lint-baseline.xml`（1753 行，已锁），新增问题即失败。
+- **P1-5 CI lint 闸门**：`.github/workflows/ci.yml` 在既有 compile+test+shell+harness 之上新增 `lintDebug`（受 `ANDROID_SDK_ROOT` 门控）。即审计待续 ④。
+- **P1-6 LeakCanary + 仪表化骨架**：`debugImplementation leakcanary-android:2.12`（2.x 经 ContentProvider 自动安装并自动监视）；`ShellActivityTest` 仪表化骨架（启动/销毁 + Tab 可见性）。`settings.gradle.kts` 在 aliyun central 前加 `mavenCentral()` 兜底。
+- **P2-8 SafeCommandGuard 非交互白名单**：`AGENT_ALLOWED_BINARIES` + `extractExecutables`/`isAllowedExecutable`；agent 上下文阻止未授权可执行文件，交互场景保留危险模式拦截。
+- **P2-9 BridgeService 声明幂等**：`BridgeServiceClaimTest` 覆盖 claim 改名 `.processing`、缺失幂等、轮询过滤。
+- **P2-10 本地指标**：`LocalMetrics`（失败安全 JSONL 落 `home/.aidev-metrics/events.jsonl`）接入 `BuildRequestTracker.submit` 成功/失败路径。
+
+### 验证
+- `compileDebugKotlin` / `testDebugUnitTest`（158+ 单测，仅 3 个预存失败、无新增）/ `assembleDebug` 全过；`lintDebug` 通过（基线闸门生效）。
+- `compileDebugAndroidTestKotlin` 通过（仪表化骨架编译 OK，需真机 `connectedAndroidTest` 运行）。
+- APK **b168** 复制至 `/sdcard/AIDev/app-debug.apk`（未安装，遵守「禁止自动安装」）。
+
+### 提交（未 push）
+- `5d7709d` P0-1；`97505ba` P0-2；`9447895` P1；`83cab88` P2。共 17 文件（11 改 + 6 新增）。
+- 用户指示不 push，待确认。
+
+### 关键教训
+- **LeakCanary 2.x 的 `leakcanary-android` 是 ~4KB stub**：`LeakAssertions.assertNoLeaks()` 在该发布物中不可用（仅运行时反射探测），故仪表化测试依赖自动监视而非显式断言；真实类在 `leakcanary-android-core`。两镜像（mavenCentral/aliyun）均返回 4240 字节同一 stub。
+- 大文件拆分（审计 ⑦）、AGENTS.md 版本号同步、真正的 App 架构文档仍未做，留待后续。

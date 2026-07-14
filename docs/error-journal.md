@@ -658,6 +658,32 @@ bash 在解析期注册函数（前向调用可用），但本 PRoot 的 `/bin/s
 新增 `aidev-notify.sh`（POSIX sh，Socket 主用 + 文件兜底），已登记进 `UbuntuBootstrapScripts.copyAssetScripts` 部署清单；
 用法 `aidev-notify [-t 标题] [-p low|default|high|max] "消息"`。正确验证命令应为 `aidev-notify "测试"`。
 
+## 2026-07-14 — LeakCanary 2.x 的 `leakcanary-android` 是空 stub，`LeakAssertions` 不可用
+
+### Symptom
+
+P1-6 引入 `com.squareup.leakcanary:leakcanary-android:2.12` 后，仪表化测试 `ShellActivityTest` 引用 `com.squareup.leakcanary.LeakAssertions.assertNoLeaks()` 编译报 `Unresolved reference 'LeakAssertions'`。
+
+### Root Cause
+
+LeakCanary 2.x 把 `leakcanary-android` 拆成**薄壳** AAR（mavenCentral 与 aliyun 镜像均返回 4240 字节，含空 `classes.jar`），真实类落在 `leakcanary-android-core`（546KB，包名 `leakcanary`，`ContentProvider`/`HeapDumpControl` 等在其中）。`leakcanary-android-core` 内仅 `leakcanary/internal/HeapDumpControl$hasLeakAssertionsClass$2` 通过 `Class.forName("com.squareup.leakcanary.LeakAssertions")` **反射探测**该类；该断言类在发布的 2.x 构件中并不随附，故 `import`/`assertNoLeaks()` 不可用。
+
+### Fix
+
+- 保留 `debugImplementation leakcanary-android:2.12`（自动经 ContentProvider 安装并监视泄漏），**移除显式 `LeakAssertions` 调用**；仪表化测试退化为生命周期骨架（启动/销毁 + Tab 可见性），依赖 LeakCanary 自动监视。
+- 依赖解析：`settings.gradle.kts` 在 aliyun `central` 前加 `mavenCentral()` 兜底（aliyun 偶发返回损坏构件时回退；本例两镜像均一致返回该 stub，故非镜像问题，是 2.x 发布结构本身）。
+
+### 关键教训
+
+- 2.x 的 `LeakAssertions.assertNoLeaks()` 已不在发布构件中，仪表化测试不要依赖它；改用 LeakCanary 自动检测 + 通知/堆分析。
+- 引入第三方依赖前先确认其发布结构与包名（薄壳 AAR + core 分离是常见模式）。
+
+### 相关文件
+
+- `app/build.gradle.kts`、`settings.gradle.kts`、`app/src/androidTest/java/com/aidev/six/ShellActivityTest.kt`
+
+---
+
 ## 2026-07-14（续）— 剩余 25 个 #!/bin/bash 脚本已全部转 POSIX sh（完成）
 
 - 上一节遗留的 23+ 脚本（实际 25 个 `#!/bin/bash` + 2 个误用 `#!/system/bin/sh` 的 aidev-precache/aidev-repo）现已全部转换。

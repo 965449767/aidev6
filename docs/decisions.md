@@ -233,6 +233,25 @@ Introduce `MenuBottomSheet` (a custom bottom-sheet Dialog using the project's de
 - 改动文件：`DeployBridgeService.kt`（新增）、`DeployRequestTracker.kt`（新增）、`BuildBridgeService.kt`（产物解析 pkg + result 带 project/pkg）、`ServerPanel.kt`（部署区 + lastBuildArtifact）、`SessionManager.kt`（启动 DeployBridgeService）。
 - 落地版本：**v121**（versionName 1.0.0-b121）。
 
+## 2026-07-14 — LeakCanary 2.x 仅自动监视 + mavenCentral 兜底；不依赖 LeakAssertions
+
+### Context
+
+P1-6 要在 debug 构建引入 LeakCanary 做内存泄漏看护，并加仪表化测试断言无泄漏。评估 `com.squareup.leakcanary:leakcanary-android:2.12`。
+
+### Decision
+
+- 采用 `debugImplementation("com.squareup.leakcanary:leakcanary-android:2.12")`：2.x 经 `AndroidManifest` 声明的 `ContentProvider` 在 debug 构建**自动安装**并自动监视 Activity/Fragment/ViewModel 泄漏，无需显式初始化。
+- **不调用 `LeakAssertions.assertNoLeaks()`**：2.x 发布物中 `leakcanary-android` 仅为 ~4KB stub AAR（空 `classes.jar`），`leakAssertions` 类不在该（或 `leakcanary-android-core`）发布物中；运行时仅经反射探测其存在。仪表化测试依赖 LeakCanary 自动监视，而非显式断言。
+- `settings.gradle.kts` 的 `dependencyResolutionManagement` 在 aliyun `central` 之前加入 `mavenCentral()` 作中央仓库兜底（aliyun 镜像偶发返回损坏/缺失构件时回退）。
+
+### Consequences
+
+- debug APK 自动获得泄漏检测；release 构建不受影响（仅 debugImplementation）。
+- 仪表化测试 `ShellActivityTest` 仅做生命周期骨架（启动/销毁 + Tab 可见性），需真机/模拟器 `connectedAndroidTest` 运行。
+- 改动文件：`app/build.gradle.kts`（leakcanary dep）、`settings.gradle.kts`（mavenCentral 兜底）、`app/src/androidTest/.../ShellActivityTest.kt`（新增）。
+- 落地版本：**b168**。
+
 ## 2026-07-13 — 固定开发流程：模板依赖基线 + 可视化预览 + 构建前护栏 + 宇宙B预热
 
 ### Context

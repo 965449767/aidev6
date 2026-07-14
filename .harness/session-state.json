@@ -1,8 +1,9 @@
 {
-  "phase": "dev-workflow-verify",
-  "current_step": "G1-G10 全部落地（b150）：ScaffoldBaseline 单一真相源 + create-compose-project/generateScript 对齐；aidev-precache 预缓存+离线自检；ProjectScaffoldPanel 三步可视化预览；BuildPreflight.checkPreconditions 构建前硬护栏；ServerPanel「新建项目」一等入口 + docs/dev-workflow.md；docs/compose-capabilities.md；BuildPreflight 扩展 + 宇宙B「项目体检」UI。待回归验证与 handoff。",
+  "phase": "rules-audit-hardening-complete",
+  "current_step": "依 rules/ 工程宪法的稳定性与专业度加固（P0/P1/P2）全部完成并 commit（未 push）：P0-1 宿主全局崩溃护栏+遗留崩溃消费、P0-2 Shizuku 命令白名单+注入防护、P0-3 脚本 POSIX 核查（无需改动）、P1-4 lint 基线闸门、P1-5 CI lintDebug、P1-6 LeakCanary 自动监视+仪表化测试骨架、P2-8 SafeCommandGuard 非交互白名单、P2-9 BridgeService 声明幂等、P2-10 本地指标。APK b168 已交付 /sdcard/AIDev/（未安装）。待用户确认 push。",
   "active_plan": "current-task.md",
   "completed_phases": [
+    "rules/ 工程宪法加固（P0/P1/P2 全完成，b168，4 逻辑 commit 未 push）：P0-1 CrashGuard 全局崩溃护栏+consumeLegacyCrashes 自我修正闭环；P0-2 Shizuku 命令前缀白名单+注入元字符防护；P0-3 37 脚本 POSIX 核查（无需改动）；P1-4 lint 基线闸门（app/lint-baseline.xml）；P1-5 CI lintDebug；P1-6 LeakCanary 自动监视+ShellActivityTest 仪表化骨架；P2-8 SafeCommandGuard 非交互可执行文件白名单；P2-9 BridgeServiceClaimTest 声明幂等；P2-10 LocalMetrics JSONL 指标接入 BuildRequestTracker",
     "Tasks Tab audit: 9项修复（P0-1线程泄漏/P0-2项目列表缓存/P0-3崩溃数据源统一/P1-4取消按钮/P1-5提交即时反馈/P1-6SFTP分类/P1-7Tab切换闪烁/P2-8死参数/P2-9轮询间隔）",
     "b99: 构建验证 + 安装真机（assembleDebug BUILD SUCCESSFUL, Shizuku静默安装成功）",
     "b98: Bug修复B1-B9（状态轮询5s刷新/确认弹窗/异常保护/JSON安全/重试注入项目/autonomousOn同步/lastBuildResult动态/upsertRecord统一）",
