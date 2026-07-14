@@ -244,7 +244,9 @@ fun DashboardPage(
         item { MetricChip(label = "运行", value = workflowRunning.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "成功", value = workflowSuccess.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "失败", value = workflowFailed.toString(), modifier = Modifier.fillMaxWidth()) }
-        items(tasks.take(6), key = { it.definition.id }) { task -> WorkflowTaskCard(task) }
+        item(span = { GridItemSpan(2) }) {
+            Text("完整任务列表见「构建进化」标签", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         item(span = { GridItemSpan(2) }) {
             AppSectionHeader("代码评审", "提交前风险自检")
         }

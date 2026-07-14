@@ -64,6 +64,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Rule
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -94,15 +95,15 @@ import java.io.File
 
 import org.json.JSONObject
 
-private val TAB_LABELS = listOf("总览", "宇宙 A", "宇宙 B", "调试", "设备")
+private val TAB_LABELS = listOf("总览", "AI 环境", "构建进化", "调试", "设备")
 
 private data class NavItem(val label: String, val icon: ImageVector)
 
 private val NAV_ITEMS = listOf(
     NavItem("总览", Icons.Rounded.Dashboard),
-    NavItem("项目", Icons.Rounded.Folder),
-    NavItem("宇宙 A", Icons.Rounded.SmartToy),
-    NavItem("宇宙 B", Icons.Rounded.AccountTree),
+    NavItem("代码评审", Icons.Rounded.Rule),
+    NavItem("AI 环境", Icons.Rounded.SmartToy),
+    NavItem("构建进化", Icons.Rounded.AccountTree),
     NavItem("调试", Icons.Rounded.BugReport),
     NavItem("设备", Icons.Rounded.PhoneAndroid),
 )
@@ -151,13 +152,13 @@ fun ServerPanel(
                 }
             }
             Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
+                AppSectionHeader("服务器中心", "开发控制台 · AI 环境 / 构建进化 / 设备调试 / 代码评审")
                 Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab -> renderTab(tab) }
             }
         }
     } else {
         Column(modifier = modifier.fillMaxSize()) {
-            AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
+            AppSectionHeader("服务器中心", "开发控制台 · AI 环境 / 构建进化 / 设备调试 / 代码评审")
 
             TabRow(selectedTabIndex = selectedTab.intValue, containerColor = MaterialTheme.colorScheme.surface) {
                 TAB_LABELS.forEachIndexed { index, label ->
@@ -462,7 +463,7 @@ private fun UniverseBTab(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("选择要编译的项目", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("workspace 下可构建的项目", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("aidev 可构建工程（区别于代码评审里的 git/gradle 工程）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.width(Spacing.s12))
                 Box {
