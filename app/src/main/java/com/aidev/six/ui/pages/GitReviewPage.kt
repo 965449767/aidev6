@@ -110,12 +110,13 @@ fun GitReviewPage(
         scope.launch {
             reviewing = true
             aiReply = null
-            if (!OpenCodeServerManager.isRunning()) {
-                aiReply = "OpenCode 未运行，无法 AI 评审。请先启动 OpenCode 服务后再试。"
+            val client = OpenCodeClient("http://127.0.0.1:${OpenCodeServerManager.PORT}")
+            val healthy = withContext(Dispatchers.IO) { runCatching { client.health() }.getOrDefault(false) }
+            if (!healthy) {
+                aiReply = "OpenCode 未运行或未响应（端口 ${OpenCodeServerManager.PORT}）。请先启动 OpenCode：在 AI 对话中拉起，或终端执行 `opencode serve --port ${OpenCodeServerManager.PORT}`。"
                 reviewing = false
                 return@launch
             }
-            val client = OpenCodeClient("http://127.0.0.1:${OpenCodeServerManager.PORT}")
             val session = client.createSession("Git Review")
             if (session == null) {
                 aiReply = "创建 OpenCode 会话失败。"
@@ -191,11 +192,11 @@ fun GitReviewPage(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    OutlinedButton(
-                        onClick = { review() },
-                        enabled = !reviewing && OpenCodeServerManager.isRunning(),
-                        modifier = Modifier.weight(1f),
-                    ) {
+                OutlinedButton(
+                    onClick = { review() },
+                    enabled = !reviewing,
+                    modifier = Modifier.weight(1f),
+                ) {
                         Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
                         Spacer(Modifier.width(Spacing.s4))
                         Text(if (reviewing) "评审中…" else "AI 深度评审")
