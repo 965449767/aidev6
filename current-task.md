@@ -14,7 +14,7 @@
 ### 采纳并排入近期
 1. Safe Bash Guard（AI 命令沙箱，P0）：接入 Agent 命令结构化入口（AgentTaskRunner.execProcess），加 /sdcard 写屏障与危险命令拦截。
 2. 编译内存看门狗（P1）：BuildPreflight 预检按可用内存动态下调 org.gradle.workers.max，防 LMK 杀进程。
-3. (中期) Edge-to-Edge 正经适配：移除 windowOptOutEdgeToEdgeEnforcement 临时规避，改 Scaffold + WindowInsets。
+3. (已核实·无需改动) Edge-to-Edge：经核查当前**已实现** edge-to-edge——`ShellActivity` 调 `WindowCompat.setDecorFitsSystemWindows(window, false)` 开启，且 `AppNavHost` 根 Column 已加 `windowInsetsPadding(WindowInsets.systemBars)` + `imePadding()`。an.txt 所述"临时规避 windowOptOutEdgeToEdgeEnforcement"在本仓库**不存在**（同文档对 chat 已移除、targetSdk=35 的过时前提一致），故本项无需改动。
 4. (后期单独执行) 通信升级：BridgeService 由 500ms 文件轮询升级为 Unix Domain Socket 主用 + 轮询灾备（体量较大，单独排期，不排入本次）。
 
 ### 明确不做（与 an.txt 冲突项）
