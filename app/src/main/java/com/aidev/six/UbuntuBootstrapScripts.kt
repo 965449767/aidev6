@@ -311,7 +311,7 @@ object UbuntuBootstrapScripts {
         if (!rootfs.isDirectory) return
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh", "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh", "aidev-crash-report.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "installapk.sh", "uninstallapp.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh", "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh", "aidev-crash-report.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "installapk.sh", "uninstallapp.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
