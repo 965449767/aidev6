@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -57,7 +60,7 @@ fun ProjectExportDialog(
         onDismissRequest = onDismiss,
         title = { Text("导出源码（AI 文档）") },
         text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.s4)) {
                 Text("将「$projectName」源码合成为一份 AI 可读文档（每文件带路径与代码块）。")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = plainText, onCheckedChange = { plainText = it })

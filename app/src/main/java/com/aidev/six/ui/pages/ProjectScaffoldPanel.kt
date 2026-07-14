@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -63,12 +66,12 @@ private fun ScaffoldForm(onVisual: () -> Unit) {
     Column {
         OutlinedTextField(state.form.projectName, onValueChange = { state.form = state.form.copy(projectName = it) },
             label = { Text("项目名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.s8))
         OutlinedTextField(state.form.packageName, onValueChange = { state.form = state.form.copy(packageName = it) },
             label = { Text("包名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.s12))
         Text("模板选择", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(Spacing.s4))
         LazyColumn(Modifier.heightIn(max = 200.dp)) {
             items(state.templates, key = { it.name }) { tmpl ->
                 TemplateRow(tmpl, selected = state.form.templateName == tmpl.name) {
@@ -76,7 +79,7 @@ private fun ScaffoldForm(onVisual: () -> Unit) {
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.s12))
         Button(onClick = onVisual, enabled = state.form.projectName.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
             Text("可视化预览（动手前先看清楚）")
         }
@@ -89,7 +92,7 @@ private fun TemplateRow(tmpl: ScaffoldTemplate, selected: Boolean, modifier: Mod
         modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(onClick = onClick),
         colors = CardDefaults.cardColors(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(Spacing.s16)) {
             Text(tmpl.label, style = MaterialTheme.typography.bodyLarge)
             Text(tmpl.desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -109,14 +112,14 @@ private fun VisualPreDevPlanning(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             SectionTitle("① UI 模拟图（静态示意，非真实预览）")
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 PhoneMockup()
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
         }
         item { SectionTitle("② 项目结构（将生成）") }
         item {
@@ -127,28 +130,28 @@ private fun VisualPreDevPlanning(
             ) {
                 Text(tree, Modifier.padding(10.dp), style = MaterialTheme.typography.bodySmall)
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
         }
         item { SectionTitle("③ 能力 / 权限（提前感知限制）") }
         item {
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Column(Modifier.padding(12.dp)) {
+                Column(Modifier.padding(Spacing.s12)) {
                     Text("默认具备能力：", style = MaterialTheme.typography.labelMedium)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(Spacing.s4))
                     ScaffoldBaseline.capabilityNotes.forEach { cap ->
                         Text("• $cap", style = MaterialTheme.typography.bodySmall)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     Text("设备内受限/需谨慎的权限：", style = MaterialTheme.typography.labelMedium)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(Spacing.s4))
                     ScaffoldBaseline.restrictedPermissions.forEach { (perm, note) ->
                         Text("• $perm — $note", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     Text(
                         "如确需上述权限，请在生成后于 AndroidManifest.xml 手动声明并评估必要性；" +
                             "完整能力边界见应用内文档 docs/compose-capabilities.md。",
@@ -157,13 +160,13 @@ private fun VisualPreDevPlanning(
                     )
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
         }
         item {
             Button(onClick = onScript, modifier = Modifier.fillMaxWidth()) {
                 Text("查看将生成的脚本")
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Spacing.s4))
             Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
                 Text("返回修改")
             }
@@ -174,43 +177,43 @@ private fun VisualPreDevPlanning(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(Spacing.s4))
 }
 
 @Composable
 private fun PhoneMockup() {
     Surface(
-        modifier = Modifier.width(200.dp).border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.width(200.dp).border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Radius.card)),
+        shape = RoundedCornerShape(Radius.card),
         color = MaterialTheme.colorScheme.surface,
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(Spacing.s12)) {
             Surface(
                 Modifier.fillMaxWidth().height(28.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(Radius.button),
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     Text("My App", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             repeat(3) { i ->
                 Surface(
                     Modifier.fillMaxWidth().height(40.dp).padding(vertical = 3.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(Radius.button),
                 ) {
                     Box(Modifier.fillMaxSize().padding(start = 10.dp), contentAlignment = androidx.compose.ui.Alignment.CenterStart) {
                         Text("列表项 ${i + 1}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             Surface(
                 Modifier.fillMaxWidth().height(36.dp),
                 color = MaterialTheme.colorScheme.primary,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(Radius.button),
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     Text("主操作按钮", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimary)
@@ -224,11 +227,11 @@ private fun PhoneMockup() {
 private fun ScriptPreview(script: String, onBack: () -> Unit, onSendToTerminal: ((String) -> Unit)? = null) {
     Column {
         Text("生成的脚本仅在 Ubuntu 终端内执行，不会直接修改本地文件系统。点击下方按钮发送到当前终端。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.s8))
         Surface(Modifier.fillMaxWidth().heightIn(max = 300.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-            Text(script, modifier = Modifier.padding(8.dp), style = MaterialTheme.typography.bodySmall)
+            Text(script, modifier = Modifier.padding(Spacing.s8), style = MaterialTheme.typography.bodySmall)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.s8))
         Button(
             onClick = {
                 ProjectScaffoldState.onSendToTerminal?.invoke(script)
@@ -236,7 +239,7 @@ private fun ScriptPreview(script: String, onBack: () -> Unit, onSendToTerminal: 
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("发送到终端执行") }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(Spacing.s4))
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
             Text("返回修改")
         }

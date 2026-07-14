@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,7 +60,7 @@ fun ProjectImportDialog(
         onDismissRequest = onDismiss,
         title = { Text("导入项目到 workspace") },
         text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(Spacing.s4)) {
                 Text("选择一个源目录，复制到 workspace（自动清理 build/.gradle/.idea 等）。")
                 Text("源目录：", modifier = Modifier.padding(top = 8.dp))
                 OutlinedTextField(

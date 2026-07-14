@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -255,7 +258,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit, onManage: 
             modifier = Modifier
                 .weight(1f)
                 .height(44.dp),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(Radius.button),
         )
         Spacer(Modifier.width(6.dp))
         Box(
@@ -404,7 +407,7 @@ private fun ItemDetailSheet(
             CommandBlock(item.cmd)
 
             if (item.tags.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     item.tags.forEach { tag ->
                         Text(
@@ -421,11 +424,11 @@ private fun ItemDetailSheet(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             Text(text = item.desc, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
 
             if (item.usage.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 SectionLabel("用法示例")
                 item.usage.split("\n").filter { it.trim().isNotEmpty() }.forEach { line ->
                     val trimmed = line.trim()
@@ -437,18 +440,18 @@ private fun ItemDetailSheet(
             }
 
             if (item.permissions.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 SectionLabel("所需权限")
                 Text(text = item.permissions, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
             }
 
             if (item.notes.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 SectionLabel("注意事项")
                 Text(text = item.notes, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Spacing.s16))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SmallButton("在终端执行", onClick = onExecute, modifier = Modifier.weight(1f))
                 SmallButton("复制命令", onClick = onCopy, modifier = Modifier.weight(1f))
@@ -523,7 +526,7 @@ private fun UsageLine(cmdPart: String, explPart: String, modifier: Modifier = Mo
 private fun SmallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(Radius.button))
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
@@ -609,7 +612,7 @@ private fun CustomCommandsManager(
                 .padding(bottom = 32.dp),
         ) {
             Text("自定义命令", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
 
             if (commands.isEmpty()) {
                 Text("暂无自定义命令", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
@@ -649,7 +652,7 @@ private fun CustomCommandsManager(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SmallButton("添加", onClick = onAddRequest, modifier = Modifier.weight(1f))
                 SmallButton("保存", onClick = { onSave(commands) }, modifier = Modifier.weight(1f))

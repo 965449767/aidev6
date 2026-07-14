@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import android.app.Activity
 import android.content.Context
 import com.aidev.six.BuildConfig
@@ -265,9 +268,9 @@ private fun TerminalTopBar(
             modifier = Modifier.padding(end = 8.dp),
         )
         TopBarButton("+", onClick = onNewSession)
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(Spacing.s4))
         TopBarButton("粘贴", onClick = onPaste)
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(Spacing.s4))
         TopBarButton("更多", onClick = onMore)
     }
 }
@@ -631,9 +634,9 @@ private fun ImeToggleButton(page: EmbeddedTerminalPage, activity: Activity) {
 private fun HintChip(modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(Radius.button))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Radius.button))
             .height(24.dp)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 0.dp),
@@ -660,9 +663,9 @@ private fun CompletionChip(item: TerminalCompletion, page: EmbeddedTerminalPage,
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(Radius.button))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(Radius.button))
             .height(24.dp)
             .combinedClickable(
                 onClick = { page.completionEngine.applyCompletion(item) },
@@ -842,10 +845,10 @@ private fun KeyboardKey(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(Radius.button))
             .background(bgColor)
             .then(
-                if (isRearranging) Modifier.border(borderWidth, borderColor, RoundedCornerShape(8.dp))
+                if (isRearranging) Modifier.border(borderWidth, borderColor, RoundedCornerShape(Radius.button))
                 else Modifier
             )
             .scale(keyScale)
@@ -1082,7 +1085,7 @@ private fun SectionToggleItem(title: String, desc: String, checked: Boolean, onT
             Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(Spacing.s12))
         Switch(checked = checked, onCheckedChange = onToggle)
     }
 }
@@ -1100,9 +1103,9 @@ private fun ClickableSectionHeader(text: String, expanded: Boolean, onClick: () 
             text = if (expanded) "▾" else "▸",
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(16.dp),
+            modifier = Modifier.width(Spacing.s16),
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(Spacing.s4))
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
@@ -1212,7 +1215,7 @@ private fun TabColorPickerDialog(
                                 .clip(CircleShape)
                                 .background(sessionColor(key)),
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(Spacing.s8))
                         Text(label, style = MaterialTheme.typography.bodyMedium)
                         if (key == currentColor) {
                             Spacer(Modifier.weight(1f))
@@ -1325,10 +1328,10 @@ private fun BackgroundColorDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .background(previewColor, RoundedCornerShape(8.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
+                        .background(previewColor, RoundedCornerShape(Radius.button))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Radius.button)),
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1357,7 +1360,7 @@ private fun BackgroundColorDialog(
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 Text("亮度", style = MaterialTheme.typography.bodySmall)
                 Slider(
                     value = brightness.toFloat(),
@@ -1377,7 +1380,7 @@ private fun BackgroundColorDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onReset) { Text("重置", color = MaterialTheme.colorScheme.error) }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(Spacing.s8))
                 TextButton(onClick = onDismiss) { Text("取消") }
             }
         },

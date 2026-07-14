@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,7 +78,7 @@ fun SFtpDialog(onDismiss: () -> Unit) {
                     Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("连接管理") })
                     Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("传输队列") })
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 when (tab) {
                     0 -> {
                         val session = activeSession
@@ -151,7 +154,7 @@ fun SFtpDialog(onDismiss: () -> Unit) {
                     1 -> SftpTransferQueue()
                 }
                 if (errorMessage != null && activeSession == null) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(Spacing.s4))
                     Text(errorMessage!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -197,7 +200,7 @@ private fun SftpConnectionList(
                         trailingContent = {
                             Row {
                                 TextButton(onClick = { editing = true }) { Text("编辑") }
-                                Spacer(Modifier.width(4.dp))
+                                Spacer(Modifier.width(Spacing.s4))
                                 TextButton(onClick = { onConnect(conn, passwords[conn.id]) }) { Text("连接") }
                             }
                         },
@@ -223,7 +226,7 @@ private fun SftpConnectionForm(
     var port by remember { mutableStateOf(conn.port.toString()) }
     var user by remember { mutableStateOf(conn.user) }
 
-    Column(modifier.padding(8.dp)) {
+    Column(modifier.padding(Spacing.s8)) {
         OutlinedTextField(
             value = label,
             onValueChange = { label = it },
@@ -307,7 +310,7 @@ private fun SftpFileBrowser(
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
         }
         if (errorMessage != null) {
-            Text(errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(4.dp))
+            Text(errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(Spacing.s4))
         }
         if (currentPath != "/") {
             TextButton(onClick = onGoUp, modifier = Modifier.fillMaxWidth()) { Text(".. 返回上级") }
@@ -371,7 +374,7 @@ private fun formatTimestamp(millis: Long): String {
 private fun SftpTransferQueue(modifier: Modifier = Modifier) {
     val queue = SFtpState.transferQueue
     if (queue.isEmpty()) {
-        Text("暂无传输任务", modifier = modifier.padding(16.dp))
+        Text("暂无传输任务", modifier = modifier.padding(Spacing.s16))
         return
     }
     LazyColumn(modifier.heightIn(max = 320.dp)) {
