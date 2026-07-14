@@ -49,4 +49,15 @@ class ShellActivityTest {
         val state = f.get(act)
         return state.javaClass.getMethod("getIntValue").invoke(state) as Int
     }
+
+    /**
+     * P1-6：启动并销毁 ShellActivity 的生命周期骨架（真机/模拟器运行 connectedAndroidTest）。
+     * LeakCanary 在 debug 构建经 ContentProvider 自动安装并自动监视 Activity 泄漏，无需显式断言。
+     */
+    @Test
+    fun launchAndFinish() {
+        val scenario = ActivityScenario.launch(ShellActivity::class.java)
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.DESTROYED)
+        scenario.close()
+    }
 }

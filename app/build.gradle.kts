@@ -156,6 +156,16 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    lint {
+        // P1-4：启用 Lint 并冻结历史问题到基线；后续仅对新引入的问题报错。
+        // 首次运行会自动生成 lint-baseline.xml（不阻断构建），之后增量校验。
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        checkReleaseBuilds = false
+        // 关闭与稳定性/安全无关的本地化排版检查，聚焦实质问题
+        disable += setOf("MissingTranslation", "ExtraTranslation", "TypographyEllipsis", "TypographyDashes")
+    }
 }
 
 composeCompiler {
@@ -241,6 +251,8 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("androidx.compose.ui:ui-test-junit4")
+    // P1-6：LeakCanary（仅 debug 构建，自动经 ContentProvider 安装，监测 Activity/Fragment/ViewModel 内存泄漏）
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.12")
 
     implementation("org.commonmark:commonmark:0.21.0")
 

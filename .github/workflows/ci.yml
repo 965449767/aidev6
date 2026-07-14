@@ -37,6 +37,10 @@ jobs:
         if: ${{ env.ANDROID_SDK_ROOT != '' }}
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
+      - name: Android Lint (baseline gate)
+        if: ${{ env.ANDROID_SDK_ROOT != '' }}
+        run: ./gradlew :app:lintDebug --no-daemon
+
       - name: Shell test suite (assets/scripts)
         run: bash app/src/test/sh/run.sh
 
