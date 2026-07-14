@@ -2,6 +2,8 @@ package com.aidev.six.agent
 
 import android.os.Handler
 import android.os.Looper
+import com.aidev.six.AIDevLogger
+import com.aidev.six.SafeCommandGuard
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -109,6 +111,12 @@ internal class AgentTaskRunner {
             val workDir = File(workingDirectory)
             if (!workDir.isDirectory) {
                 return ExecResult(-1, "", IllegalStateException("工作目录不存在: $workingDirectory"))
+            }
+            // 安全护栏：拦截危险命令 / 对受保护路径的破坏性写（非交互上下文无人工确认，直接失败）
+            val guard = SafeCommandGuard.check(command)
+            if (guard.verdict != SafeCommandGuard.Verdict.ALLOW) {
+                AIDevLogger.w("AgentTaskRunner", "SafeCommandGuard 拦截命令: ${guard.reason}")
+                return ExecResult(-1, "", IllegalStateException("SafeCommandGuard 拦截：${guard.reason}"))
             }
             val process = ProcessBuilder("/system/bin/sh", "-c", command)
                 .directory(workDir)

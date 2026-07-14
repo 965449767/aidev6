@@ -6,6 +6,78 @@
 
 ---
 
+## 当前任务（2026-07-14 后续）：安全与资源加固（近期两件）
+
+> 来源：基于 /storage/emulated/0/an.txt 的架构评审，经人工筛选后采纳的"可立即执行"子集。
+> 原则：纯加法、低风险、不触碰 AGENTS.md 硬约束（单模块 / 不引入 Hilt / 产物交用户手动安装）。
+
+### 采纳并排入近期
+1. Safe Bash Guard（AI 命令沙箱，P0）：接入 Agent 命令结构化入口（AgentTaskRunner.execProcess），加 /sdcard 写屏障与危险命令拦截。
+2. 编译内存看门狗（P1）：BuildPreflight 预检按可用内存动态下调 org.gradle.workers.max，防 LMK 杀进程。
+3. (中期) Edge-to-Edge 正经适配：移除 windowOptOutEdgeToEdgeEnforcement 临时规避，改 Scaffold + WindowInsets。
+4. (后期单独执行) 通信升级：BridgeService 由 500ms 文件轮询升级为 Unix Domain Socket 主用 + 轮询灾备（体量较大，单独排期，不排入本次）。
+
+### 明确不做（与 an.txt 冲突项）
+- 多模块解耦 + 引入 Hilt/DI：违反 AGENTS.md「No Hilt, no multi-module」。
+- 热重载 / 动态加载 dex：违反「产物交用户手动安装」交付规则，且风险高。
+- 端侧 LLM 自愈闭环：工程量跨数量级，列为长期北极星，不排入迭代。
+- an.txt 过时前提相关建议（"chat 已加入"——实际已移除；targetSdk 36——实际 35）不采纳。
+
+### 长期愿景（北极星，不排入当前迭代）
+FSM 自我进化闭环 / DAG 工作流引擎 / VFS / MCP 风格工具网关 / 遥测仪表盘——见 an.txt 第二部，作架构演进参考。
+
+### 验收（DoD）
+- (a) AgentTaskRunner 执行命令前必经 SafeCommandGuard 校验，危险命令 / 对受保护路径的破坏性写被拦截 ✅（实现后）
+- (b) 可用内存 < 3GB 时 BuildPreflight 提示并自动下调 workers.max ✅
+- (c) 现有 158 单测 + 65 shell 测试不引入新失败（3 个预存失败保持）✅
+
+---
+
+## 历史任务（已完成 2026-07-14）：项目源码导出脚本 `export-project.sh`
+
+> 🎯 目标：提供一个与 `app/src/main/java/com/aidev/six/ProjectExporter.kt` 行为一致的**独立 Bash 工具**，
+> 把任意项目源码合成为一份 AI 可读文档（Markdown / 纯文本），默认落到 SD 卡根目录。
+> 已交付并完成验证。
+
+### 交付物
+- `export-project.sh`（项目根目录，已 `chmod +x`）
+  - 用法：`./export-project.sh [选项] [项目目录] [输出文件]`
+    - `-g, --include-git` 含 `.git`（默认排除）
+    - `-p, --plain-text` 纯文本（默认 Markdown）
+    - `-m, --max-bytes N` 单文件上限，默认 524288
+    - `-o, --output FILE` 指定输出（覆盖默认 SD 卡路径）
+    - `-h, --help`
+  - **默认（无参）**：把当前目录导出为 `/sdcard/<项目名>-source.md`（纯文本为 `.txt`）；父目录不存在时回退当前目录。
+
+### 行为对齐 `ProjectExporter.kt`
+- 头部：项目名 / 生成时间 / 源码文件数 / 绝对路径（Markdown 用 `>` 引用块）。
+- 目录树：递归、按名排序、目录带 `/`。
+- 逐文件正文：Markdown `### <相对路径>` + ` ```<lang> ` 代码块；纯文本 `===== FILE: <相对路径> =====`。
+- 排除规则一致：目录 `build/captures/node_modules` 及所有 `.` 开头目录（`.git` 仅 `-g` 保留）；文件 `local.properties`、`*.iml`、二进制扩展名、超 `max-bytes`。
+- 语言映射：`kt/kts→kotlin`、`java`、`xml`、`gradle`、`json`、`md→markdown`、`sh/bash→bash`、`py→python`、`c/h`、`cpp…`、`rs`、`go`、`swift`、`js/ts`、`html`、`css`、`yaml/toml/properties` 等，未知留空。
+
+### 性能优化（关键）
+- 初版因**每个文件多次 fork**（`basename`/`stat`/双重 `cat`）在本 PRoot 环境极慢（~50s 且似“卡死”）。
+- 优化后：① `find` 单次遍历并内置大小过滤与目录剪枝；② `should_skip_file` 改用参数展开（零 fork）；③ 单 `cat` 直写输出；④ 目录树由文件列表重建。
+- 结果：`./export-project.sh` 导出 305 个源文件约 **14s**（SD 卡直写与本地产物一致）；剩余耗时为本环境存储 I/O 固有，真机更快。
+
+### 验收（DoD）
+- (a) 默认导出到 `/sdcard/<项目名>-source.md` ✅
+- (b) `build/`、`.git`（默认）、`local.properties`、`*.iml`、二进制、超 512KB 均正确排除 ✅
+- (c) `-g` 含 `.git`（1007 文件）、`-p` 纯文本、`-m`/`-o` 生效 ✅
+- (d) 语言代码块与目录树正确 ✅
+- (e) 速度从 ~50s 降到 ~14s，无“卡死” ✅
+
+### 备注
+- `aidev6-source.md`（约 1.9MB）为运行产物，落在 `/sdcard`；若不想提交建议加入 `.gitignore`。
+- 真机 `/sdcard` 即 `/storage/emulated/0`。
+
+---
+
+## 历史任务（已完成 2026-07-13，宿主 b150）：AIDev 固定开发流程
+
+
+
 ## 稳定性铁律（不可违反）
 - **AIDev 宿主** `app/build.gradle.kts` 的 AGP/Kotlin/SDK/BOM **一律不动** → 宇宙 B 零风险锚点。
 - 所有改动 = 脚手架脚本 + AIDev UI(纯加法) + 文档 + 预缓存工具 + 扩展已有的只读分析器。

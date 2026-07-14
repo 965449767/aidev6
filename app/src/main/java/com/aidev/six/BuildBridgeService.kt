@@ -7,6 +7,7 @@ import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.agent.AgentTaskStepResult
 import com.aidev.six.agent.AgentTaskStore
 import com.aidev.six.agent.BuildProgress
+import com.aidev.six.monitor.SystemMetricsCollector
 import com.aidev.six.agent.BuildProgress.Phase
 import com.aidev.six.agent.ProjectTaskLock
 import com.aidev.six.terminal.ProotLauncher
@@ -266,7 +267,8 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                 .onFailure { AIDevLogger.e("BuildBridge", "预构建体检失败(非致命)", it) }
 
             // 2.7b) 构建前硬护栏：命中 HARD_BLOCKER 或离线缺基线 → 明确报错，不浪费编译时间
-            val pre = BuildPreflight.checkPreconditions(projectDir)
+            val memMb = runCatching { SystemMetricsCollector().getMemoryInfo().memAvailable / 1024 }.getOrNull()
+            val pre = BuildPreflight.checkPreconditions(projectDir, memMb)
             pre.warnings.forEach(append)
             if (pre.hardErrors.isNotEmpty()) {
                 pre.hardErrors.forEach(append)

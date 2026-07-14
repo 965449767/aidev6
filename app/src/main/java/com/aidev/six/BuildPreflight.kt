@@ -13,6 +13,9 @@ import java.net.Socket
  */
 object BuildPreflight {
 
+    /** 编译内存看门狗阈值：可用内存低于此值（MB）时下调 Gradle 并行度，防 LMK 杀进程。 */
+    const val MEM_WATCHDOG_THRESHOLD_MB: Long = 3072
+
     /** 体检结果：修复后的文本（若无改动则与入参一致）+ 面向用户的中文提示。 */
     data class Result(val fixedText: String, val messages: List<String>)
 
@@ -193,9 +196,15 @@ object BuildPreflight {
      *  2) 离线且基线依赖未预缓存 → warnings（提示先 aidev-precache，避免缺包失败）
      * 纯逻辑、可单测；不修改任何文件。
      */
-    fun checkPreconditions(projectDir: File): PreconditionResult {
+    fun checkPreconditions(projectDir: File, memAvailableMb: Long? = null): PreconditionResult {
         val hard = mutableListOf<String>()
         val warn = mutableListOf<String>()
+
+        // 编译内存看门狗：可用内存不足时提示（实际降级在 TerminalShellAssets 注入 workers.max）
+        if (memAvailableMb != null && memAvailableMb < MEM_WATCHDOG_THRESHOLD_MB) {
+            warn += "⚠ 可用内存不足（${memAvailableMb}MB < ${MEM_WATCHDOG_THRESHOLD_MB}MB），" +
+                "已下调 Gradle 并行度（workers.max）以防整机被 LMK 杀进程。"
+        }
 
         val manifest = File(projectDir, "app/src/main/AndroidManifest.xml")
         if (manifest.isFile) {

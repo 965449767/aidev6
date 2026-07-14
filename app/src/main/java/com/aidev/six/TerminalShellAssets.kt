@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Build
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import com.aidev.six.monitor.SystemMetricsCollector
 import java.io.File
 
 @Immutable
@@ -527,8 +528,9 @@ EOF
         )
     }
 
-    /** ARM64 QEMU 下 aapt2 包装 / APK 拷贝 / 性能调优的 Gradle init 脚本内容。 */
-    fun gradleInitScripts(): Map<String, String> = mapOf(
+    /** ARM64 QEMU 下 aapt2 包装 / APK 拷贝 / 性能调优的 Gradle init 脚本内容。
+     *  @param memAvailableMb 可用内存（MB）；低于看门狗阈值时下调 workers.max 以"时间换空间"。传 null 则按 CPU 核数。 */
+    fun gradleInitScripts(memAvailableMb: Long? = null): Map<String, String> = mapOf(
             "wrap-native.gradle" to """
                 // AIDev: Auto-wrap aapt2 for ARM64 QEMU environment
                 def arch = System.getProperty("os.arch", "")
@@ -581,7 +583,8 @@ EOF
             """.trimIndent(),
             "performance.gradle" to """
                 // AIDev: Gradle performance tuning
-                def workers = Runtime.runtime.availableProcessors().toString()
+                // workers 由宿主侧按可用内存动态计算（低内存时降级并行度，防 LMK 杀进程）
+                def workers = "${computeWorkers(memAvailableMb)}".toString()
                 System.setProperty("org.gradle.workers.max", workers)
                 gradle.projectsLoaded {
                     logger.lifecycle "AIDev: workers=" + workers
@@ -589,12 +592,23 @@ EOF
             """.trimIndent()
         )
 
-    /** 把 init 脚本写入指定 GRADLE_USER_HOME 的 init.d（Gradle 设置 GRADLE_USER_HOME 后只读此目录）。 */
+    /** 把 init 脚本写入指定 GRADLE_USER_HOME 的 init.d（Gradle 设置 GRADLE_USER_HOME 后只读此目录）。
+     *  动态按可用内存计算 workers.max（低内存降级并行度，防 LMK 杀进程）。 */
     fun installGradleUserHomeInit(gradleUserHome: File) {
+        val memMb = runCatching { SystemMetricsCollector().getMemoryInfo().memAvailable / 1024 }.getOrNull()
         val initDir = File(gradleUserHome, "init.d").apply { mkdirs() }
-        gradleInitScripts().forEach { (name, content) ->
+        gradleInitScripts(memMb).forEach { (name, content) ->
             File(initDir, name).writeText(content + "\n")
         }
+    }
+
+    /** 按可用内存计算 Gradle workers 上限：低内存时降级为核数/2（最小 1）。 */
+    private fun computeWorkers(memAvailableMb: Long?): Int {
+        val cores = Runtime.getRuntime().availableProcessors()
+        if (memAvailableMb != null && memAvailableMb < BuildPreflight.MEM_WATCHDOG_THRESHOLD_MB) {
+            return maxOf(1, cores / 2)
+        }
+        return cores
     }
 
     private fun writeGradleInitScripts(home: File, rootfs: File) {
