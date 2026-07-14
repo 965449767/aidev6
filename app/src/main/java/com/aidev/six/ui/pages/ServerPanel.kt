@@ -57,10 +57,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -92,27 +94,32 @@ fun ServerPanel(
     val taskRunner = remember { AgentTaskRunner }
     val buildTracker = remember { BuildRequestTracker() }
     val selectedTab = remember { mutableIntStateOf(0) }
+    var showGitReview by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
 
-        TabRow(selectedTabIndex = selectedTab.intValue, containerColor = MaterialTheme.colorScheme.surface) {
-            TAB_LABELS.forEachIndexed { index, label ->
-                Tab(
-                    selected = selectedTab.intValue == index,
-                    onClick = { selectedTab.intValue = index },
-                    text = { Text(label) }
-                )
+        if (showGitReview) {
+            GitReviewPage(onBack = { showGitReview = false })
+        } else {
+            TabRow(selectedTabIndex = selectedTab.intValue, containerColor = MaterialTheme.colorScheme.surface) {
+                TAB_LABELS.forEachIndexed { index, label ->
+                    Tab(
+                        selected = selectedTab.intValue == index,
+                        onClick = { selectedTab.intValue = index },
+                        text = { Text(label) }
+                    )
+                }
             }
-        }
 
-        Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab ->
-            when (tab) {
-                0 -> DashboardPage(onExecuteCommand)
-                1 -> UniverseATab(onExecuteCommand, dialogManager)
-                2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
-                3 -> DebugCenterPage(onExecuteCommand)
-                4 -> AdbExplorerPage()
+            Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab ->
+                when (tab) {
+                    0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true })
+                    1 -> UniverseATab(onExecuteCommand, dialogManager)
+                    2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
+                    3 -> DebugCenterPage(onExecuteCommand)
+                    4 -> AdbExplorerPage()
+                }
             }
         }
     }

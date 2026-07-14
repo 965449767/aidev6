@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Rule
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +71,7 @@ import java.util.Locale
 @Composable
 fun DashboardPage(
     onExecuteCommand: (String) -> Unit,
+    onOpenGitReview: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -257,6 +259,18 @@ fun DashboardPage(
         item { MetricChip(label = "成功", value = workflowSuccess.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "失败", value = workflowFailed.toString(), modifier = Modifier.fillMaxWidth()) }
         items(tasks.take(6), key = { it.definition.id }) { task -> WorkflowTaskCard(task) }
+        item(span = { GridItemSpan(2) }) {
+            AppSectionHeader("代码评审", "提交前风险自检")
+        }
+        item(span = { GridItemSpan(2) }) {
+            ActionCard(
+                title = "打开代码评审",
+                subtitle = "扫描 git diff，按文件给出风险星与 AI 深度评审",
+                icon = Icons.Rounded.Rule,
+                onClick = onOpenGitReview,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
