@@ -8,13 +8,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddTask
 import androidx.compose.material.icons.rounded.Analytics
 import androidx.compose.material.icons.rounded.Assignment
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Book
-import androidx.compose.material.icons.rounded.RateReview
+import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -133,31 +133,31 @@ fun DashboardPage(
         item {
             ActionCard(
                 title = "分析工程",
-                subtitle = "模块 / 调用图",
+                subtitle = "模块 / 调用图 · aidev-index",
                 icon = Icons.Rounded.Analytics,
                 onClick = { onExecuteCommand("aidev-index") },
             )
         }
         item {
             ActionCard(
-                title = "生成任务",
-                subtitle = "需求 → 计划",
-                icon = Icons.Rounded.AddTask,
-                onClick = { },
+                title = "生成组件",
+                subtitle = "Activity/Fragment/VM · aidev-gen",
+                icon = Icons.Rounded.AutoAwesome,
+                onClick = { onExecuteCommand("aidev-gen") },
             )
         }
         item {
             ActionCard(
-                title = "审查代码",
-                subtitle = "diff 风险评审",
-                icon = Icons.Rounded.RateReview,
-                onClick = { },
+                title = "环境诊断",
+                subtitle = "构建与运行环境 · aidev-doctor",
+                icon = Icons.Rounded.HealthAndSafety,
+                onClick = { onExecuteCommand("aidev-doctor") },
             )
         }
         item {
             ActionCard(
                 title = "调试",
-                subtitle = "崩溃根因定位",
+                subtitle = "崩溃根因定位 · aidev-logcat",
                 icon = Icons.Rounded.BugReport,
                 onClick = { onExecuteCommand("aidev-logcat") },
             )
