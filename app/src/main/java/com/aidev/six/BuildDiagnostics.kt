@@ -12,8 +12,12 @@ object BuildDiagnostics {
         val lines = log.lines()
 
         // 资源链接失败（逐条匹配所有缺失资源）
-        val missingResources = Regex("""resource (\S+).*?not found""")
-            .findAll(log).map { it.groupValues[1] }.distinct().toList()
+        // 兼容两种格式：
+        //   - "resource color/calc_background (aka com.example:color/calc_background) not found"
+        //   - "Android resource linking failed\ncolor/calc_background not found"（Gradle 真实输出，无 "resource" 词）
+        val missingResources = Regex(
+            """(?:resource )?((?:color|string|layout|drawable|dimen|style|mipmap|id|menu|anim|attr|array|integer|bool|font|raw|xml|navigation|transition)/(?:\S+?))(?:\s*\([^)]*\))?\s+not found"""
+        ).findAll(log).map { it.groupValues[1] }.distinct().toList()
         if (missingResources.isNotEmpty()) {
             missingResources.forEach { res ->
                 hints.add("资源缺失「$res」：检查 res/values/ 目录是否定义了该资源，或 XML 中引用是否拼写正确")

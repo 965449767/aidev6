@@ -14,7 +14,7 @@ class BuildPreflightSourceTest {
         File(srcDir, "MainActivity.kt").writeText(
             """
             package com.example.app
-            import com.example.app MissingClass
+            import com.example.app.MissingClass
             class MainActivity
             """.trimIndent()
         )

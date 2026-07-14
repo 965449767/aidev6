@@ -67,16 +67,17 @@ internal class BuildRequestTracker(
         // 保证「手动提交」与「宇宙 A 终端自动提交」在 AF 面板呈现完全一致。这里只负责：
         // 写请求文件 → 等结果 → 成功拉起后驱动崩溃回流/自治重建。
         val startedAt = System.currentTimeMillis()
+        val runningDefinition = AgentTaskDefinition(
+            id = "build-$id", name = "构建 $project",
+            description = "宇宙 B 编译 → 产出 APK（安装/拉起由 aidev-deploy 独立黑盒接力）",
+            command = "aidev-build-request --project $project",
+            workingDirectory = PathConfig.workspaceDir(appCtx).absolutePath,
+            tags = listOf("build", "self-evolution")
+        )
         val writeOk = runCatching { reqFile.writeText(payload.toString()) }.isSuccess
         if (!writeOk) {
             val record = AgentTaskRecord(
-                definition = AgentTaskDefinition(
-                    id = "build-$id", name = "构建 $project",
-                    description = "宇宙 B 编译 → 产出 APK（安装/拉起由 aidev-deploy 独立黑盒接力）",
-                    command = "aidev-build-request --project $project",
-                    workingDirectory = PathConfig.workspaceDir(appCtx).absolutePath,
-                    tags = listOf("build", "self-evolution")
-                ),
+                definition = runningDefinition,
                 status = AgentTaskStatus.FAILED,
                 startedAt = startedAt,
                 finishedAt = System.currentTimeMillis(),
@@ -87,6 +88,19 @@ internal class BuildRequestTracker(
             postToMain { onUpdate(record) }
             return
         }
+
+        // 立即插入一条 RUNNING 记录并回调，任务流即时呈现「已提交构建」（与类文档承诺一致）
+        val runningRecord = AgentTaskRecord(
+            definition = runningDefinition,
+            status = AgentTaskStatus.RUNNING,
+            startedAt = startedAt,
+            finishedAt = 0L,
+            exitCode = -1,
+            log = "⏳ 已提交构建请求，等待宇宙 B 编译…",
+            lastUpdatedAt = System.currentTimeMillis()
+        )
+        AgentTaskStore.upsertTask(stateFile, runningRecord, limit = 12)
+        postToMain { onUpdate(runningRecord) }
 
         scope.launch {
             val resultFile = File(bridgeDir, "result-$id.json")
