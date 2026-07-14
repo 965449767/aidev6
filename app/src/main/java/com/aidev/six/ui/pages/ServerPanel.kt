@@ -334,6 +334,23 @@ private fun UniverseBTab(
     val projectExpanded = remember { mutableStateOf(false) }
     val selectedProject = remember { mutableStateOf(projectList.value.firstOrNull { it == "MyAndroidProject" } ?: projectList.value.firstOrNull() ?: "MyAndroidProject") }
 
+    val showExportDialog = remember { mutableStateOf(false) }
+    val showImportDialog = remember { mutableStateOf(false) }
+
+    if (showExportDialog.value) {
+        ProjectExportDialog(
+            projectName = selectedProject.value,
+            defaultOutDir = File(PreferencesManager(context).externalAidevDir, "exports"),
+            onDismiss = { showExportDialog.value = false },
+        )
+    }
+    if (showImportDialog.value) {
+        ProjectImportDialog(
+            onDismiss = { showImportDialog.value = false },
+            onImported = { projectList.value = listProjects(context) },
+        )
+    }
+
     // 部署状态（安装/拉起按钮的可用产物）
     val deployTracker = remember { DeployRequestTracker() }
     val deploySubmitting = remember { mutableStateOf(false) }
@@ -482,6 +499,18 @@ private fun UniverseBTab(
                 }
             }
         }
+
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { showExportDialog.value = true },
+                    modifier = Modifier.fillMaxWidth(0.48f),
+                ) { Text("导出源码(AI文档)") }
+                OutlinedButton(
+                    onClick = { showImportDialog.value = true },
+                    modifier = Modifier.fillMaxWidth(0.48f),
+                ) { Text("导入项目") }
+            }
 
         Spacer(Modifier.height(16.dp))
 
