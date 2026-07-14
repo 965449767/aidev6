@@ -94,6 +94,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(Constants.PrefKeys.EXTERNAL_AIDEV_DIR, "/sdcard/AIDev") ?: "/sdcard/AIDev"
         set(value) = write { putString(Constants.PrefKeys.EXTERNAL_AIDEV_DIR, value) }
 
+    var bridgeSocketEnabled: Boolean
+        get() = prefs.getBoolean(Constants.PrefKeys.BRIDGE_SOCKET_ENABLED, true)
+        set(v) = write { putBoolean(Constants.PrefKeys.BRIDGE_SOCKET_ENABLED, v) }
+
     var repoMode: String
         get() = prefs.getString(Constants.PrefKeys.REPO_MODE, "AUTO") ?: "AUTO"
         set(value) {

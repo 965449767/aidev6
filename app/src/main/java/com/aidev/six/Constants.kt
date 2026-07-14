@@ -67,6 +67,8 @@ object Constants {
         const val SELF_EVOLUTION_AUTONOMOUS = "self_evolution_autonomous"
         const val SELF_EVOLUTION_MODEL = "self_evolution_model"
         const val REPO_MODE = "repo_mode"
+        // 桥接通信：true=Unix Domain Socket 主用（文件轮询兜底）；false=纯文件轮询（等价旧行为）
+        const val BRIDGE_SOCKET_ENABLED = "bridge_socket_enabled"
 
     }
     // OpenCode HTTP API

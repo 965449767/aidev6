@@ -15,7 +15,16 @@
 1. Safe Bash Guard（AI 命令沙箱，P0）：接入 Agent 命令结构化入口（AgentTaskRunner.execProcess），加 /sdcard 写屏障与危险命令拦截。
 2. 编译内存看门狗（P1）：BuildPreflight 预检按可用内存动态下调 org.gradle.workers.max，防 LMK 杀进程。
 3. (已核实·无需改动) Edge-to-Edge：经核查当前**已实现** edge-to-edge——`ShellActivity` 调 `WindowCompat.setDecorFitsSystemWindows(window, false)` 开启，且 `AppNavHost` 根 Column 已加 `windowInsetsPadding(WindowInsets.systemBars)` + `imePadding()`。an.txt 所述"临时规避 windowOptOutEdgeToEdgeEnforcement"在本仓库**不存在**（同文档对 chat 已移除、targetSdk=35 的过时前提一致），故本项无需改动。
-4. (后期单独执行) 通信升级：BridgeService 由 500ms 文件轮询升级为 Unix Domain Socket 主用 + 轮询灾备（体量较大，单独排期，不排入本次）。
+4. (进行中·2026-07-14 起) 通信升级（Socket）：BridgeService 由 500ms 文件轮询升级为 **Unix Domain Socket 主用 + 文件轮询灾备**。
+   - 方案（已与用户确认）：真 UDS（`android.net.LocalServerSocket` 抽象命名空间 `aidev_bridge`）+ 自带静态客户端二进制 `aidev-bridge`（PRoot 侧推送）；文件 drop 永久保留为兜底；全局回滚开关 `BRIDGE_SOCKET_ENABLED`（默认 true，关=false=纯轮询=旧行为）。
+   - 测试策略：因 `LocalSocket` 仅真机/inst 可用，核心逻辑（帧编解码 `BridgeFrame`、路由 `BridgeRegistry`、收发 `BridgeSocketServer`+`LoopbackTcpTransport`/`LoopbackTcpClient`）用注入式传输在 **JVM 单测**覆盖；真机再验 LocalSocket 实现。
+   - 分阶段（每阶段独立 commit、可回滚、有实机验证点）：
+     - **Phase 0 — 基础设施（✅ 完成）**：新增 `BridgeFrame`/`BridgeTransport`(`LocalSocketTransport`+`LoopbackTcpTransport`+测试客户端)/`BridgeSocketServer`/`BridgeRegistry`；`BridgeService` 加 `bridgeName`/`dispatch` 默认 + 注册/注销 + 按 flag 起停 socket。单测 `BridgeFrameTest`/`BridgeSocketServerTest`/`BridgeRegistryTest` 全过；全量 186 单测仅 3 个预存失败（无新增）。
+     - **Phase 1 — 试点 NotifyBridge**（最简单一 notify）：实现 `dispatch` 复用现有 `handleRequest`；加 `aidev-bridge` 二进制 + 改写通知入口走 socket，文件兜底。
+     - **Phase 2 — ShizukuBridge**（exec/log + 白名单）：实现 `dispatch` 复用 `handleExecRequest`/`handleLogRequest`；改写 `aidev-shizuku.sh` 走 socket。
+     - **Phase 3 — Build/Deploy/Crash**（复杂：cancel/streaming/MD5）：各自实现 `dispatch`；改写 `aidev-build-request.sh`/`aidev-deploy.sh`/`aidev-crash-report.sh`。
+     - **Phase 4 — 清理/文档/收尾**：更新 `docs/architecture.md` 桥接章节、`docs/decisions.md` 记录决策。
+   - 回滚：每 Phase 独立 commit；`BRIDGE_SOCKET_ENABLED=false` → 完全回到现状；每桥保留文件兜底；`aidev-bridge` 连接失败自动回退文件写。
 
 ### 明确不做（与 an.txt 冲突项）
 - 多模块解耦 + 引入 Hilt/DI：违反 AGENTS.md「No Hilt, no multi-module」。
