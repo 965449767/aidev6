@@ -20,35 +20,51 @@ object GitRepoDetector {
     /** 工作目录（用户项目所在），PRoot 内路径。扫描只限定在此，避免误扫 ubuntu-rootfs 等系统绑定目录。 */
     const val WORKSPACE_PROOT = "/host-home/workspace"
 
-    /** 仅当 workspace 内无任何仓库时的兜底候选。 */
+    /** 仅当 workspace 内无任何项目时的兜底候选。 */
     private val FALLBACK = listOf(
         "/root/projects/aidev6",
         "/root/projects",
         "/host-home/aidev6",
     )
 
-    fun detect(ctx: Context): String? = listRepos(ctx).firstOrNull()
+    /** 发现的项目：路径 + 是否为 git 仓库（非 git 项目无法做 diff 评审，需先 git init）。 */
+    data class ProjectEntry(val path: String, val isGit: Boolean)
 
-    /** 列出工作目录（/host-home/workspace）下所有 git 仓库，不扫描系统目录。 */
-    fun listRepos(ctx: Context): List<String> {
+    fun detect(ctx: Context): String? = listProjects(ctx).firstOrNull()?.path
+
+    /**
+     * 发现工作目录（/host-home/workspace）下的所有项目：
+     *  - 含 .git 的目录（git 项目，可评审）
+     *  - 含 build.gradle / settings.gradle 等标记的目录（安卓/gradle 项目，可能未 git 初始化）
+     * 两者合并去重，不扫描系统目录。
+     */
+    fun listProjects(ctx: Context): List<ProjectEntry> {
         val opts = ProotLauncher.Options(
             rootfs = PathConfig.agentRootfs(ctx).absolutePath,
             cwd = "/host-home",
             timeoutSec = 30,
         )
-        val result = mutableListOf<String>()
-        if (isWorkTree(ctx, WORKSPACE_PROOT, opts)) result.add(WORKSPACE_PROOT)
-        val f = ProotLauncher.run(ctx, "find $WORKSPACE_PROOT -maxdepth 5 -name .git 2>/dev/null", opts)
-        f.stdout.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.forEach { gitDir ->
-            val repo = gitDir.removeSuffix("/.git")
-            if (repo.isNotBlank() && repo !in result) result.add(repo)
-        }
+        val gitSet = LinkedHashSet<String>()
+        ProotLauncher.run(ctx, "find $WORKSPACE_PROOT -maxdepth 6 -name .git 2>/dev/null", opts)
+            .stdout.lineSequence().map { it.trim() }.filter { it.isNotBlank() }
+            .forEach { gitSet.add(it.removeSuffix("/.git")) }
+        val gradleSet = LinkedHashSet<String>()
+        ProotLauncher.run(
+            ctx,
+            "find $WORKSPACE_PROOT -maxdepth 6 -name build.gradle -o -name build.gradle.kts -o -name settings.gradle -o -name settings.gradle.kts 2>/dev/null",
+            opts,
+        ).stdout.lineSequence().map { it.trim() }.filter { it.isNotBlank() }
+            .forEach { gradleSet.add(it.substringBeforeLast("/")) }
+        val map = LinkedHashMap<String, Boolean>()
+        gitSet.forEach { map[it] = true }
+        gradleSet.forEach { map[it] = map[it] ?: false }
+        var result = map.map { ProjectEntry(it.key, it.value) }
         if (result.isEmpty()) {
             for (c in FALLBACK) {
-                if (isWorkTree(ctx, c, opts)) result.add(c)
+                if (isWorkTree(ctx, c, opts)) result = result + ProjectEntry(c, true)
             }
         }
-        return result.distinct()
+        return result
     }
 
     private fun isWorkTree(ctx: Context, c: String, opts: ProotLauncher.Options): Boolean {

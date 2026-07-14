@@ -66,6 +66,7 @@ private const val KEY_CURRENT_REPO = "current_repo"
 
 private data class ProjectReview(
     val repo: String,
+    val isGit: Boolean,
     val diff: List<GitDiffParser.FileDiff>,
     val summary: GitDiffParser.ReviewSummary,
     val hasChanges: Boolean,
@@ -82,6 +83,7 @@ fun GitReviewPage(
 
     var projects by remember { mutableStateOf<List<ProjectReview>>(emptyList()) }
     var selectedRepo by remember { mutableStateOf<String?>(null) }
+    var selectedIsGit by remember { mutableStateOf(true) }
     var detailDiff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
     var scanningOverview by remember { mutableStateOf(false) }
     var scanningDetail by remember { mutableStateOf(false) }
@@ -92,10 +94,13 @@ fun GitReviewPage(
 
     val detailSummary = remember(detailDiff) { GitDiffParser.summarize(detailDiff) }
 
-    fun scanOne(repo: String): ProjectReview {
+    fun scanOne(entry: GitRepoDetector.ProjectEntry): ProjectReview {
+        if (!entry.isGit) {
+            return ProjectReview(entry.path, false, emptyList(), GitDiffParser.summarize(emptyList()), false)
+        }
         val res = ProotLauncher.run(
             context,
-            "git -C $repo diff HEAD --numstat",
+            "git -C ${entry.path} diff HEAD --numstat",
             ProotLauncher.Options(
                 rootfs = PathConfig.agentRootfs(context).absolutePath,
                 cwd = "/host-home",
@@ -103,7 +108,7 @@ fun GitReviewPage(
             ),
         )
         val diff = if (res.exitCode != 0 && res.stdout.isBlank()) emptyList() else GitDiffParser.parseNumstat(res.stdout)
-        return ProjectReview(repo, diff, GitDiffParser.summarize(diff), diff.isNotEmpty())
+        return ProjectReview(entry.path, true, diff, GitDiffParser.summarize(diff), diff.isNotEmpty())
     }
 
     fun scanOverview() {
@@ -112,16 +117,16 @@ fun GitReviewPage(
             error = null
             aiReply = null
             selectedRepo = null
-            val repos = withContext(Dispatchers.IO) { GitRepoDetector.listRepos(context) }
-            if (repos.isEmpty()) {
+            val entries = withContext(Dispatchers.IO) { GitRepoDetector.listProjects(context) }
+            if (entries.isEmpty()) {
                 projects = emptyList()
-                error = "工作目录（${GitRepoDetector.WORKSPACE_PROOT}）内未找到 git 仓库。"
+                error = "工作目录（${GitRepoDetector.WORKSPACE_PROOT}）内未找到任何项目（git 或安卓/gradle 工程）。"
                 scanningOverview = false
                 return@launch
             }
             val scanned = withContext(Dispatchers.IO) {
                 kotlinx.coroutines.coroutineScope {
-                    repos.map { repo -> async { runCatching { scanOne(repo) }.getOrDefault(ProjectReview(repo, emptyList(), GitDiffParser.summarize(emptyList()), false)) } }.awaitAll()
+                    entries.map { e -> async { runCatching { scanOne(e) }.getOrDefault(ProjectReview(e.path, e.isGit, emptyList(), GitDiffParser.summarize(emptyList()), false)) } }.awaitAll()
                 }
             }
             projects = scanned
@@ -131,12 +136,35 @@ fun GitReviewPage(
 
     fun openProject(repo: String) {
         selectedRepo = repo
+        selectedIsGit = projects.find { it.repo == repo }?.isGit ?: true
         aiReply = null
         error = null
+        if (!selectedIsGit) {
+            detailDiff = emptyList()
+            scanningDetail = false
+            return
+        }
         scope.launch {
             scanningDetail = true
-            detailDiff = withContext(Dispatchers.IO) { scanOne(repo).diff }
+            detailDiff = withContext(Dispatchers.IO) { scanOne(GitRepoDetector.ProjectEntry(repo, true)).diff }
             scanningDetail = false
+        }
+    }
+
+    fun initGit(repo: String) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                ProotLauncher.run(
+                    context,
+                    "git -C $repo init",
+                    ProotLauncher.Options(
+                        rootfs = PathConfig.agentRootfs(context).absolutePath,
+                        cwd = "/host-home",
+                        timeoutSec = 30,
+                    ),
+                )
+            }
+            scanOverview()
         }
     }
 
@@ -233,6 +261,7 @@ fun GitReviewPage(
                     val total = projects.size
                     val dirty = projects.count { it.hasChanges }
                     val highRisk = projects.count { it.summary.highRisk > 0 }
+                    val uninit = projects.count { !it.isGit }
                     val totalFiles = projects.sumOf { it.summary.files }
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -242,7 +271,7 @@ fun GitReviewPage(
                         Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
                             Text("工作目录总览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text(
-                                "项目 $total  ·  有改动 $dirty  ·  高风险 $highRisk  ·  改动文件共 $totalFiles",
+                                "项目 $total  ·  有改动 $dirty  ·  高风险 $highRisk  ·  未初始化 $uninit  ·  改动文件共 $totalFiles",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }
@@ -268,6 +297,16 @@ fun GitReviewPage(
             }
             when {
                 scanningDetail -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                !selectedIsGit -> {
+                    EmptyState(title = "未初始化 git", subtitle = "该项目尚未 git 初始化，无法做 diff 评审。初始化后即可查看逐文件改动与 AI 评审。")
+                    Row {
+                        OutlinedButton(onClick = { initGit(selectedRepo!!) }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Rounded.Refresh, "初始化", modifier = Modifier.size(Spacing.s16))
+                            Spacer(Modifier.width(Spacing.s4))
+                            Text("初始化 git 仓库")
+                        }
+                    }
+                }
                 detailDiff.isEmpty() -> EmptyState(title = "无未提交改动", subtitle = "git diff HEAD 为空，工作区干净。")
                 else -> {
                     Card(
@@ -350,9 +389,13 @@ private fun ProjectOverviewRow(project: ProjectReview, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    if (project.hasChanges) "有 ${project.summary.files} 处改动" else "工作区干净",
+                    if (!project.isGit) "未初始化 git"
+                    else if (project.hasChanges) "有 ${project.summary.files} 处改动"
+                    else "工作区干净",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (project.hasChanges) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (!project.isGit) MaterialTheme.colorScheme.tertiary
+                    else if (project.hasChanges) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (project.hasChanges) {
