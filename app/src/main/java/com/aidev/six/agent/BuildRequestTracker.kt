@@ -1,6 +1,7 @@
 package com.aidev.six.agent
 
 import android.content.Context
+import com.aidev.six.LocalMetrics
 import com.aidev.six.BuildBridgeService
 import com.aidev.six.CrashReportBridgeService
 import com.aidev.six.PathConfig
@@ -86,6 +87,7 @@ internal class BuildRequestTracker(
             )
             AgentTaskStore.upsertTask(stateFile, record, limit = 12)
             postToMain { onUpdate(record) }
+            LocalMetrics.recordBuild(appCtx, project, false, 0L)
             return
         }
 
@@ -119,6 +121,7 @@ internal class BuildRequestTracker(
                     if (success && logText.contains("已拉起")) {
                         watchCrashReport(home, startedAt, stateFile, autonomous, onUpdate)
                     }
+                    LocalMetrics.recordBuild(appCtx, project, success, System.currentTimeMillis() - startedAt)
                     return@launch
                 }
                 delay(800)

