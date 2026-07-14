@@ -48,6 +48,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -55,6 +56,16 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,6 +95,16 @@ import org.json.JSONObject
 
 private val TAB_LABELS = listOf("总览", "宇宙 A", "宇宙 B", "调试", "设备")
 
+private data class NavItem(val label: String, val icon: ImageVector)
+
+private val NAV_ITEMS = listOf(
+    NavItem("总览", Icons.Rounded.Dashboard),
+    NavItem("宇宙 A", Icons.Rounded.SmartToy),
+    NavItem("宇宙 B", Icons.Rounded.AccountTree),
+    NavItem("调试", Icons.Rounded.BugReport),
+    NavItem("设备", Icons.Rounded.PhoneAndroid),
+)
+
 @Composable
 fun ServerPanel(
     onExecuteCommand: (String) -> Unit,
@@ -97,12 +118,42 @@ fun ServerPanel(
     var showGitReview by remember { mutableStateOf(false) }
     var showPromptBuilder by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        if (showGitReview) {
-            GitReviewPage(onBack = { showGitReview = false })
-        } else if (showPromptBuilder) {
-            PromptBuilderPage(onBack = { showPromptBuilder = false })
-        } else {
+    val isWide = LocalConfiguration.current.screenWidthDp >= 600
+
+    @Composable
+    fun renderTab(tab: Int) {
+        when (tab) {
+            0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true }, onOpenPromptBuilder = { showPromptBuilder = true })
+            1 -> UniverseATab(onExecuteCommand, dialogManager)
+            2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
+            3 -> DebugCenterPage(onExecuteCommand)
+            4 -> AdbExplorerPage()
+        }
+    }
+
+    if (showGitReview) {
+        GitReviewPage(onBack = { showGitReview = false })
+    } else if (showPromptBuilder) {
+        PromptBuilderPage(onBack = { showPromptBuilder = false })
+    } else if (isWide) {
+        Row(modifier = modifier.fillMaxSize()) {
+            NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
+                NAV_ITEMS.forEachIndexed { index, item ->
+                    NavigationRailItem(
+                        selected = selectedTab.intValue == index,
+                        onClick = { selectedTab.intValue = index },
+                        icon = { Icon(item.icon, null) },
+                        label = { Text(item.label) },
+                    )
+                }
+            }
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
+                Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab -> renderTab(tab) }
+            }
+        }
+    } else {
+        Column(modifier = modifier.fillMaxSize()) {
             AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
 
             TabRow(selectedTabIndex = selectedTab.intValue, containerColor = MaterialTheme.colorScheme.surface) {
@@ -115,15 +166,7 @@ fun ServerPanel(
                 }
             }
 
-            Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab ->
-                when (tab) {
-                    0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true }, onOpenPromptBuilder = { showPromptBuilder = true })
-                    1 -> UniverseATab(onExecuteCommand, dialogManager)
-                    2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
-                    3 -> DebugCenterPage(onExecuteCommand)
-                    4 -> AdbExplorerPage()
-                }
-            }
+            Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab -> renderTab(tab) }
         }
     }
 }
