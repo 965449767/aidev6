@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-logcat: 在 Ubuntu 环境中通过 Shizuku 获取 Android 应用日志
 # 用法:
 #   aidev-logcat                                    # 获取 AIDev Terminal 日志
@@ -11,7 +11,7 @@
 #   aidev-logcat --watch-crash                       # 持续监听直到检测到崩溃
 #   aidev-logcat --clear                             # 清空缓冲区
 
-set -eo pipefail
+set -e
 BRIDGE_DIR="/host-home/.aidev-shizuku-bridge"
 REQUEST_DIR="$BRIDGE_DIR/request"
 RESULT_DIR="$BRIDGE_DIR/result"
@@ -97,10 +97,11 @@ EOF
                     [ -z "$NEW_DATA" ] && continue
 
                     if [ -n "$TAGS" ]; then
-                        IFS=',' read -ra TAG_LIST <<< "$TAGS"
-                        for filter_tag in "${TAG_LIST[@]}"; do
+                        OLDIFS="$IFS"; IFS=','
+                        for filter_tag in $TAGS; do
                             echo "$NEW_DATA" | grep -i "$filter_tag" || true
                         done
+                        IFS="$OLDIFS"
                     else
                         echo "$NEW_DATA"
                     fi
@@ -148,10 +149,11 @@ else
     OUTPUT=$(cat "$RES_FILE")
 
     if [ -n "$TAGS" ]; then
-        IFS=',' read -ra TAG_LIST <<< "$TAGS"
-        for filter_tag in "${TAG_LIST[@]}"; do
+        OLDIFS="$IFS"; IFS=','
+        for filter_tag in $TAGS; do
             echo "$OUTPUT" | grep -i "$filter_tag" || true
         done
+        IFS="$OLDIFS"
     else
         echo "$OUTPUT"
     fi

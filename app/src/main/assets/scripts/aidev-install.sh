@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-install: 安装 APK，支持静默（Shizuku）/标准（系统安装器）模式
 # 用法: aidev-install [options] [apk_path]
-set -eo pipefail
+set -e
 
 INSTALL_MODE="auto"
 APK_PATH=""
@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --silent|-s) INSTALL_MODE="silent"; shift ;;
         --gui|-g) INSTALL_MODE="gui"; shift ;;
-        --uninstall|-u) shift; PKG_UN="$1"; [[ "$PKG_UN" =~ ^[a-zA-Z0-9._]+$ ]] || { echo "错误: 非法包名"; exit 1; }; exec aidev-shizuku exec "pm uninstall -k --user 0 '$PKG_UN'" ;;
+        --uninstall|-u) shift; PKG_UN="$1"; echo "$PKG_UN" | grep -qE '^[a-zA-Z0-9._]+$' || { echo "错误: 非法包名"; exit 1; }; exec aidev-shizuku exec "pm uninstall -k --user 0 '$PKG_UN'" ;;
         --status) exec aidev-shizuku status ;;
         -h|--help) usage ;;
         *) APK_PATH="$1"; shift ;;
@@ -64,9 +64,11 @@ fi
 APK_SIZE=$(du -h "$APK_PATH" 2>/dev/null | cut -f1)
 echo "APK: $(basename "$APK_PATH") ($APK_SIZE)"
 
-if [[ "$APK_PATH" != /sdcard/* && "$APK_PATH" != /storage/emulated/* ]]; then
-    TMP_APK=$(mktemp -p /sdcard aidev-install-XXXXXXXX.apk 2>/dev/null || echo "/sdcard/aidev-install-$$.apk")
-    echo "→ 复制到 $TMP_APK"
+case "$APK_PATH" in
+    /sdcard/*|/storage/emulated/*) : ;;
+    *)
+        TMP_APK=$(mktemp -p /sdcard aidev-install-XXXXXXXX.apk 2>/dev/null || echo "/sdcard/aidev-install-$$.apk")
+        echo "→ 复制到 $TMP_APK"
     if ! cp "$APK_PATH" "$TMP_APK" 2>/dev/null; then
         echo "  → PRoot 内复制失败，通过 Shizuku 桥接复制..."
         aidev-shizuku exec "cp $APK_PATH $TMP_APK" || {
@@ -76,7 +78,8 @@ if [[ "$APK_PATH" != /sdcard/* && "$APK_PATH" != /storage/emulated/* ]]; then
     fi
     APK_PATH="$TMP_APK"
     CLEANUP=true
-fi
+    ;;
+esac
 
 cleanup() {
     [ "$CLEANUP" = true ] && rm -f "$TMP_APK" 2>/dev/null || true

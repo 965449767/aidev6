@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-shizuku: 通过 Shizuku 执行 Android 系统命令
 # 子命令:
 #   exec '<command>'         执行任意 shell 命令
@@ -11,7 +11,7 @@
 #   battery reset            重置电池状态
 #   status                   检查 Shizuku 状态
 
-set -eo pipefail
+set -e
 BRIDGE_DIR="/host-home/.aidev-shizuku-bridge"
 REQUEST_DIR="$BRIDGE_DIR/request"
 RESULT_DIR="$BRIDGE_DIR/result"
@@ -87,7 +87,8 @@ case "$SUBCOMMAND" in
 esac
 
 # 构建 KEY=VALUE 载荷
-PAYLOAD="TYPE=exec"$'\n'"COMMAND=$CMD"
+PAYLOAD="TYPE=exec
+COMMAND=$CMD"
 
 # 优先走 Socket（即时响应）；失败回退文件通道（原逻辑）
 if command -v aidev-bridge >/dev/null 2>&1; then
@@ -104,7 +105,7 @@ if command -v aidev-bridge >/dev/null 2>&1; then
 fi
 
 # ── 文件通道兜底（原有逻辑）──
-REQ_ID="exec_$(date +%s)_$$_$RANDOM"
+REQ_ID="exec_$(date +%s%N)_$$"
 REQ_FILE="$REQUEST_DIR/$REQ_ID"
 RES_FILE="$RESULT_DIR/$REQ_ID"
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-deploy: 部署黑盒（设备侧 / Shizuku 桥）
 #
 # 职责：把 APK 装到真机并（可选）启动，封装 Shizuku 安装、启动、权限等复杂性。
@@ -15,7 +15,7 @@
 
 DEPLOY_SCRIPT_VERSION="aidev-deploy 1.0.0 (clean_output fix; source aidev6 f011eb1)"
 
-set -uo pipefail
+set -u
 
 APK=""
 PKG=""
@@ -66,7 +66,7 @@ if [ ! -f "$APK" ]; then
     exit 1
 fi
 # 包名安全校验
-[[ "$PKG" =~ ^[a-zA-Z0-9._]+$ ]] || { emit false false null "invalid package name: $PKG"; exit 1; }
+echo "$PKG" | grep -qE '^[a-zA-Z0-9._]+$' || { emit false false null "invalid package name: $PKG"; exit 1; }
 
 # 1) 安装（Shizuku 静默），最多重试 2 次以容忍瞬时 Shizuku 桥抖动
 INSTALL_OK=false
