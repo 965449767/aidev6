@@ -657,3 +657,10 @@ bash 在解析期注册函数（前向调用可用），但本 PRoot 的 `/bin/s
 ### Fix
 新增 `aidev-notify.sh`（POSIX sh，Socket 主用 + 文件兜底），已登记进 `UbuntuBootstrapScripts.copyAssetScripts` 部署清单；
 用法 `aidev-notify [-t 标题] [-p low|default|high|max] "消息"`。正确验证命令应为 `aidev-notify "测试"`。
+
+## 2026-07-14（续）— 剩余 25 个 #!/bin/bash 脚本已全部转 POSIX sh（完成）
+
+- 上一节遗留的 23+ 脚本（实际 25 个 `#!/bin/bash` + 2 个误用 `#!/system/bin/sh` 的 aidev-precache/aidev-repo）现已全部转换。
+- 处理模式：`#!/bin/sh` 替换；剥 `pipefail`/`-E`、`&>`、`[[ =~ ]]`、bash 数组（`( )`/`${arr[@]}`→空格分隔字符串+未引号展开）、进程替换 `<(...)`/`>(tee)`（dev-backup/restore-dev-env 的 `exec > >(tee)` → 直接去掉 tee 落地；aidev-index/aidev-build 的 `< <()` → 临时文件重定向）。
+- 全部 `dash -n` 通过；shell 测试 76 passed/0 failed。APK b162 已交付，需强制停止+重启 AIDev 部署。
+- 现状：assets/scripts 下 38 个脚本**全部 `#!/bin/sh` 且 dash 兼容**，PRoot bash 不可用隐患已彻底消除。
