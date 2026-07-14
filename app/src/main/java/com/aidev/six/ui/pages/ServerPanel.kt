@@ -89,20 +89,19 @@ import com.aidev.six.Constants
 import com.aidev.six.AIDevLogger
 import com.aidev.six.LoopTrace
 import com.aidev.six.DeployBridgeService
-import com.aidev.six.chat.OpenCodeClient
 import com.aidev.six.chat.OpenCodeServerManager
 import java.io.File
 
 import org.json.JSONObject
 
-private val TAB_LABELS = listOf("总览", "AI 环境", "构建进化", "调试", "设备")
+private val TAB_LABELS = listOf("总览", "AI", "构建进化", "调试", "设备")
 
 private data class NavItem(val label: String, val icon: ImageVector)
 
 private val NAV_ITEMS = listOf(
     NavItem("总览", Icons.Rounded.Dashboard),
     NavItem("代码评审", Icons.Rounded.Rule),
-    NavItem("AI 环境", Icons.Rounded.SmartToy),
+    NavItem("AI", Icons.Rounded.SmartToy),
     NavItem("构建进化", Icons.Rounded.AccountTree),
     NavItem("调试", Icons.Rounded.BugReport),
     NavItem("设备", Icons.Rounded.PhoneAndroid),
@@ -199,6 +198,13 @@ private fun UniverseATab(
             .padding(horizontal = 12.dp)
     ) {
         Spacer(Modifier.height(Spacing.s8))
+
+        // ── AI 对话（给 AI 下写代码指令的正式入口）──
+        SectionCard(title = "AI 对话 · 给 AI 下写代码指令") {
+            AiChatPanel()
+        }
+
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 环境状态 ──
         SectionCard(title = "环境状态") {
@@ -973,27 +979,6 @@ private suspend fun sendBuildFixToOpenCode(context: Context, project: String, mo
     // 让它自己读取完整日志（PRoot 已绑定 /sdcard，路径在终端内可直接访问）。
     val logPath = logFile.absolutePath
 
-    LoopTrace.section("构建修复回流: $project (model=$model)")
-    LoopTrace.log("Fix", "读取构建日志: logs/$project/build.log")
-    val backendOk = OpenCodeServerManager.ensureRunning(context)
-    LoopTrace.log("Fix", "ensureRunning=$backendOk diag=${OpenCodeServerManager.lastDiagnostic} baseUrl=${com.aidev.six.Constants.OPENCODE_BASE_URL}")
-    AIDevLogger.i("OpenCodeFix", "ensureRunning=$backendOk diag=${OpenCodeServerManager.lastDiagnostic} baseUrl=${com.aidev.six.Constants.OPENCODE_BASE_URL}")
-    if (!backendOk) {
-        LoopTrace.log("Fix", "后端未就绪，中止")
-        return "OpenCode 后端未就绪：${OpenCodeServerManager.lastDiagnostic}"
-    }
-
-    // 终端 TUI 真实端口：aidev-opencode 写入 AIDEV_HOME/.aidev-opencode-port。
-    // 默认 4096 常被 App 侧 headless serve 占用，必须打到 TUI 自己的端口，否则命令
-    // 进了没有 TUI 的 serve 后端，终端看不到任何东西。
-    val tuiPort = runCatching {
-        File(PathConfig.aidevHome(context), ".aidev-opencode-port").readText().trim().toIntOrNull()
-    }.getOrNull()?.takeIf { it in 1..65535 } ?: 4096
-    val client = OpenCodeClient("http://127.0.0.1:$tuiPort")
-    client.directory = "/workspace/$project"
-    LoopTrace.log("Fix", "终端 TUI 端口=$tuiPort (portfile=${PathConfig.aidevHome(context)}/.aidev-opencode-port)")
-    AIDevLogger.i("OpenCodeFix", "tuiPort=$tuiPort")
-
     val prompt = buildString {
         append("项目 $project 在 Android 构建（宇宙 B）中失败，请在 /workspace/$project 下定位并修复编译/构建错误。\n\n")
         append("本次失败完整日志路径：\n")
@@ -1008,38 +993,7 @@ private suspend fun sendBuildFixToOpenCode(context: Context, project: String, mo
         append("注意：不要反复 cat 旧失败日志来确认，直接看各黑盒的标准出口（JSON/stdout）。\n")
     }
     val (prov, mid) = splitModelForFix(model)
-    LoopTrace.log("Fix", "prompt 长度=${prompt.length} prov=$prov mid=$mid")
-    AIDevLogger.i("OpenCodeFix", "prompt len=${prompt.length} model=$model prov=$prov mid=$mid")
-
-    // 无论如何都落盘 + 复制到剪贴板：保证命令可用，不依赖脆弱的 TUI 注入。
-    val cmdFile = File("/sdcard/self-evolution-fix-$project.txt")
-    runCatching { cmdFile.writeText(prompt) }
-    runCatching { copyToClipboard(context, prompt) }
-    LoopTrace.log("Fix", "已保存命令到 ${cmdFile.absolutePath} 并复制到剪贴板")
-
-    // 主路径：直接注入终端 TUI 的命令行。append 成功后文本已出现在终端，
-    // submit 尽力自动提交；无论 submit 是否成功，用户都能在终端看到命令（可手动回车）。
-    val appendResp = client.appendTuiPrompt(prompt)
-    LoopTrace.log("Fix", "appendTuiPrompt 响应=$appendResp")
-    AIDevLogger.i("OpenCodeFix", "appendResp=$appendResp")
-    if (appendResp != null) {
-        val submitResp = client.submitTuiPrompt()
-        LoopTrace.log("Fix", "submitTuiPrompt 响应=$submitResp")
-        AIDevLogger.i("OpenCodeFix", "submitResp=$submitResp")
-        return "已把修复命令填入终端 OpenCode 命令行（端口 $tuiPort，append=$appendResp, submit=$submitResp），请查看终端（必要时回车提交）。命令也已存到 $cmdFile 并复制剪贴板"
-    }
-
-    // 回退：终端 TUI 不可用（未在终端运行 opencode / 后端无 TUI）时，投递到当前最活跃会话。
-    val sessions = client.listSessions()
-    LoopTrace.log("Fix", "TUI 注入未生效，回退到会话；可用会话数=${sessions.size}")
-    AIDevLogger.i("OpenCodeFix", "TUI 注入未生效，回退到会话；可用会话数=${sessions.size}")
-    val targetSession = sessions.firstOrNull() ?: client.createSession("构建修复: $project")
-        ?: return "OpenCode 后端无可用会话，命令已存到 $cmdFile 并复制剪贴板，请手动粘贴到终端 OpenCode"
-    val ok = client.sendPromptAsync(targetSession.id, prompt, prov, mid, null)
-    LoopTrace.log("Fix", "session 回退 ok=$ok session=${targetSession.title}")
-    AIDevLogger.i("OpenCodeFix", "session fallback ok=$ok session=${targetSession.title}")
-    val base = if (ok) "已发送修复命令到 OpenCode 会话「${targetSession.title}」(端口 $tuiPort)" else "发送失败"
-    return "$base。命令也已存到 $cmdFile 并复制剪贴板，可直接粘贴到终端 OpenCode"
+    return com.aidev.six.chat.sendCodingPrompt(context, "构建修复: $project", prompt, "/workspace/$project", prov, mid)
 }
 
 private fun splitModelForFix(model: String): Pair<String?, String?> {

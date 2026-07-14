@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,8 +48,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.aidev.six.chat.ChatPart
 import com.aidev.six.chat.OpenCodeClient
 import com.aidev.six.chat.OpenCodeServerManager
+import com.aidev.six.chat.sendCodingPrompt
+import com.aidev.six.agent.AgentTaskDefinition
+import com.aidev.six.agent.AgentTaskRecord
+import com.aidev.six.agent.AgentTaskStatus
+import com.aidev.six.agent.AgentTaskStore
+import com.aidev.six.PathConfig
 import com.aidev.six.ui.theme.Radius
 import com.aidev.six.ui.theme.Spacing
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -134,6 +142,36 @@ fun PromptBuilderPage(
         val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("task-brief", buildBrief()))
         copied = true
+    }
+
+    fun saveAsTask() {
+        scope.launch {
+            aiBusy = false
+            copied = false
+            val brief = buildBrief()
+            val id = "task-${System.currentTimeMillis()}"
+            val name = goal.trim().take(40).ifBlank { "未命名任务" }
+            val rec = AgentTaskRecord(
+                definition = AgentTaskDefinition(
+                    id = id,
+                    name = name,
+                    description = brief,
+                    command = "",
+                    workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                    tags = listOf("coding"),
+                ),
+                status = AgentTaskStatus.PENDING,
+                startedAt = System.currentTimeMillis(),
+            )
+            val file = File(PathConfig.tasksDir(context), "agent-tasks.json")
+            runCatching { AgentTaskStore.upsertTask(file, rec) }
+            val prompt = buildString {
+                appendLine("请按以下任务书实现代码：")
+                appendLine(brief)
+            }
+            val result = sendCodingPrompt(context, "任务: $name", prompt, "/workspace")
+            aiNote = "已保存为任务（构建进化 可见），并已把指令发给 OpenCode：$result"
+        }
     }
 
     fun aiOptimize() {
@@ -270,6 +308,11 @@ fun PromptBuilderPage(
                 Spacer(Modifier.width(Spacing.s4))
                 Text(if (copied) "已复制" else "复制任务书")
             }
+        }
+        OutlinedButton(onClick = { saveAsTask() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.Send, "保存为任务", modifier = Modifier.size(Spacing.s16))
+            Spacer(Modifier.width(Spacing.s4))
+            Text("保存为任务并交给 AI 编码")
         }
 
         aiNote?.let {

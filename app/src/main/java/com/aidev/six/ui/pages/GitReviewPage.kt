@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
@@ -47,6 +48,7 @@ import com.aidev.six.PathConfig
 import com.aidev.six.chat.ChatPart
 import com.aidev.six.chat.OpenCodeClient
 import com.aidev.six.chat.OpenCodeServerManager
+import com.aidev.six.chat.sendCodingPrompt
 import com.aidev.six.git.GitDiffParser
 import com.aidev.six.git.GitRepoDetector
 import com.aidev.six.terminal.ProotLauncher
@@ -227,6 +229,17 @@ fun GitReviewPage(
         }
     }
 
+    fun fix() {
+        scope.launch {
+            val prompt = buildString {
+                appendLine("请根据以下 git diff（项目 ${selectedRepo ?: ""}），直接修改源码修复其中指出的问题：")
+                appendLine(GitDiffParser.toReviewPrompt(detailDiff))
+            }
+            val result = sendCodingPrompt(context, "修复: ${selectedRepo ?: "repo"}", prompt, null)
+            aiReply = "已把修复指令发给 OpenCode：$result"
+        }
+    }
+
     LaunchedEffect(Unit) { scanOverview() }
 
     Column(
@@ -328,6 +341,11 @@ fun GitReviewPage(
                             Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
                             Spacer(Modifier.width(Spacing.s4))
                             Text(if (reviewing) "评审中…" else "AI 深度评审")
+                        }
+                        OutlinedButton(onClick = { fix() }, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Rounded.Build, "让 AI 修复", modifier = Modifier.size(Spacing.s16))
+                            Spacer(Modifier.width(Spacing.s4))
+                            Text("让 AI 修复")
                         }
                     }
                     aiReply?.let { reply ->
