@@ -64,7 +64,12 @@ object GitRepoDetector {
                 if (isWorkTree(ctx, c, opts)) result = result + ProjectEntry(c, true)
             }
         }
-        return result
+        // 去掉嵌套在其它项目内的目录（如项目根 settings.gradle 已收录，其 app 模块的 build.gradle 不应单列）
+        val kept = mutableListOf<ProjectEntry>()
+        for (e in result.sortedBy { it.path.length }) {
+            if (kept.none { e.path.startsWith(it.path + "/") }) kept.add(e)
+        }
+        return kept
     }
 
     private fun isWorkTree(ctx: Context, c: String, opts: ProotLauncher.Options): Boolean {
