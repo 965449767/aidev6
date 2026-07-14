@@ -11,19 +11,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Analytics
 import androidx.compose.material.icons.rounded.Assignment
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.HealthAndSafety
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import com.aidev.six.PathConfig
 import com.aidev.six.agent.AgentTaskStore
 import com.aidev.six.chat.OpenCodeServerManager
+import com.aidev.six.context.ContextManager
 import com.aidev.six.data.KnowledgeBaseRepository
 import com.aidev.six.ui.components.ActionCard
 import com.aidev.six.ui.components.AppSectionHeader
@@ -31,6 +39,9 @@ import com.aidev.six.ui.components.InfoCard
 import com.aidev.six.ui.components.MetricChip
 import com.aidev.six.ui.components.StatusCard
 import com.aidev.six.ui.theme.Spacing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -77,6 +88,25 @@ fun DashboardPage(
     }
 
     val aiRunning = remember { OpenCodeServerManager.isRunning() }
+
+    // Context Manager（M3-1）：SQLite 代码索引统计，后台重建，fail-safe
+    var indexStats by remember { mutableStateOf<ContextManager.IndexStats?>(null) }
+    var reindexing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            runCatching { indexStats = ContextManager(context).stats() }
+        }
+    }
+    fun reindex() {
+        if (reindexing) return
+        reindexing = true
+        scope.launch(Dispatchers.IO) {
+            runCatching { indexStats = ContextManager(context).indexProject(indexRoot(context)) }
+            reindexing = false
+        }
+    }
+    val symbolTotal = indexStats?.total ?: 0
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -163,6 +193,28 @@ fun DashboardPage(
             )
         }
         item(span = { GridItemSpan(2) }) {
+            AppSectionHeader("代码索引", "Context Manager · SQLite")
+        }
+        item {
+            StatusCard(
+                label = "符号",
+                value = if (symbolTotal > 0) symbolTotal.toString() else "—",
+                icon = Icons.Rounded.AutoAwesome,
+                accent = if (symbolTotal > 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
+            )
+        }
+        item {
+            ActionCard(
+                title = if (reindexing) "索引中…" else "重新索引",
+                subtitle = "扫描项目源树",
+                icon = Icons.Rounded.Refresh,
+                onClick = { reindex() },
+            )
+        }
+        item { MetricChip(label = "类", value = (indexStats?.classes ?: 0).toString(), modifier = Modifier.fillMaxWidth()) }
+        item { MetricChip(label = "函数", value = (indexStats?.functions ?: 0).toString(), modifier = Modifier.fillMaxWidth()) }
+        item { MetricChip(label = "组件", value = (indexStats?.components ?: 0).toString(), modifier = Modifier.fillMaxWidth()) }
+        item(span = { GridItemSpan(2) }) {
             AppSectionHeader("实时指标")
         }
         item { MetricChip(label = "Tasks", value = taskCount.toString(), modifier = Modifier.fillMaxWidth()) }
@@ -170,4 +222,14 @@ fun DashboardPage(
         item { MetricChip(label = "Crashes", value = crashCount.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "Knowledge", value = knowledgeCount.toString(), icon = Icons.Rounded.Book, modifier = Modifier.fillMaxWidth()) }
     }
+}
+
+/** 索引目标：优先 PRoot 开发家目录，回退到 aidev home。 */
+private fun indexRoot(context: Context): File {
+    val home = PathConfig.aidevHome(context)
+    return listOf(
+        File(home, "ubuntu-rootfs/home"),
+        File(home, "ubuntu-rootfs"),
+        home,
+    ).first { it.isDirectory }
 }
