@@ -261,6 +261,11 @@ fun GitReviewPage(
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text(
+            "工作目录：${GitRepoDetector.WORKSPACE_PROOT}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         when {
             scanning -> LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -17,18 +17,19 @@ import java.io.File
  */
 object GitRepoDetector {
 
-    /** PRoot 内候选仓库路径（按常见部署排序）。 */
-    private val CANDIDATES = listOf(
-        "/host-home/aidev6",
-        "/host-home/workspace/aidev6",
-        "/host-home",
+    /** 工作目录（用户项目所在），PRoot 内路径。扫描只限定在此，避免误扫 ubuntu-rootfs 等系统绑定目录。 */
+    const val WORKSPACE_PROOT = "/host-home/workspace"
+
+    /** 仅当 workspace 内无任何仓库时的兜底候选。 */
+    private val FALLBACK = listOf(
         "/root/projects/aidev6",
         "/root/projects",
+        "/host-home/aidev6",
     )
 
     fun detect(ctx: Context): String? = listRepos(ctx).firstOrNull()
 
-    /** 列出 PRoot 内所有 git 仓库（候选路径 + /host-home 下 find 兜底）。 */
+    /** 列出工作目录（/host-home/workspace）下所有 git 仓库，不扫描系统目录。 */
     fun listRepos(ctx: Context): List<String> {
         val opts = ProotLauncher.Options(
             rootfs = PathConfig.agentRootfs(ctx).absolutePath,
@@ -36,13 +37,16 @@ object GitRepoDetector {
             timeoutSec = 30,
         )
         val result = mutableListOf<String>()
-        for (c in CANDIDATES) {
-            if (isWorkTree(ctx, c, opts)) result.add(c)
-        }
-        val f = ProotLauncher.run(ctx, "find /host-home -maxdepth 4 -name .git 2>/dev/null", opts)
+        if (isWorkTree(ctx, WORKSPACE_PROOT, opts)) result.add(WORKSPACE_PROOT)
+        val f = ProotLauncher.run(ctx, "find $WORKSPACE_PROOT -maxdepth 5 -name .git 2>/dev/null", opts)
         f.stdout.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.forEach { gitDir ->
             val repo = gitDir.removeSuffix("/.git")
             if (repo.isNotBlank() && repo !in result) result.add(repo)
+        }
+        if (result.isEmpty()) {
+            for (c in FALLBACK) {
+                if (isWorkTree(ctx, c, opts)) result.add(c)
+            }
         }
         return result.distinct()
     }
