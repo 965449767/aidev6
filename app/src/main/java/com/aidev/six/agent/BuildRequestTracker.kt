@@ -246,4 +246,33 @@ internal class BuildRequestTracker(
     ) {
         submit(context, project, stateFile, autoInstall = true, autoLaunch = true, autonomous = autonomous, onUpdate = onUpdate)
     }
+
+    /**
+     * 启动后消费宿主上次遗留的崩溃报告（P0-1）。
+     * 扫描 home/.aidev-mcp/crash-*.json 中尚无对应 home/.aidev-loop/crash-<id>.json 的，
+     * 发布到 agent-tasks 闭环，让 OpenCode 自我修正；避免宿主崩溃被安静丢弃。
+     */
+    fun consumeLegacyCrashes(context: Context, onUpdate: (AgentTaskRecord) -> Unit = {}) {
+        val ctx = context.applicationContext
+        appContext = ctx
+        val home = PathConfig.aidevHome(ctx)
+        val mcpDir = File(home, ".aidev-mcp")
+        val loopDir = File(home, ".aidev-loop").apply { mkdirs() }
+        val stateFile = File(PathConfig.tasksDir(ctx), "agent-tasks.json")
+        mcpDir.listFiles { f -> f.name.startsWith("crash-") && f.name.endsWith(".json") }
+            ?.forEach { f ->
+                val loopFile = File(loopDir, "crash-${f.nameWithoutExtension}.json")
+                if (!loopFile.exists()) {
+                    publishCrashRecord(f, stateFile, onUpdate)
+                }
+            }
+    }
+}
+
+/**
+ * 跨包入口：消费宿主遗留崩溃报告（P0-1）。[AIDevApp] 在 onCreate 调用，
+ * [CrashReportBridgeService] 在生成宿主自身崩溃报告后也会调用。
+ */
+internal fun consumeLegacyCrashes(context: Context, onUpdate: (AgentTaskRecord) -> Unit = {}) {
+    BuildRequestTracker().consumeLegacyCrashes(context, onUpdate)
 }

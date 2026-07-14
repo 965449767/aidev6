@@ -129,6 +129,13 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         runCatching { outFile.writeText(reportJson) }
         runCatching { latest.writeText(reportJson) }
 
+        // P0-1：宿主自身崩溃（package 即本 App）也要进入自我进化闭环，不依赖构建窗口；
+        // 生成报告后立即回流，让 OpenCode 自我修正。
+        if (pkg == ctx.packageName) {
+            runCatching { com.aidev.six.agent.consumeLegacyCrashes(ctx) }
+                .onFailure { AIDevLogger.w("CrashReportBridge", "宿主崩溃回流失败", it) }
+        }
+
         val ok = report.stack.isNotEmpty()
         val msg = if (ok) "捕获到崩溃堆栈（${report.stack.size} 行）" else "未捕获到崩溃（应用可能正常运行）"
         logWriter.append("${msg} -> ${outFile.name}")
