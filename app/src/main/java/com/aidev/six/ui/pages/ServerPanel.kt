@@ -86,7 +86,7 @@ fun ServerPanel(
 ) {
     val context = LocalContext.current
     val dialogManager = LocalDialogManager.current
-    val taskRunner = remember { AgentTaskRunner() }
+    val taskRunner = remember { AgentTaskRunner }
     val buildTracker = remember { BuildRequestTracker() }
     val selectedTab = remember { mutableIntStateOf(0) }
 
