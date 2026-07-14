@@ -74,6 +74,9 @@ object Constants {
     // OpenCode HTTP API
     const val OPENCODE_BASE_URL = "http://127.0.0.1:4096"
 
+    // 桥接通信：本机 TCP loopback 端口（仅 127.0.0.1 绑定，属局部 IPC）
+    const val BRIDGE_SOCKET_PORT = 14096
+
     // 自我进化「宇宙A 改码」可用的 OpenCode 免费模型（用户可在服务器中心手动切换）。
     // 额度耗尽时 opencode 会 exit 0 且空返回、不报错，故无法自动识别——由用户看对话内容判断后手动切换。
     val SELF_EVOLUTION_MODELS = listOf(

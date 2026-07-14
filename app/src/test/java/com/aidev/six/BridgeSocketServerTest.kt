@@ -11,7 +11,7 @@ class BridgeSocketServerTest {
 
     @Test
     fun startAcceptDispatchStop() {
-        val transport = LoopbackTcpTransport(0)
+        val transport = TcpBridgeTransport(port = 0)
         val server = BridgeSocketServer(transport)
         val got = AtomicReference<BridgeFrame>()
         server.start { frame ->
@@ -19,7 +19,7 @@ class BridgeSocketServerTest {
             BridgeFrame("echo", frame.id, frame.payload.reversed())
         }
 
-        val client = LoopbackTcpClient(port = transport.localPort)
+        val client = TcpBridgeClient(port = transport.localPort)
         val resp = client.request(BridgeFrame("notify", "r1", "abc"))
         client.close()
         server.stop()
@@ -32,11 +32,11 @@ class BridgeSocketServerTest {
 
     @Test
     fun handlerReturnsNullNoResponse() {
-        val transport = LoopbackTcpTransport(0)
+        val transport = TcpBridgeTransport(port = 0)
         val server = BridgeSocketServer(transport)
         server.start { null }
 
-        val client = LoopbackTcpClient(port = transport.localPort)
+        val client = TcpBridgeClient(port = transport.localPort)
         val resp = client.request(BridgeFrame("x", "y", "z"))
         client.close()
         server.stop()
@@ -46,7 +46,7 @@ class BridgeSocketServerTest {
 
     @Test
     fun doubleStartIsNoOp() {
-        val transport = LoopbackTcpTransport(0)
+        val transport = TcpBridgeTransport(port = 0)
         val server = BridgeSocketServer(transport)
         server.start { null }
         server.start { null } // 第二次应被忽略，不抛异常

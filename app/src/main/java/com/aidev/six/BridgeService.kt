@@ -70,10 +70,10 @@ abstract class BridgeService(private val tag: String) {
         val ctx = appCtx ?: return
         runCatching {
             if (PreferencesManager(ctx).bridgeSocketEnabled && bridgeName.isNotBlank()) {
-                val srv = BridgeSocketServer(LocalSocketTransport("aidev_bridge"))
+                val srv = BridgeSocketServer(TcpBridgeTransport(host = "127.0.0.1", port = Constants.BRIDGE_SOCKET_PORT))
                 srv.start { frame -> BridgeRegistry.dispatch(frame) }
                 socketServer = srv
-                AIDevLogger.i(tag, "socket bridge started")
+                AIDevLogger.i(tag, "socket bridge started on 127.0.0.1:${Constants.BRIDGE_SOCKET_PORT}")
             }
         }.onFailure { AIDevLogger.w(tag, "start socket bridge failed", it) }
     }

@@ -10,6 +10,8 @@ object NotifyBridgeService : BridgeService("NotifyBridge") {
 
     private var requestDir: File? = null
 
+    override val bridgeName: String get() = "notify"
+
     override fun onStart(homeDir: File) {
         requestDir = File(homeDir, BRIDGE_DIR).also { it.mkdirs() }
     }
@@ -27,14 +29,21 @@ object NotifyBridgeService : BridgeService("NotifyBridge") {
         return hadWork
     }
 
-    private suspend fun handleRequest(processingFile: File) {
-        val content = runCatching { processingFile.readText() }
-            .onFailure { AIDevLogger.e("NotifyBridge", "read processing file failed", it) }
-            .getOrNull() ?: return
+    /**
+     * Socket 通道入口：payload 直接承载原有 JSON 文本，复用 [handleJson]。
+     * 返回响应帧（status=ok）；失败返回 null（异常已被兜底，等同吞掉）。
+     */
+    override fun dispatch(frame: BridgeFrame): BridgeFrame? {
+        val result = runCatching { handleJson(frame.payload) }
+            .onFailure { AIDevLogger.w("NotifyBridge", "dispatch failed", it) }
+            .getOrNull()
+        return BridgeFrame("notify", frame.id, result ?: "ok")
+    }
 
+    private fun handleJson(content: String): String? {
         val json = runCatching { JSONObject(content) }
             .onFailure { AIDevLogger.e("NotifyBridge", "parse json failed", it) }
-            .getOrNull() ?: run { processingFile.delete(); return }
+            .getOrNull() ?: return null
 
         val title = json.optString("title", "AIDev Terminal")
         val msg = json.optString("message", "")
@@ -42,10 +51,18 @@ object NotifyBridgeService : BridgeService("NotifyBridge") {
         val ongoing = json.optBoolean("ongoing", false)
         val alertOnlyOnce = json.optBoolean("alert_only_once", false)
 
-        val ctx = appCtx ?: run { processingFile.delete(); return }
+        val ctx = appCtx ?: return null
         AIDevCommandDispatcher.notify(ctx, title, msg, priority, ongoing, alertOnlyOnce)
-
-        processingFile.delete()
         AIDevLogger.i("NotifyBridge", "notification sent: title=$title")
+        return "ok"
+    }
+
+    private suspend fun handleRequest(processingFile: File) {
+        val content = runCatching { processingFile.readText() }
+            .onFailure { AIDevLogger.e("NotifyBridge", "read processing file failed", it) }
+            .getOrNull() ?: return
+
+        handleJson(content)
+        processingFile.delete()
     }
 }
