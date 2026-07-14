@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,7 +80,7 @@ fun SettingsPanel(
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.s12))
 
         SettingsRow("外观", "主题预设、背景模式") { toggleSection("appearance") }
         InlineSection("appearance" in uiState.expandedSections, appearanceMenu(prefs, { uiState = uiState.copy(expandedSections = emptySet()) }, { uiState = uiState.copy(activeDialog = it) }).items)
@@ -106,7 +108,7 @@ private fun InlineSection(expanded: Boolean, items: List<MenuEntry>, modifier: M
         Column(modifier = modifier.padding(start = 8.dp)) {
             items.forEach { entry ->
                 MenuEntryRow(entry)
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(Spacing.s4))
             }
         }
     }
@@ -137,7 +139,7 @@ private fun SettingsRow(title: String, desc: String, modifier: Modifier = Modifi
             modifier = Modifier.padding(top = 2.dp),
         )
     }
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Spacing.s8))
 }
 
 @Composable
@@ -148,7 +150,7 @@ private fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
             Row(
                 modifier = modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(Radius.button))
                     .clickable {
                         val newValue = !checked
                         checked = newValue
@@ -173,7 +175,7 @@ private fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(Spacing.s12))
                 Switch(
                     checked = checked,
                     onCheckedChange = {
@@ -187,7 +189,7 @@ private fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
             Column(
                 modifier = modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(Radius.button))
                     .clickable(onClick = entry.action)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             ) {
@@ -330,7 +332,7 @@ private fun ShizukuStatusDialog(installed: Boolean, available: Boolean, statusTe
                             }
                         },
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(Spacing.s4))
                 }
                 if (testResult.isNotEmpty()) {
                     Text(
@@ -392,7 +394,7 @@ private fun PathEditDialog(title: String, current: String, onSave: (String) -> U
                     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                 ),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(Radius.button),
             )
         },
         confirmButton = {
@@ -439,7 +441,7 @@ private fun PathSettingsSheet(
                 .padding(bottom = 32.dp),
         ) {
             Text("路径设置", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
 
             PathRow("备份目录", "备份文件和恢复数据的存储路径", com.aidev.six.PathConfig.backupDir(context).absolutePath) {
                 dialog = SettingsDialog.PathEdit("备份目录", com.aidev.six.PathConfig.backupDir(context).absolutePath) { prefs.backupDir = it }

@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.theme.Radius
+import com.aidev.six.ui.theme.Spacing
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -136,7 +139,7 @@ private fun UniverseATab(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp)
     ) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.s8))
 
         // ── 环境状态 ──
         SectionCard(title = "环境状态") {
@@ -151,7 +154,7 @@ private fun UniverseATab(
                 )
             }
             if (!opencodeInstalled) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
                 Button(
                     onClick = { onExecuteCommand("curl -fsSL https://opencode.ai/install | bash") },
                     modifier = Modifier.fillMaxWidth()
@@ -168,7 +171,7 @@ private fun UniverseATab(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 改码模型 ──
         SectionCard(title = "改码模型") {
@@ -181,7 +184,7 @@ private fun UniverseATab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(Spacing.s12))
                 Box {
                     OutlinedButton(onClick = { modelExpanded.value = true }) {
                         Text(selectedModel.value.removePrefix("opencode/") + " ▾")
@@ -203,7 +206,7 @@ private fun UniverseATab(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 诊断与工具 ──
         SectionCard(title = "诊断与工具") {
@@ -232,7 +235,7 @@ private fun UniverseATab(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.s24))
     }
 }
 
@@ -383,7 +386,7 @@ private fun UniverseBTab(
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.s8))
 
         // ── 环境状态 ──
         SectionCard(title = "环境状态") {
@@ -399,7 +402,7 @@ private fun UniverseBTab(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 构建 ──
         SectionCard(title = "构建") {
@@ -408,7 +411,7 @@ private fun UniverseBTab(
                     Text("选择要编译的项目", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     Text("workspace 下可构建的项目", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(Spacing.s12))
                 Box {
                     OutlinedButton(onClick = { projectExpanded.value = true }) {
                         Text(selectedProject.value + " ▾")
@@ -420,14 +423,14 @@ private fun UniverseBTab(
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             OutlinedButton(
                 onClick = { dialogManager.show(DialogType.ProjectScaffold) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("新建项目（脚手架 + 开发前可视化预览）")
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             Button(
                 onClick = {
                     if (submitting.value) return@Button
@@ -450,7 +453,7 @@ private fun UniverseBTab(
             ) {
                 Text(if (submitting.value) "提交中…" else "提交构建请求")
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             val hasBuild = remember(selectedProject.value) {
                 File(PathConfig.workspaceDir(context), "${selectedProject.value}/app/build").isDirectory
             }
@@ -460,7 +463,7 @@ private fun UniverseBTab(
                 else
                     "首次构建：走全量编译（会下载 Gradle 分发与依赖，首次较慢）。"
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             OutlinedButton(
                 onClick = {
                     if (healthLoading.value) return@OutlinedButton
@@ -489,7 +492,7 @@ private fun UniverseBTab(
                 Text(if (healthLoading.value) "体检中…" else "项目体检（旧项目兼容性检查）")
             }
             if (healthMessages.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 Surface(
                     Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -501,7 +504,7 @@ private fun UniverseBTab(
             }
         }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { showExportDialog.value = true },
@@ -513,7 +516,7 @@ private fun UniverseBTab(
                 ) { Text("导入项目") }
             }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 部署到设备 ──
         SectionCard(title = "部署到设备") {
@@ -547,7 +550,7 @@ private fun UniverseBTab(
                 ) {
                     Text("安装并拉起")
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 OutlinedButton(
                     onClick = { submitDeploy(false) },
                     enabled = !deploySubmitting.value,
@@ -558,7 +561,7 @@ private fun UniverseBTab(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 任务 ──
         SectionCard(title = "任务") {
@@ -582,19 +585,19 @@ private fun UniverseBTab(
                             }
                         },
                         onCancel = { cancelTarget.value = record })
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Spacing.s16))
 
         // ── 自愈闭环 ──
         SectionCard(title = "自愈闭环") {
             if (buildResult.value.isNotBlank()) InfoNote("最近构建: ${buildResult.value}")
-            if (crashState.value.isNotBlank()) { Spacer(Modifier.height(4.dp)); InfoNote("最近崩溃回流: ${crashState.value}") }
+            if (crashState.value.isNotBlank()) { Spacer(Modifier.height(Spacing.s4)); InfoNote("最近崩溃回流: ${crashState.value}") }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             Button(
                 onClick = {
                     if (fixSending.value) return@Button
@@ -614,12 +617,12 @@ private fun UniverseBTab(
                 Text(if (fixSending.value) "发送中…" else "生成修复命令并发送到 OpenCode")
             }
             if (fixMsg.value.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 InfoNote(fixMsg.value)
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Spacing.s24))
     }
 }
 
@@ -647,9 +650,9 @@ private fun AgentTaskRow(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(Radius.button)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(Spacing.s12)) {
             Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(task.definition.name, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -662,23 +665,23 @@ private fun AgentTaskRow(
                 StatusChip(taskStatusLabel(task.status), statusTone)
             }
             if (task.definition.description.isNotBlank()) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(Spacing.s4))
                 Text(task.definition.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             if (isSelected) {
                 if (task.steps.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     task.steps.forEachIndexed { i, s ->
                         Text("${i + 1}. ${s.name} · ${taskStatusLabel(s.status)}" + if (s.exitCode >= 0) " (exit=${s.exitCode})" else "",
                             color = taskStatusColor(s.status), style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 if (task.status == AgentTaskStatus.FAILED) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     HorizontalDivider()
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.s8))
                     val ctx = LocalContext.current
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("复制错误摘要", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
@@ -697,18 +700,18 @@ private fun AgentTaskRow(
                             })
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.s8))
                 Text(text = task.log.ifBlank { "暂无输出" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                 if (task.exitCode >= 0) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(Spacing.s4))
                     Text("exit=${task.exitCode}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             HorizontalDivider()
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Spacing.s4))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (isSelected) "收起" else "详情", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.clickable(onClick = onToggle).padding(6.dp))
@@ -765,11 +768,11 @@ private fun SectionCard(title: String, content: @Composable ColumnScope.() -> Un
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(Radius.card)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(Spacing.s16)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.s12))
             content()
         }
     }
