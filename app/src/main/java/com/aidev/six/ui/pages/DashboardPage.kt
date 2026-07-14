@@ -1,12 +1,19 @@
 package com.aidev.six.ui.pages
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Analytics
 import androidx.compose.material.icons.rounded.Assignment
@@ -17,7 +24,11 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,9 +38,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import android.content.Context
 import com.aidev.six.PathConfig
 import com.aidev.six.agent.AgentTaskStore
+import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.chat.OpenCodeServerManager
 import com.aidev.six.context.ContextManager
 import com.aidev.six.data.KnowledgeBaseRepository
@@ -38,12 +51,16 @@ import com.aidev.six.ui.components.AppSectionHeader
 import com.aidev.six.ui.components.InfoCard
 import com.aidev.six.ui.components.MetricChip
 import com.aidev.six.ui.components.StatusCard
+import com.aidev.six.ui.theme.Radius
 import com.aidev.six.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * DevCenter 控制中心（Dashboard）：单屏、Card + 2 列 Grid，信息密度优先。
@@ -88,6 +105,14 @@ fun DashboardPage(
     }
 
     val aiRunning = remember { OpenCodeServerManager.isRunning() }
+
+    val workflowPending = tasks.count { it.status == AgentTaskStatus.PENDING }
+    val workflowRunning = tasks.count { it.status == AgentTaskStatus.RUNNING }
+    val workflowSuccess = tasks.count { it.status == AgentTaskStatus.SUCCEEDED }
+    val workflowFailed = tasks.count { it.status == AgentTaskStatus.FAILED }
+    val workflowActiveStage = tasks.firstOrNull { it.status == AgentTaskStatus.RUNNING }?.let { stageOf(it.status) }
+        ?: tasks.firstOrNull()?.let { stageOf(it.status) } ?: 0
+    val workflowHasFailed = workflowFailed > 0
 
     // Context Manager（M3-1）：SQLite 代码索引统计，后台重建，fail-safe
     var indexStats by remember { mutableStateOf<ContextManager.IndexStats?>(null) }
@@ -221,6 +246,17 @@ fun DashboardPage(
         item { MetricChip(label = "Builds", value = buildCount.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "Crashes", value = crashCount.toString(), modifier = Modifier.fillMaxWidth()) }
         item { MetricChip(label = "Knowledge", value = knowledgeCount.toString(), icon = Icons.Rounded.Book, modifier = Modifier.fillMaxWidth()) }
+        item(span = { GridItemSpan(2) }) {
+            AppSectionHeader("工作流引擎", "Task→Plan→Coding→Review→Verify→Git→Release")
+        }
+        item(span = { GridItemSpan(2) }) {
+            PipelineRow(activeStage = workflowActiveStage, failed = workflowHasFailed)
+        }
+        item { MetricChip(label = "待办", value = workflowPending.toString(), modifier = Modifier.fillMaxWidth()) }
+        item { MetricChip(label = "运行", value = workflowRunning.toString(), modifier = Modifier.fillMaxWidth()) }
+        item { MetricChip(label = "成功", value = workflowSuccess.toString(), modifier = Modifier.fillMaxWidth()) }
+        item { MetricChip(label = "失败", value = workflowFailed.toString(), modifier = Modifier.fillMaxWidth()) }
+        items(tasks.take(6), key = { it.definition.id }) { task -> WorkflowTaskCard(task) }
     }
 }
 
@@ -232,4 +268,89 @@ private fun indexRoot(context: Context): File {
         File(home, "ubuntu-rootfs"),
         home,
     ).first { it.isDirectory }
+}
+
+// ——— 工作流引擎（M3-4）：自我进化闭环可视化 ———
+
+private val PIPELINE = listOf("Task", "Plan", "Coding", "Review", "Verify", "Git", "Release")
+
+/** 把任务状态映射为流水线已完成阶段数（1..7）。 */
+private fun stageOf(status: AgentTaskStatus): Int = when (status) {
+    AgentTaskStatus.PENDING -> 1
+    AgentTaskStatus.RUNNING -> 4
+    AgentTaskStatus.SUCCEEDED -> 7
+    AgentTaskStatus.FAILED -> 3
+    AgentTaskStatus.CANCELLED -> 2
+}
+
+private fun formatTs(ts: Long): String =
+    if (ts == 0L) "—" else runCatching { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(ts)) }.getOrDefault("—")
+
+@Composable
+private fun PipelineRow(activeStage: Int, failed: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        PIPELINE.forEachIndexed { i, stage ->
+            val done = i < activeStage
+            val current = i == activeStage - 1
+            val color = when {
+                current && failed -> MaterialTheme.colorScheme.error
+                done || current -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.outline
+            }
+            Card(
+                shape = RoundedCornerShape(Radius.button),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (done || current) color.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface,
+                ),
+            ) {
+                Text(
+                    stage,
+                    modifier = Modifier.padding(horizontal = Spacing.s8, vertical = Spacing.s4),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (done || current) color else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (current) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowTaskCard(task: com.aidev.six.agent.AgentTaskRecord) {
+    val status = task.status
+    val stage = stageOf(status)
+    val failed = status == AgentTaskStatus.FAILED
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Radius.card),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(Spacing.s12)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(task.definition.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    status.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (status) {
+                        AgentTaskStatus.SUCCEEDED -> MaterialTheme.colorScheme.secondary
+                        AgentTaskStatus.FAILED -> MaterialTheme.colorScheme.error
+                        AgentTaskStatus.RUNNING -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            Spacer(Modifier.height(Spacing.s8))
+            LinearProgressIndicator(
+                progress = { stage / 7f },
+                modifier = Modifier.fillMaxWidth(),
+                color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                trackColor = MaterialTheme.colorScheme.outline,
+            )
+            Spacer(Modifier.height(Spacing.s4))
+            Text(formatTs(task.lastUpdatedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
