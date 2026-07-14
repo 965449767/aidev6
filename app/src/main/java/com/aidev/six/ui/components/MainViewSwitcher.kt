@@ -1,5 +1,7 @@
 package com.aidev.six.ui.components
 
+import com.aidev.six.ui.theme.Radius
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
@@ -33,7 +35,7 @@ private fun SwitcherSegment(label: String, selected: Boolean, onClick: () -> Uni
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         color = fg,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(Radius.button))
             .background(bg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),

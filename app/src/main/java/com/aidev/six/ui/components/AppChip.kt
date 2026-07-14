@@ -1,5 +1,7 @@
 package com.aidev.six.ui.components
 
+import com.aidev.six.ui.theme.Radius
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -25,7 +27,7 @@ fun AppChip(
     selectedTextColor: Color = MaterialTheme.colorScheme.surface,
     bgColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     selectedBgColor: Color = MaterialTheme.colorScheme.primary,
-    shape: RoundedCornerShape = RoundedCornerShape(9.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(Radius.button),
     fontSize: Int = 12,
 ) {
     val bg = if (selected) selectedBgColor else bgColor
