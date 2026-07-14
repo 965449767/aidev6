@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Send
@@ -45,10 +46,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.aidev.six.chat.ChatPart
-import com.aidev.six.chat.OpenCodeClient
-import com.aidev.six.chat.OpenCodeServerManager
-import com.aidev.six.chat.sendCodingPrompt
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import com.aidev.six.agent.AgentTaskDefinition
 import com.aidev.six.agent.AgentTaskRecord
 import com.aidev.six.agent.AgentTaskStatus
@@ -108,9 +109,7 @@ fun PromptBuilderPage(
     var scopeText by remember { mutableStateOf(TEMPLATES[TaskType.BUG]!!.second) }
     var acceptance by remember { mutableStateOf(TEMPLATES[TaskType.BUG]!!.third) }
     var background by remember { mutableStateOf("") }
-    var aiBusy by remember { mutableStateOf(false) }
     var aiNote by remember { mutableStateOf<String?>(null) }
-    var aiRaw by remember { mutableStateOf<String?>(null) }
     var copied by remember { mutableStateOf(false) }
 
     fun applyTemplate(t: TaskType) {
@@ -145,98 +144,24 @@ fun PromptBuilderPage(
     }
 
     fun saveAsTask() {
-        scope.launch {
-            aiBusy = false
-            copied = false
-            val brief = buildBrief()
-            val id = "task-${System.currentTimeMillis()}"
-            val name = goal.trim().take(40).ifBlank { "未命名任务" }
-            val rec = AgentTaskRecord(
-                definition = AgentTaskDefinition(
-                    id = id,
-                    name = name,
-                    description = brief,
-                    command = "",
-                    workingDirectory = PathConfig.workspaceDir(context).absolutePath,
-                    tags = listOf("coding"),
-                ),
-                status = AgentTaskStatus.PENDING,
-                startedAt = System.currentTimeMillis(),
-            )
-            val file = File(PathConfig.tasksDir(context), "agent-tasks.json")
-            runCatching { AgentTaskStore.upsertTask(file, rec) }
-            val prompt = buildString {
-                appendLine("请按以下任务书实现代码：")
-                appendLine(brief)
-            }
-            val result = sendCodingPrompt(context, "任务: $name", prompt, "/workspace")
-            aiNote = "已保存为任务（构建进化 可见），并已把指令发给 OpenCode：$result"
-        }
-    }
-
-    fun aiOptimize() {
-        scope.launch {
-            aiBusy = true
-            aiNote = null
-            aiRaw = null
-            copied = false
-            val client = OpenCodeClient("http://127.0.0.1:${OpenCodeServerManager.PORT}")
-            val healthy = runCatching { client.health() }.getOrDefault(false)
-            if (!healthy) {
-                aiNote = "OpenCode 未运行或未响应（端口 ${OpenCodeServerManager.PORT}）。请先启动 OpenCode：在 AI 对话中拉起，或终端执行 `opencode serve --port ${OpenCodeServerManager.PORT}`。"
-                aiBusy = false
-                return@launch
-            }
-            val session = client.createSession("Prompt Builder") ?: run {
-                aiNote = "创建 OpenCode 会话失败。"
-                aiBusy = false
-                return@launch
-            }
-            val prompt = buildString {
-                appendLine("你是 Android 开发任务规划助手。基于任务类型与背景，产出结构化任务书，严格按下述三段 Markdown 标题输出：")
-                appendLine("## Goal")
-                appendLine("## Scope")
-                appendLine("## Acceptance")
-                appendLine()
-                appendLine("任务类型：${type.label}")
-                appendLine("当前草稿：")
-                appendLine("Goal: ${goal.trim()}")
-                appendLine("Scope: ${scopeText.trim()}")
-                appendLine("Acceptance: ${acceptance.trim()}")
-                if (background.isNotBlank()) appendLine("背景：${background.trim()}")
-                appendLine()
-                appendLine("请优化并补全三段内容，使其可经 skills/plan 直接落地。")
-            }
-            val ok = client.sendPromptAsync(session.id, prompt, null, null, null)
-            if (!ok) {
-                aiNote = "提交失败（OpenCode 未确认）。"
-                aiBusy = false
-                return@launch
-            }
-            repeat(40) {
-                if (!isActive) return@repeat
-                delay(1500)
-                val text = client.listMessages(session.id).lastOrNull { it.role == "assistant" }
-                    ?.parts?.filterIsInstance<ChatPart.Text>()?.joinToString("\n") { it.text }?.trim()
-                if (!text.isNullOrBlank()) {
-                    val g = extractSection(text, listOf("Goal", "目标"))
-                    val s = extractSection(text, listOf("Scope", "范围"))
-                    val a = extractSection(text, listOf("Acceptance", "验收"))
-                    if (g != null && s != null && a != null) {
-                        goal = g
-                        scopeText = s
-                        acceptance = a
-                        aiNote = "AI 已优化任务书（Goal/Scope/Acceptance 已更新）。"
-                    } else {
-                        aiRaw = text
-                        aiNote = "AI 已返回，但未识别标准三段结构，原文见下方，可手动采用。"
-                    }
-                    return@repeat
-                }
-            }
-            if (aiNote == null) aiNote = "已提交 AI 优化，请在 OpenCode 会话查看回复。"
-            aiBusy = false
-        }
+        val brief = buildBrief()
+        val id = "task-${System.currentTimeMillis()}"
+        val name = goal.trim().take(40).ifBlank { "未命名任务" }
+        val rec = AgentTaskRecord(
+            definition = AgentTaskDefinition(
+                id = id,
+                name = name,
+                description = brief,
+                command = "",
+                workingDirectory = PathConfig.workspaceDir(context).absolutePath,
+                tags = listOf("coding"),
+            ),
+            status = AgentTaskStatus.PENDING,
+            startedAt = System.currentTimeMillis(),
+        )
+        val file = File(PathConfig.tasksDir(context), "agent-tasks.json")
+        runCatching { AgentTaskStore.upsertTask(file, rec) }
+        aiNote = "已保存为任务（构建进化 可见）。到终端 OpenCode 把任务书贴给它即可开始编码。"
     }
 
     Column(
@@ -298,21 +223,16 @@ fun PromptBuilderPage(
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            OutlinedButton(onClick = { aiOptimize() }, enabled = !aiBusy, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Rounded.AutoAwesome, "AI 优化", modifier = Modifier.size(Spacing.s16))
-                Spacer(Modifier.width(Spacing.s4))
-                Text(if (aiBusy) "优化中…" else "AI 优化任务书")
-            }
             OutlinedButton(onClick = { copyBrief() }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Rounded.CheckCircle, "复制", modifier = Modifier.size(Spacing.s16))
+                Icon(Icons.Rounded.ContentCopy, "复制", modifier = Modifier.size(Spacing.s16))
                 Spacer(Modifier.width(Spacing.s4))
                 Text(if (copied) "已复制" else "复制任务书")
             }
-        }
-        OutlinedButton(onClick = { saveAsTask() }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.Send, "保存为任务", modifier = Modifier.size(Spacing.s16))
-            Spacer(Modifier.width(Spacing.s4))
-            Text("保存为任务并交给 AI 编码")
+            OutlinedButton(onClick = { saveAsTask() }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Rounded.CheckCircle, "保存为任务", modifier = Modifier.size(Spacing.s16))
+                Spacer(Modifier.width(Spacing.s4))
+                Text("保存为任务")
+            }
         }
 
         aiNote?.let {
@@ -324,27 +244,5 @@ fun PromptBuilderPage(
                 Text(it, modifier = Modifier.padding(Spacing.s12), style = MaterialTheme.typography.bodySmall)
             }
         }
-
-        aiRaw?.let {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                shape = RoundedCornerShape(Radius.card),
-            ) {
-                Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Text("AI 返回原文", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
     }
-}
-
-private fun extractSection(text: String, aliases: List<String>): String? {
-    for (a in aliases) {
-        val r = Regex("##\\s*${Regex.escape(a)}\\s*\\n(.*?)(?=\\n##\\s|\\z)", RegexOption.DOT_MATCHES_ALL)
-        val m = r.find(text)?.groupValues?.getOrNull(1)?.trim()
-        if (!m.isNullOrBlank()) return m
-    }
-    return null
 }

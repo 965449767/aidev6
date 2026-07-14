@@ -16,8 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
@@ -44,11 +43,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import com.aidev.six.PathConfig
-import com.aidev.six.chat.ChatPart
-import com.aidev.six.chat.OpenCodeClient
-import com.aidev.six.chat.OpenCodeServerManager
-import com.aidev.six.chat.sendCodingPrompt
 import com.aidev.six.git.GitDiffParser
 import com.aidev.six.git.GitRepoDetector
 import com.aidev.six.terminal.ProotLauncher
@@ -89,9 +88,7 @@ fun GitReviewPage(
     var detailDiff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
     var scanningOverview by remember { mutableStateOf(false) }
     var scanningDetail by remember { mutableStateOf(false) }
-    var reviewing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var aiReply by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     val detailSummary = remember(detailDiff) { GitDiffParser.summarize(detailDiff) }
@@ -117,7 +114,6 @@ fun GitReviewPage(
         scope.launch {
             scanningOverview = true
             error = null
-            aiReply = null
             selectedRepo = null
             val entries = withContext(Dispatchers.IO) { GitRepoDetector.listProjects(context) }
             if (entries.isEmpty()) {
@@ -139,7 +135,6 @@ fun GitReviewPage(
     fun openProject(repo: String) {
         selectedRepo = repo
         selectedIsGit = projects.find { it.repo == repo }?.isGit ?: true
-        aiReply = null
         error = null
         if (!selectedIsGit) {
             detailDiff = emptyList()
@@ -188,56 +183,11 @@ fun GitReviewPage(
         }
     }
 
-    fun review() {
-        scope.launch {
-            reviewing = true
-            aiReply = null
-            val client = OpenCodeClient("http://127.0.0.1:${OpenCodeServerManager.PORT}")
-            val healthy = withContext(Dispatchers.IO) { runCatching { client.health() }.getOrDefault(false) }
-            if (!healthy) {
-                aiReply = "OpenCode 未运行或未响应（端口 ${OpenCodeServerManager.PORT}）。请先启动 OpenCode：在 AI 对话中拉起，或终端执行 `opencode serve --port ${OpenCodeServerManager.PORT}`。"
-                reviewing = false
-                return@launch
-            }
-            val session = client.createSession("Git Review")
-            if (session == null) {
-                aiReply = "创建 OpenCode 会话失败。"
-                reviewing = false
-                return@launch
-            }
-            val ok = client.sendPromptAsync(session.id, GitDiffParser.toReviewPrompt(detailDiff), null, null, null)
-            if (!ok) {
-                aiReply = "提交评审失败（OpenCode 未确认）。"
-                reviewing = false
-                return@launch
-            }
-            repeat(30) {
-                if (!isActive) return@repeat
-                delay(1500)
-                val msgs = client.listMessages(session.id)
-                val text = msgs.lastOrNull { it.role == "assistant" }
-                    ?.parts?.filterIsInstance<ChatPart.Text>()
-                    ?.joinToString("\n") { it.text }
-                    ?.trim()
-                if (!text.isNullOrBlank()) {
-                    aiReply = text
-                    return@repeat
-                }
-            }
-            if (aiReply == null) aiReply = "已提交 AI 评审，请在 OpenCode 会话查看回复。"
-            reviewing = false
-        }
-    }
-
-    fun fix() {
-        scope.launch {
-            val prompt = buildString {
-                appendLine("请根据以下 git diff（项目 ${selectedRepo ?: ""}），直接修改源码修复其中指出的问题：")
-                appendLine(GitDiffParser.toReviewPrompt(detailDiff))
-            }
-            val result = sendCodingPrompt(context, "修复: ${selectedRepo ?: "repo"}", prompt, null)
-            aiReply = "已把修复指令发给 OpenCode：$result"
-        }
+    fun copyDiff() {
+        val text = GitDiffParser.toReviewPrompt(detailDiff)
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+            ?.setPrimaryClip(ClipData.newPlainText("GitDiff", text))
+        Toast.makeText(context, "已复制 diff，请贴到终端 OpenCode 处理", Toast.LENGTH_SHORT).show()
     }
 
     LaunchedEffect(Unit) { scanOverview() }
@@ -337,27 +287,10 @@ fun GitReviewPage(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        OutlinedButton(onClick = { review() }, enabled = !reviewing, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
+                        OutlinedButton(onClick = { copyDiff() }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Rounded.ContentCopy, "复制 diff", modifier = Modifier.size(Spacing.s16))
                             Spacer(Modifier.width(Spacing.s4))
-                            Text(if (reviewing) "评审中…" else "AI 深度评审")
-                        }
-                        OutlinedButton(onClick = { fix() }, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Rounded.Build, "让 AI 修复", modifier = Modifier.size(Spacing.s16))
-                            Spacer(Modifier.width(Spacing.s4))
-                            Text("让 AI 修复")
-                        }
-                    }
-                    aiReply?.let { reply ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
-                        ) {
-                            Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                Text("AI 评审结论", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                Text(reply, style = MaterialTheme.typography.bodyMedium)
-                            }
+                            Text("复制 diff 到终端")
                         }
                     }
                     detailDiff.forEach { file -> FileReviewRow(file) }

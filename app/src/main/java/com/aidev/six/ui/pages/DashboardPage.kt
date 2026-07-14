@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Rule
 import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,7 +45,6 @@ import android.content.Context
 import com.aidev.six.PathConfig
 import com.aidev.six.agent.AgentTaskStore
 import com.aidev.six.agent.AgentTaskStatus
-import com.aidev.six.chat.OpenCodeServerManager
 import com.aidev.six.context.ContextManager
 import com.aidev.six.data.KnowledgeBaseRepository
 import com.aidev.six.git.GitRepoDetector
@@ -108,7 +108,7 @@ fun DashboardPage(
         runCatching { KnowledgeBaseRepository(context).loadKnowledgeBase().sumOf { it.items.size } }.getOrDefault(0)
     }
 
-    val aiRunning = remember { OpenCodeServerManager.isRunning() }
+    val aiRunning = remember { File(PathConfig.aidevHome(context), ".aidev-opencode-port").isFile }
 
     val workflowPending = tasks.count { it.status == AgentTaskStatus.PENDING }
     val workflowRunning = tasks.count { it.status == AgentTaskStatus.RUNNING }
@@ -156,9 +156,9 @@ fun DashboardPage(
         }
         item {
             StatusCard(
-                label = "AI",
-                value = if (aiRunning) "Ready" else "Stopped",
-                icon = Icons.Rounded.SmartToy,
+                label = "终端 OpenCode",
+                value = if (aiRunning) "运行中" else "未启动",
+                icon = Icons.Rounded.Terminal,
                 accent = if (aiRunning) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
             )
         }
@@ -253,7 +253,7 @@ fun DashboardPage(
         item(span = { GridItemSpan(2) }) {
             ActionCard(
                 title = "打开代码评审",
-                subtitle = "扫描 git diff，按文件给出风险星与 AI 深度评审",
+                subtitle = "扫描 git diff，按文件给出风险星（只读评审）",
                 icon = Icons.Rounded.Rule,
                 onClick = onOpenGitReview,
                 modifier = Modifier.fillMaxWidth(),

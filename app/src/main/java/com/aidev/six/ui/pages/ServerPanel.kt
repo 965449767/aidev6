@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,7 +66,9 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Rule
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
@@ -89,7 +92,6 @@ import com.aidev.six.Constants
 import com.aidev.six.AIDevLogger
 import com.aidev.six.LoopTrace
 import com.aidev.six.DeployBridgeService
-import com.aidev.six.chat.OpenCodeServerManager
 import java.io.File
 
 import org.json.JSONObject
@@ -110,6 +112,7 @@ private val NAV_ITEMS = listOf(
 @Composable
 fun ServerPanel(
     onExecuteCommand: (String) -> Unit,
+    onOpenTerminal: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -127,7 +130,7 @@ fun ServerPanel(
         when (tab) {
             0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true }, onOpenPromptBuilder = { showPromptBuilder = true })
             1 -> GitReviewPage(onBack = { selectedTab.intValue = 0 })
-            2 -> UniverseATab(onExecuteCommand, dialogManager)
+            2 -> UniverseATab(onExecuteCommand, dialogManager, onOpenTerminal)
             3 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
             4 -> DebugCenterPage(onExecuteCommand)
             5 -> AdbExplorerPage()
@@ -180,6 +183,7 @@ fun ServerPanel(
 private fun UniverseATab(
     onExecuteCommand: (String) -> Unit,
     dialogManager: com.aidev.six.navigation.DialogManagerState,
+    onOpenTerminal: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -199,9 +203,19 @@ private fun UniverseATab(
     ) {
         Spacer(Modifier.height(Spacing.s8))
 
-        // ── AI 对话（给 AI 下写代码指令的正式入口）──
-        SectionCard(title = "AI 对话 · 给 AI 下写代码指令") {
-            AiChatPanel()
+        // ── OpenCode 终端对话（写代码只能在终端 TUI 完成）──
+        SectionCard(title = "OpenCode 终端对话") {
+            Text(
+                "写代码只能在终端里的 OpenCode 原生对话界面完成，安卓侧不接管代码生产。点击下方按钮进入终端，把任务书 / diff / 构建日志路径贴给 OpenCode 即可。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(Spacing.s12))
+            Button(onClick = onOpenTerminal, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.Terminal, "打开终端", modifier = Modifier.size(Spacing.s16))
+                Spacer(Modifier.width(Spacing.s4))
+                Text("打开终端对话")
+            }
         }
 
         Spacer(Modifier.height(Spacing.s16))
@@ -652,29 +666,28 @@ private fun UniverseBTab(
 
         Spacer(Modifier.height(Spacing.s16))
 
-        // ── 自愈闭环 ──
-        SectionCard(title = "自愈闭环") {
+        // ── 构建问题定位（复制到终端交给 OpenCode 修复）──
+        SectionCard(title = "构建问题定位") {
             if (buildResult.value.isNotBlank()) InfoNote("最近构建: ${buildResult.value}")
             if (crashState.value.isNotBlank()) { Spacer(Modifier.height(Spacing.s4)); InfoNote("最近崩溃回流: ${crashState.value}") }
 
             Spacer(Modifier.height(Spacing.s12))
             Button(
                 onClick = {
-                    if (fixSending.value) return@Button
-                    fixSending.value = true
-                    fixMsg.value = ""
                     val proj = selectedProject.value
-                    val model = PreferencesManager(context).selfEvolutionModel
-                    scope.launch(Dispatchers.IO) {
-                        val r = sendBuildFixToOpenCode(context, proj, model)
-                        fixMsg.value = r
-                        fixSending.value = false
+                    val log = findLatestFailureLogFile(context, proj)
+                    if (log != null) {
+                        copyToClipboard(context, log.absolutePath)
+                        fixMsg.value = "已复制构建失败日志路径，请到【终端】贴给 OpenCode 修复：\n${log.absolutePath}"
+                    } else {
+                        fixMsg.value = "未找到 $proj 的构建失败日志（logs/$proj/ 下无 build-failure-*.json）。"
                     }
                 },
-                enabled = !fixSending.value,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (fixSending.value) "发送中…" else "生成修复命令并发送到 OpenCode")
+                Icon(Icons.Rounded.ContentCopy, "复制日志路径", modifier = Modifier.size(Spacing.s16))
+                Spacer(Modifier.width(Spacing.s4))
+                Text("复制构建失败日志路径")
             }
             if (fixMsg.value.isNotBlank()) {
                 Spacer(Modifier.height(Spacing.s8))
@@ -959,46 +972,6 @@ private fun findLatestFailureLogFile(context: Context, project: String): File? {
     val stable = File(File(PathConfig.logsDir(context), project), "last-build-failure.log")
     if (stable.isFile) return stable
     return null
-}
-
-/**
- * 从最新构建日志提取错误摘要并发送到宇宙 A 的 OpenCode（端口 4096 共享后端），
- * 在 /workspace/<project> 目录下创建专用修复会话。这样「宇宙 B 构建失败 → 宇宙 A 改码」
- * 的回流不依赖脆弱的自动闭环，由服务器中心按钮可靠触发。
- */
-private suspend fun sendBuildFixToOpenCode(context: Context, project: String, model: String): String {
-    // 优先选「最新」的失败日志（按 build-failure-<id>.json 的 log_file，回退 last-build-failure.log / build.log），
-    // 避免读到被后续构建覆盖的旧日志
-    val latestLog = findLatestFailureLogFile(context, project)
-    val buildLog = File(File(PathConfig.logsDir(context), project), "build.log")
-    val logFile = latestLog ?: if (buildLog.isFile) buildLog else null
-    if (logFile == null || !logFile.isFile) return "未找到 $project 的构建失败日志（logs/$project/ 或 home/.aidev-loop/ 下无 build-failure-*.json）"
-    val logText = runCatching { logFile.readText() }.getOrDefault("")
-    if (logText.isBlank()) return "构建日志为空，无错误可修复"
-    // 终端 TUI 直接粘贴超长文本会卡死，故只把日志的【完整路径】交给 OpenCode，
-    // 让它自己读取完整日志（PRoot 已绑定 /sdcard，路径在终端内可直接访问）。
-    val logPath = logFile.absolutePath
-
-    val prompt = buildString {
-        append("项目 $project 在 Android 构建（宇宙 B）中失败，请在 /workspace/$project 下定位并修复编译/构建错误。\n\n")
-        append("本次失败完整日志路径：\n")
-        append(logPath)
-        append("\n（用 Read/cat 读取该文件即可看到完整构建输出，不要重复粘贴日志内容）\n\n")
-        append("请自行驱动标准黑盒闭环（不要等系统替你重建）：\n")
-        append("1) 读取上面的日志路径，定位根因并直接修改源码修复；\n")
-        append("2) build 验证：运行 `aidev-build` 看实时输出；失败回到 1，直到构建通过（成功会得到 apk_path）；\n")
-        append("3) deploy：运行 `aidev-deploy --apk <apk_path> --pkg <包名>` 安装并启动；\n")
-        append("4) verify：运行 `aidev-verify-run --pkg <包名>` 监控是否崩溃；crashed=true 则读其 crash_log_path 回到 1；\n")
-        append("5) 循环直到「构建通过 + 部署成功 + 运行不崩」（三个黑盒的标准出口全为成功/未崩溃）。\n")
-        append("注意：不要反复 cat 旧失败日志来确认，直接看各黑盒的标准出口（JSON/stdout）。\n")
-    }
-    val (prov, mid) = splitModelForFix(model)
-    return com.aidev.six.chat.sendCodingPrompt(context, "构建修复: $project", prompt, "/workspace/$project", prov, mid)
-}
-
-private fun splitModelForFix(model: String): Pair<String?, String?> {
-    val idx = model.indexOf('/')
-    return if (idx <= 0) null to null else model.substring(0, idx) to model.substring(idx + 1)
 }
 
 private fun copyToClipboard(context: Context, text: String) {

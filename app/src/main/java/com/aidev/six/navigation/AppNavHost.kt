@@ -75,6 +75,7 @@ fun AppNavHost(
                 serverContent = {
                     ServerPanel(
                         onExecuteCommand = onExecuteCommand,
+                        onOpenTerminal = { onTabSelected(TAB_TERMINAL) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
@@ -98,6 +99,7 @@ fun AppNavHost(
                             )
                             TAB_SERVER -> ServerPanel(
                                 onExecuteCommand = onExecuteCommand,
+                                onOpenTerminal = { onTabSelected(TAB_TERMINAL) },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
