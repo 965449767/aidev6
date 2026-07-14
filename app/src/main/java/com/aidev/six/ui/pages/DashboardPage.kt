@@ -47,6 +47,7 @@ import com.aidev.six.agent.AgentTaskStatus
 import com.aidev.six.chat.OpenCodeServerManager
 import com.aidev.six.context.ContextManager
 import com.aidev.six.data.KnowledgeBaseRepository
+import com.aidev.six.git.GitRepoDetector
 import com.aidev.six.ui.components.ActionCard
 import com.aidev.six.ui.components.AppSectionHeader
 import com.aidev.six.ui.components.InfoCard
@@ -274,14 +275,11 @@ fun DashboardPage(
     }
 }
 
-/** 索引目标：优先 PRoot 开发家目录，回退到 aidev home。 */
+/** 索引目标：先探测 PRoot 内 git 仓库（与 Git Review 同源），回退到 aidev home。 */
 private fun indexRoot(context: Context): File {
-    val home = PathConfig.aidevHome(context)
-    return listOf(
-        File(home, "ubuntu-rootfs/home"),
-        File(home, "ubuntu-rootfs"),
-        home,
-    ).first { it.isDirectory }
+    val detected = GitRepoDetector.detect(context)
+    if (detected != null) return GitRepoDetector.toAndroidPath(context, detected)
+    return PathConfig.aidevHome(context)
 }
 
 // ——— 工作流引擎（M3-4）：自我进化闭环可视化 ———

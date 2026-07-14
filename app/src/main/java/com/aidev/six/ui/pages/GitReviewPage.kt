@@ -45,6 +45,7 @@ import com.aidev.six.chat.ChatPart
 import com.aidev.six.chat.OpenCodeClient
 import com.aidev.six.chat.OpenCodeServerManager
 import com.aidev.six.git.GitDiffParser
+import com.aidev.six.git.GitRepoDetector
 import com.aidev.six.terminal.ProotLauncher
 import com.aidev.six.ui.components.EmptyState
 import com.aidev.six.ui.theme.Radius
@@ -58,12 +59,12 @@ import kotlinx.coroutines.withContext
 @Composable
 fun GitReviewPage(
     modifier: Modifier = Modifier,
-    repoPath: String = "/host-home/aidev6",
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var diff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
+    var repoPath by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -76,10 +77,18 @@ fun GitReviewPage(
             scanning = true
             error = null
             aiReply = null
+            val repo = withContext(Dispatchers.IO) { GitRepoDetector.detect(context) }
+            if (repo == null) {
+                error = "未找到 git 仓库（已探测 /host-home/aidev6 等常见路径）。请确认 PRoot 内 aidev6 源码位置，或在设置中指定仓库路径。"
+                diff = emptyList()
+                scanning = false
+                return@launch
+            }
+            repoPath = repo
             val res = withContext(Dispatchers.IO) {
                 ProotLauncher.run(
                     context,
-                    "git -C $repoPath diff HEAD --numstat",
+                    "git -C $repo diff HEAD --numstat",
                     ProotLauncher.Options(
                         rootfs = PathConfig.agentRootfs(context).absolutePath,
                         cwd = "/host-home",
@@ -155,7 +164,7 @@ fun GitReviewPage(
         }
 
         Text(
-            repoPath,
+            repoPath ?: "探测仓库中…",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
