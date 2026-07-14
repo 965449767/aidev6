@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # uninstallapp: 卸载应用（PRoot 内包装，委托 Shizuku）
 # 用法: uninstallapp <包名>
-set -eo pipefail
+set -e
 
 if [ $# -eq 0 ]; then
     echo "用法: uninstallapp <package_name>"
@@ -10,5 +10,5 @@ if [ $# -eq 0 ]; then
 fi
 
 PKG="$1"
-[[ "$PKG" =~ ^[a-zA-Z0-9._]+$ ]] || { echo "错误: 非法包名 '$PKG'"; exit 1; }
+echo "$PKG" | grep -qE '^[a-zA-Z0-9._]+$' || { echo "错误: 非法包名 '$PKG'"; exit 1; }
 exec aidev-shizuku exec "pm uninstall -k --user 0 '$PKG'"

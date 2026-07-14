@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-tombstone: 读取原生崩溃 tombstone
 # 用法: aidev-tombstone [list|latest|<n>|clear]
-set -eo pipefail
+set -e
 
 SHIZUKU="aidev-shizuku"
 TS_DIR="/data/tombstones"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-verify-run: 运行验证黑盒（设备侧 / Shizuku 桥）
 #
 # 职责：窗口内监控目标包是否崩溃 / ANR，返回【确定结论】。
@@ -13,7 +13,7 @@
 # 内部实现：委托 aidev-logcat --watch-crash（已走 Shizuku 桥）在窗口内监听，
 # 捕获 FATAL EXCEPTION / ANR / Native crash / Process died 即判 crashed=true。
 
-set -uo pipefail
+set -u
 
 PKG=""
 WINDOW=8

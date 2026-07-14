@@ -1,4 +1,4 @@
-#!/system/bin/sh
+#!/bin/sh
 # aidev-precache — 预缓存 AIDev 开发基线依赖（离线构建保障）
 #
 # 用法:

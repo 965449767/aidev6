@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set +e
 export DEBIAN_FRONTEND=noninteractive
 echo "AIDev 环境修复"

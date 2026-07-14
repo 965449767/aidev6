@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-anr: 读取 ANR traces
 # 用法: aidev-anr [list|latest|<name>|summary|clear]
-set -eo pipefail
+set -e
 
 SHIZUKU="aidev-shizuku"
 ANR_DIR="/data/anr"

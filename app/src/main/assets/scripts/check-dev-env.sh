@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set +e
 echo "AIDev 环境检测"
 echo

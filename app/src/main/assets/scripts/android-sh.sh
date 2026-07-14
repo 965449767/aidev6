@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # android-sh: 在 Android 宿主 shell 中执行命令（PRoot 内包装）
 # 用法: android-sh '<command>'
-set -eo pipefail
+set -e
 
 if [ $# -eq 0 ]; then
     echo "用法: android-sh '<command>'"

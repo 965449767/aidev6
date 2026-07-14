@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-dumpsys: dumpsys 快捷命令
 # 用法: aidev-dumpsys [meminfo|activity|window|battery|diskstats|<subsystem>]
-set -eo pipefail
+set -e
 
 SHIZUKU="aidev-shizuku"
 PKG="${AIDEV_PKG:-com.aidev.six}"

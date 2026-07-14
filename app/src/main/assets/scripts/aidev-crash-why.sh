@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-crash-why: 分析运行时崩溃日志
 # 用法: aidev-crash-why [--anr|--logcat <文件>]
-set -eo pipefail
+set -e
 
 usage() {
     echo "用法: aidev-crash-why [选项]"

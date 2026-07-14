@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-clean: 清理构建缓存（PRoot 内版）
 # 用法: aidev-clean [--all|--gradle|--builds|--dry-run]
-set -eo pipefail
+set -e
 
 case "${1:-}" in
     --all|-a)

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-index: 代码搜索索引 — 从 Android 项目构建可搜索索引
 # 用法: aidev-index [class|res|string|layout|function|refresh] <关键词>
 #       aidev-index                          # 刷新索引
@@ -7,7 +7,7 @@
 #       aidev-index string app_name           # 搜索字符串
 #       aidev-index refresh                   # 强制刷新索引
 
-set -eo pipefail
+set -e
 
 INDEX_FILE=".aidev-index.json"
 
@@ -127,7 +127,9 @@ build_index() {
         $first || echo "," >> "$tmp/index.json"
         first=false
         echo -n "    {\"type\":\"$(json_escape "$type")\",\"name\":\"$(json_escape "$name")\",\"file\":\"$(json_escape "${path#$SRC_DIR/res/}")\"}" >> "$tmp/index.json"
-    done < <(cat "$tmp/layout.txt" "$tmp/strings.txt" "$tmp/resources.txt" 2>/dev/null)
+    cat "$tmp/layout.txt" "$tmp/strings.txt" "$tmp/resources.txt" 2>/dev/null > "$tmp/res_combined.txt"
+    done < "$tmp/res_combined.txt"
+    rm -f "$tmp/res_combined.txt"
     echo "" >> "$tmp/index.json"
     echo '  ],' >> "$tmp/index.json"
 

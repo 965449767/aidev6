@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-build: 智能 Android 构建包装
 # 自动选择最轻验证方式，处理 AAPT2 死锁，诊断构建错误
 # 用法: aidev-build [--full|--test|--compile] [--clean] [--no-deploy]
 
-set -eo pipefail
+set -e
 
 MODE="auto"
 CLEAN=false
@@ -73,7 +73,7 @@ if grep -q "systemProp.http.proxyHost" ~/.gradle/gradle.properties 2>/dev/null; 
     PPORT=$(grep "systemProp.http.proxyPort" ~/.gradle/gradle.properties | head -1 | cut -d= -f2)
     PHOST="${PHOST:-127.0.0.1}"
     PPORT="${PPORT:-18080}"
-    if ! command -v nc &>/dev/null || ! nc -z -w2 "$PHOST" "$PPORT" 2>/dev/null; then
+    if ! command -v nc >/dev/null 2>&1 || ! nc -z -w2 "$PHOST" "$PPORT" 2>/dev/null; then
         PROXY_ARGS="-Dhttp.proxyHost= -Dhttps.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyPort="
     fi
 fi
@@ -85,7 +85,7 @@ if [ -f "gradle.properties" ] && [ -z "$PROXY_ARGS" ]; then
         PPORT=$(grep "systemProp.http.proxyPort" gradle.properties | head -1 | cut -d= -f2)
         PHOST="${PHOST:-127.0.0.1}"
         PPORT="${PPORT:-18080}"
-        if ! command -v nc &>/dev/null || ! nc -z -w2 "$PHOST" "$PPORT" 2>/dev/null; then
+    if ! command -v nc >/dev/null 2>&1 || ! nc -z -w2 "$PHOST" "$PPORT" 2>/dev/null; then
             PROXY_ARGS="-Dhttp.proxyHost= -Dhttps.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyPort="
         fi
     fi
@@ -181,7 +181,7 @@ else
 
     echo ""
     echo "  -- 错误诊断 --"
-    if command -v aidev-error-why &>/dev/null; then
+    if command -v aidev-error-why >/dev/null 2>&1; then
         cat "$BUILD_LOG" | aidev-error-why 2>/dev/null || true
     else
         echo "  (运行 aidev-error-why 查看详细诊断)"
@@ -213,11 +213,14 @@ else
     BF_PROJECT=$(basename "$PWD")
     BF_ID="term-$(date +%s)"
     BF_ERR_JSON=""
+    TMP_ERR="/tmp/aidev-build-err.$$"
+    grep -E 'error:|FAILED|What went wrong|Exception in' "$BUILD_LOG" 2>/dev/null | head -20 > "$TMP_ERR"
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         esc=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g; s/\n/\\n/g')
         if [ -z "$BF_ERR_JSON" ]; then BF_ERR_JSON="\"$esc\""; else BF_ERR_JSON="$BF_ERR_JSON, \"$esc\""; fi
-    done <<< "$(grep -E 'error:|FAILED|What went wrong|Exception in' "$BUILD_LOG" 2>/dev/null | head -20)"
+    done < "$TMP_ERR"
+    rm -f "$TMP_ERR"
     BF_TAIL=$(tail -60 "$BUILD_LOG" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g' | tr '\n' ' ' | head -c 10000)
 
     # 把【完整失败日志】落到稳定、不可变路径，避免被后续构建覆盖 build.log 而读到旧日志

@@ -1,4 +1,4 @@
-#!/system/bin/sh
+#!/bin/sh
 # aidev-repo — AIDevRepo 离线仓库消费端（fail-safe）
 #
 # 读取共享仓库 /sdcard/.AIDevRepo/{catalog.json,manifest.json}，

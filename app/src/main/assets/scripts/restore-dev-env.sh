@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # ═══════════════════════════════════════════════════════════
 #  从本地备份恢复 Android 开发环境
 #  用法: bash restore.sh [目标目录前缀]
@@ -6,15 +6,13 @@
 #           GRADLE_USER_HOME=/host-home/gradle-cache
 #           JDK 目标 = /usr/lib/jvm/java-17-openjdk-arm64
 # ═══════════════════════════════════════════════════════════
-set -Euo pipefail
+set -u
 
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_DEST="${SDK_DEST:-/host-home/android-sdk}"
 GRADLE_DEST="${GRADLE_DEST:-/host-home/gradle-cache}"
 JDK_DEST="${JDK_DEST:-/usr/lib/jvm/java-17-openjdk-arm64}"
 LOG_FILE="/tmp/restore-dev-env.log"
-
-exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=============================================="
 echo "  开发环境恢复工具"

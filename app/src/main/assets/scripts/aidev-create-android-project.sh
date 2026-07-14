@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-create-android-project: 从模板创建新 Android 项目
 # 自动匹配当前环境 AGP/Kotlin 版本
 # 用法: aidev-create-android-project <应用名> <包名> [输出目录]
 
-set -eo pipefail
+set -e
 
 APP_NAME="${1:-}"
 PACKAGE="${2:-}"
@@ -372,9 +372,9 @@ EOF
 echo "  下载 Gradle Wrapper..."
 WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
 WRAPPER_JAR_URL="https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar"
-if command -v curl &>/dev/null; then
+if command -v curl >/dev/null 2>&1; then
     curl -fsSL -o "$WRAPPER_JAR" "$WRAPPER_JAR_URL" 2>/dev/null || true
-elif command -v wget &>/dev/null; then
+elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$WRAPPER_JAR" "$WRAPPER_JAR_URL" 2>/dev/null || true
 fi
 

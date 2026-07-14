@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 echo "AIDev 将安装：opencode"
 echo "来源：opencode 官方安装脚本 https://opencode.ai/install"

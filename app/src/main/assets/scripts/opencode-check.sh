@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # opencode-check — 验证 OpenCode 安装与 AIDev 命令注册状态
 # 所有二进制和配置文件已由 Kotlin 侧自动部署，本脚本仅做检查和提示
 

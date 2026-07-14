@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-backup: 备份和恢复 Ubuntu rootfs + 开发环境
 # 用法:
 #   aidev-backup create [--quick|--all]
@@ -7,7 +7,7 @@
 #   aidev-backup restore <name>
 #   aidev-backup delete <name>
 
-set -eo pipefail
+set -e
 
 BACKUP_DIR="${BACKUP_DIR:-/sdcard/AIDev/backups}"
 LOCK_FILE="$BACKUP_DIR/.aidev-backup.lock"
@@ -141,26 +141,21 @@ backup_tools() {
 # ── 备份项目 ───────────────────────────────────────────────
 backup_projects() {
     local out_path="$1"
-    local proj_dirs=()
+    local proj_dirs=""
 
     if [ -d /root ] && [ "$(ls -A /root 2>/dev/null)" ]; then
-        proj_dirs+=(/root)
+        proj_dirs="$proj_dirs /root"
     fi
     for d in /host-home/Projects /host-home/projects; do
-        [ -d "$d" ] && [ "$(ls -A "$d" 2>/dev/null)" ] && proj_dirs+=("$d")
+        [ -d "$d" ] && [ "$(ls -A "$d" 2>/dev/null)" ] && proj_dirs="$proj_dirs $d"
     done
 
-    if [ ${#proj_dirs[@]} -eq 0 ]; then
+    if [ -z "$proj_dirs" ]; then
         warn "未发现项目目录，跳过"
         return 1
     fi
-
-    log "  备份项目..."
-    local tar_args=()
-    for d in "${proj_dirs[@]}"; do
-        tar_args+=(-C "$(dirname "$d")" "$(basename "$d")")
-    done
-    tar czf "$out_path" "${tar_args[@]}" 2>/dev/null || {
+    local tar_args="$proj_dirs"
+    tar czf "$out_path" $tar_args 2>/dev/null || {
         warn "项目备份失败，跳过"
         rm -f "$out_path"
         return 1
@@ -405,7 +400,6 @@ cmd_restore() {
     cmd_info "$1" | tail -n +3
 
     local total_mb=0
-    local parts=()
     if [ -f "$dir/meta.json" ]; then
         total_mb=$(grep -o '"total_size_mb": [0-9]*' "$dir/meta.json" 2>/dev/null | awk '{print $2}')
     fi

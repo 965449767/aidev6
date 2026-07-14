@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-error-why: 搜索常见构建错误并显示解决方案
 # 用法: aidev-error-why [--lang en] [--all] [<关键词>]
 #       cat build.log | aidev-error-why
 #       aidev-build --full 2>&1 | aidev-error-why
 
-set -eo pipefail
+set -e
 
 MATCH_ALL=false
 LANG_EN=false

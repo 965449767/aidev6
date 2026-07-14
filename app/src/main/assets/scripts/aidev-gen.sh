@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-gen: 生成 Android 组件骨架代码
 # 用法: aidev-gen activity|fragment|viewmodel <名称> [选项]
 # 自动检测项目结构和包名
 
-set -eo pipefail
+set -e
 
 detect_project() {
     local dir="${1:-.}"

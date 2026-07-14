@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # aidev-apk-info: 解析 APK 文件信息并以中文显示
 # 用法: aidev-apk-info <apk_path>
 # 依赖: aapt2 (优先) 或只显示基本信息
 
-set -eo pipefail
+set -e
 CLEANUP_DIRS=""
 
 cleanup() { for d in $CLEANUP_DIRS; do rm -rf "$d" 2>/dev/null || true; done; }
@@ -40,7 +40,7 @@ fi
 
 # 尝试查找 aapt2
 AAPT2=""
-if command -v aapt2 &>/dev/null; then
+if command -v aapt2 >/dev/null 2>&1; then
     AAPT2=$(command -v aapt2)
 elif [ -d "/Android/build-tools" ]; then
     AAPT2=$(find /Android/build-tools -name aapt2 -type f 2>/dev/null | head -1)
@@ -120,11 +120,11 @@ else
     echo ""
 
     # 从 AndroidManifest.xml 提取基本信息
-    if command -v unzip &>/dev/null; then
+    if command -v unzip >/dev/null 2>&1; then
         TMPDIR=$(mktemp -d 2>/dev/null || echo "/tmp/apk-info-$$")
         CLEANUP_DIRS="$CLEANUP_DIRS $TMPDIR"
         mkdir -p "$TMPDIR"
-        if unzip -o "$APK" AndroidManifest.xml -d "$TMPDIR" &>/dev/null; then
+        if unzip -o "$APK" AndroidManifest.xml -d "$TMPDIR" >/dev/null 2>&1; then
             MANIFEST="$TMPDIR/AndroidManifest.xml"
             if [ -f "$MANIFEST" ]; then
                 PKG=$(strings "$MANIFEST" 2>/dev/null | grep -E '^[a-z][a-z0-9_]*\.[a-z]' | head -3 | tail -1)

@@ -1,13 +1,11 @@
-#!/bin/bash
-set -Euo pipefail
+#!/bin/sh
+set -u
 
 BACKUP_BASE="${1:-/storage/emulated/0/dev-backup}"
 SDK_SRC="${ANDROID_SDK_ROOT:-/Android}"
 GRADLE_SRC="${GRADLE_USER_HOME:-/host-home/gradle-cache}"
 JDK_SRC="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-arm64}"
 LOG_FILE="/tmp/dev-backup.log"
-
-exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "=============================================="
 echo "  开发环境备份工具"
