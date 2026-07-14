@@ -22,8 +22,6 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,6 +54,8 @@ import com.aidev.six.ui.components.EmptyState
 import com.aidev.six.ui.theme.Radius
 import com.aidev.six.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -63,6 +63,13 @@ import kotlinx.coroutines.withContext
 
 private const val PREFS_NAME = "git_review"
 private const val KEY_CURRENT_REPO = "current_repo"
+
+private data class ProjectReview(
+    val repo: String,
+    val diff: List<GitDiffParser.FileDiff>,
+    val summary: GitDiffParser.ReviewSummary,
+    val hasChanges: Boolean,
+)
 
 @Composable
 fun GitReviewPage(
@@ -73,86 +80,64 @@ fun GitReviewPage(
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE) }
 
-    var diff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
-    var repos by remember { mutableStateOf<List<String>>(emptyList()) }
+    var projects by remember { mutableStateOf<List<ProjectReview>>(emptyList()) }
     var selectedRepo by remember { mutableStateOf<String?>(null) }
-    var repoMenuExpanded by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var scanning by remember { mutableStateOf(false) }
+    var detailDiff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
+    var scanningOverview by remember { mutableStateOf(false) }
+    var scanningDetail by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var aiReply by remember { mutableStateOf<String?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    val summary = remember(diff) { GitDiffParser.summarize(diff) }
+    val detailSummary = remember(detailDiff) { GitDiffParser.summarize(detailDiff) }
 
-    fun loadDiff(repo: String) {
-        scope.launch {
-            scanning = true
-            error = null
-            aiReply = null
-            val res = withContext(Dispatchers.IO) {
-                ProotLauncher.run(
-                    context,
-                    "git -C $repo diff HEAD --numstat",
-                    ProotLauncher.Options(
-                        rootfs = PathConfig.agentRootfs(context).absolutePath,
-                        cwd = "/host-home",
-                        timeoutSec = 30,
-                    ),
-                )
-            }
-            if (res.exitCode != 0 && res.stdout.isBlank()) {
-                error = res.stderr.ifBlank { "git 执行失败（exit ${res.exitCode}）" }
-                diff = emptyList()
-            } else {
-                diff = GitDiffParser.parseNumstat(res.stdout)
-            }
-            scanning = false
-        }
+    fun scanOne(repo: String): ProjectReview {
+        val res = ProotLauncher.run(
+            context,
+            "git -C $repo diff HEAD --numstat",
+            ProotLauncher.Options(
+                rootfs = PathConfig.agentRootfs(context).absolutePath,
+                cwd = "/host-home",
+                timeoutSec = 30,
+            ),
+        )
+        val diff = if (res.exitCode != 0 && res.stdout.isBlank()) emptyList() else GitDiffParser.parseNumstat(res.stdout)
+        return ProjectReview(repo, diff, GitDiffParser.summarize(diff), diff.isNotEmpty())
     }
 
-    fun scan() {
+    fun scanOverview() {
         scope.launch {
-            scanning = true
+            scanningOverview = true
             error = null
             aiReply = null
-            val all = withContext(Dispatchers.IO) { GitRepoDetector.listRepos(context) }
-            repos = all
-            val saved = prefs.getString(KEY_CURRENT_REPO, "") ?: ""
-            val repo = if (saved in all) saved else all.firstOrNull()
-            selectedRepo = repo
-            if (repo == null) {
-                error = "未找到 git 仓库（已探测 /host-home 下常见路径）。请确认 PRoot 内源码位置，或在终端创建 git 仓库。"
-                diff = emptyList()
-                scanning = false
+            selectedRepo = null
+            val repos = withContext(Dispatchers.IO) { GitRepoDetector.listRepos(context) }
+            if (repos.isEmpty()) {
+                projects = emptyList()
+                error = "工作目录（${GitRepoDetector.WORKSPACE_PROOT}）内未找到 git 仓库。"
+                scanningOverview = false
                 return@launch
             }
-            val res = withContext(Dispatchers.IO) {
-                ProotLauncher.run(
-                    context,
-                    "git -C $repo diff HEAD --numstat",
-                    ProotLauncher.Options(
-                        rootfs = PathConfig.agentRootfs(context).absolutePath,
-                        cwd = "/host-home",
-                        timeoutSec = 30,
-                    ),
-                )
+            val scanned = withContext(Dispatchers.IO) {
+                kotlinx.coroutines.coroutineScope {
+                    repos.map { repo -> async { runCatching { scanOne(repo) }.getOrDefault(ProjectReview(repo, emptyList(), GitDiffParser.summarize(emptyList()), false)) } }.awaitAll()
+                }
             }
-            if (res.exitCode != 0 && res.stdout.isBlank()) {
-                error = res.stderr.ifBlank { "git 执行失败（exit ${res.exitCode}）" }
-                diff = emptyList()
-            } else {
-                diff = GitDiffParser.parseNumstat(res.stdout)
-            }
-            scanning = false
+            projects = scanned
+            scanningOverview = false
         }
     }
 
-    fun selectRepo(repo: String) {
+    fun openProject(repo: String) {
         selectedRepo = repo
-        prefs.edit().putString(KEY_CURRENT_REPO, repo).apply()
-        repoMenuExpanded = false
-        loadDiff(repo)
+        aiReply = null
+        error = null
+        scope.launch {
+            scanningDetail = true
+            detailDiff = withContext(Dispatchers.IO) { scanOne(repo).diff }
+            scanningDetail = false
+        }
     }
 
     fun deleteRepo(repo: String) {
@@ -168,10 +153,8 @@ fun GitReviewPage(
                     ),
                 )
             }
-            if (prefs.getString(KEY_CURRENT_REPO, "") == repo) {
-                prefs.edit().remove(KEY_CURRENT_REPO).apply()
-            }
-            scan()
+            if (prefs.getString(KEY_CURRENT_REPO, "") == repo) prefs.edit().remove(KEY_CURRENT_REPO).apply()
+            scanOverview()
         }
     }
 
@@ -192,7 +175,7 @@ fun GitReviewPage(
                 reviewing = false
                 return@launch
             }
-            val ok = client.sendPromptAsync(session.id, GitDiffParser.toReviewPrompt(diff), null, null, null)
+            val ok = client.sendPromptAsync(session.id, GitDiffParser.toReviewPrompt(detailDiff), null, null, null)
             if (!ok) {
                 aiReply = "提交评审失败（OpenCode 未确认）。"
                 reviewing = false
@@ -216,104 +199,111 @@ fun GitReviewPage(
         }
     }
 
-    LaunchedEffect(Unit) { scan() }
+    LaunchedEffect(Unit) { scanOverview() }
 
     Column(
         modifier = modifier.fillMaxSize().padding(Spacing.s16).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Spacing.s12),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, "返回") }
-            Text("代码评审", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            IconButton(onClick = { if (selectedRepo != null) { selectedRepo = null; detailDiff = emptyList() } else onBack() }) {
+                Icon(Icons.Rounded.ArrowBack, "返回")
+            }
+            Text(if (selectedRepo == null) "代码评审 · 工作目录" else "项目评审", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            OutlinedButton(onClick = { scan() }, enabled = !scanning) {
-                Icon(Icons.Rounded.Refresh, "重新扫描", modifier = Modifier.size(Spacing.s16))
+            OutlinedButton(onClick = { if (selectedRepo == null) scanOverview() else openProject(selectedRepo!!) }, enabled = !scanningOverview && !scanningDetail) {
+                Icon(Icons.Rounded.Refresh, "刷新", modifier = Modifier.size(Spacing.s16))
                 Spacer(Modifier.width(Spacing.s4))
-                Text(if (scanning) "扫描中…" else "重新扫描")
+                Text(if (scanningOverview || scanningDetail) "扫描中…" else "刷新")
             }
         }
 
-        // 项目选择器
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            Box {
-                OutlinedButton(onClick = { repoMenuExpanded = true }, enabled = repos.isNotEmpty()) {
-                    Text(selectedRepo ?: if (repos.isEmpty()) "无仓库" else "选择仓库")
-                }
-                DropdownMenu(expanded = repoMenuExpanded, onDismissRequest = { repoMenuExpanded = false }) {
-                    repos.forEach { repo ->
-                        DropdownMenuItem(
-                            text = { Text(repo, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            onClick = { selectRepo(repo) },
-                        )
+        if (selectedRepo == null) {
+            // ── 总览层 ──
+            Text(
+                "工作目录：${GitRepoDetector.WORKSPACE_PROOT}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when {
+                scanningOverview -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                error != null -> EmptyState(title = "未找到项目", subtitle = error ?: "")
+                projects.isEmpty() -> EmptyState(title = "无项目", subtitle = "工作目录下没有 git 仓库。")
+                else -> {
+                    val total = projects.size
+                    val dirty = projects.count { it.hasChanges }
+                    val highRisk = projects.count { it.summary.highRisk > 0 }
+                    val totalFiles = projects.sumOf { it.summary.files }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
+                    ) {
+                        Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+                            Text("工作目录总览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                "项目 $total  ·  有改动 $dirty  ·  高风险 $highRisk  ·  改动文件共 $totalFiles",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                    projects.forEach { p ->
+                        ProjectOverviewRow(p) { openProject(p.repo) }
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
-            if (selectedRepo != null) {
+        } else {
+            // ── 详情层 ──
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                Text(
+                    selectedRepo!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
                 IconButton(onClick = { showDeleteConfirm = true }) {
                     Icon(Icons.Rounded.Delete, "删除项目", tint = MaterialTheme.colorScheme.error)
                 }
             }
-        }
-        Text(
-            selectedRepo ?: "未选择仓库",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            "工作目录：${GitRepoDetector.WORKSPACE_PROOT}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        when {
-            scanning -> LinearProgressIndicator(Modifier.fillMaxWidth())
-            error != null -> EmptyState(title = "无法读取改动", subtitle = error ?: "")
-            diff.isEmpty() -> EmptyState(title = "无未提交改动", subtitle = "git diff HEAD 为空，工作区干净。")
-            else -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
-                ) {
-                    Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-                        Text("改动概览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Text(
-                            "文件 ${summary.files}  ·  +${summary.additions} / -${summary.deletions}  ·  " +
-                                "高风险 ${summary.highRisk}  ·  中 ${summary.midRisk}  ·  低 ${summary.lowRisk}",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    OutlinedButton(
-                        onClick = { review() },
-                        enabled = !reviewing,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
-                        Spacer(Modifier.width(Spacing.s4))
-                        Text(if (reviewing) "评审中…" else "AI 深度评审")
-                    }
-                }
-
-                aiReply?.let { reply ->
+            when {
+                scanningDetail -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                detailDiff.isEmpty() -> EmptyState(title = "无未提交改动", subtitle = "git diff HEAD 为空，工作区干净。")
+                else -> {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
                     ) {
-                        Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                            Text("AI 评审结论", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text(reply, style = MaterialTheme.typography.bodyMedium)
+                        Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+                            Text("改动概览", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                "文件 ${detailSummary.files}  ·  +${detailSummary.additions} / -${detailSummary.deletions}  ·  " +
+                                    "高风险 ${detailSummary.highRisk}  ·  中 ${detailSummary.midRisk}  ·  低 ${detailSummary.lowRisk}",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
                         }
                     }
-                }
-
-                diff.forEach { file ->
-                    FileReviewRow(file)
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        OutlinedButton(onClick = { review() }, enabled = !reviewing, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
+                            Spacer(Modifier.width(Spacing.s4))
+                            Text(if (reviewing) "评审中…" else "AI 深度评审")
+                        }
+                    }
+                    aiReply?.let { reply ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
+                        ) {
+                            Column(Modifier.padding(Spacing.s16), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                Text("AI 评审结论", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text(reply, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                    detailDiff.forEach { file -> FileReviewRow(file) }
                 }
             }
         }
@@ -323,22 +313,57 @@ fun GitReviewPage(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("删除项目") },
-            text = {
-                Text("将永久删除该仓库目录及其所有文件：\n\n${selectedRepo}\n\n此操作不可恢复，请确认。")
-            },
+            text = { Text("将永久删除该仓库目录及其所有文件：\n\n${selectedRepo}\n\n此操作不可恢复，请确认。") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val repo = selectedRepo!!
-                        showDeleteConfirm = false
-                        deleteRepo(repo)
-                    },
-                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { val repo = selectedRepo!!; showDeleteConfirm = false; deleteRepo(repo) }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
-            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun ProjectOverviewRow(project: ProjectReview, onClick: () -> Unit) {
+    val riskColor = when (project.summary.maxRisk) {
+        5, 4 -> MaterialTheme.colorScheme.error
+        3 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(Radius.card),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(Spacing.s12),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    project.repo.substringAfterLast("/"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (project.hasChanges) "有 ${project.summary.files} 处改动" else "工作区干净",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (project.hasChanges) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (project.hasChanges) {
+                Text("+${project.summary.additions}/-${project.summary.deletions}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "★".repeat(project.summary.maxRisk) + "☆".repeat(5 - project.summary.maxRisk),
+                    color = riskColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
