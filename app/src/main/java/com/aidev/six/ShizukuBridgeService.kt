@@ -101,15 +101,28 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
             parts[0] to if (parts.size > 1) parts[1] else ""
         }
 
+    /**
+     * 前缀白名单：仅允许以这些前缀开头的命令（P0-2 收紧）。
+     * 覆盖安全设备内省/控制动词；危险动词（reboot/rm/mv/dd/mount/chmod 等）一律不在列表内。
+     */
     private val ALLOWED_COMMAND_PREFIXES = listOf(
-        "pm ", "input ", "svc ", "dumpsys ", "cmd ", "cp ", "am ", "monkey "
+        "pm ", "input ", "svc ", "dumpsys ", "cmd ", "cp ", "am ", "monkey ",
+        "settings ", "wm ", "getprop", "setprop", "logcat", "date ", "reset "
     )
 
-    private fun isCommandAllowed(command: String): Boolean {
-        val trimmed = command.trimStart()
-        if (ALLOWED_COMMAND_PREFIXES.any { trimmed.startsWith(it) }) return true
-        val allowedChars = setOf('/', '-', '_', '.', ' ', '=', '@', ':', '~', ';')
-        return trimmed.all { it.isLetterOrDigit() || it in allowedChars }
+    /** 注入类 shell 元字符：无论前缀是否合法，出现即拒绝（防 am start ... ; rm -rf / 等注入）。 */
+    private val FORBIDDEN_SHELL_METACHARS = charArrayOf(';', '|', '&', '$', '`', '(', ')', '<', '>', '\n', '\\')
+
+    internal fun isCommandAllowed(command: String): Boolean {
+        val trimmed = command.trim()
+        if (trimmed.isEmpty()) return false
+        val matchesPrefix = ALLOWED_COMMAND_PREFIXES.any { p ->
+            val base = p.trimEnd()
+            trimmed == base || trimmed.startsWith(p)
+        }
+        if (!matchesPrefix) return false
+        if (trimmed.any { it in FORBIDDEN_SHELL_METACHARS }) return false
+        return true
     }
 
     private suspend fun computeExec(command: String): String {
