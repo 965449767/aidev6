@@ -60,6 +60,7 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.PhoneAndroid
@@ -99,6 +100,7 @@ private data class NavItem(val label: String, val icon: ImageVector)
 
 private val NAV_ITEMS = listOf(
     NavItem("总览", Icons.Rounded.Dashboard),
+    NavItem("项目", Icons.Rounded.Folder),
     NavItem("宇宙 A", Icons.Rounded.SmartToy),
     NavItem("宇宙 B", Icons.Rounded.AccountTree),
     NavItem("调试", Icons.Rounded.BugReport),
@@ -124,10 +126,11 @@ fun ServerPanel(
     fun renderTab(tab: Int) {
         when (tab) {
             0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true }, onOpenPromptBuilder = { showPromptBuilder = true })
-            1 -> UniverseATab(onExecuteCommand, dialogManager)
-            2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
-            3 -> DebugCenterPage(onExecuteCommand)
-            4 -> AdbExplorerPage()
+            1 -> GitReviewPage(onBack = { selectedTab.intValue = 0 })
+            2 -> UniverseATab(onExecuteCommand, dialogManager)
+            3 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
+            4 -> DebugCenterPage(onExecuteCommand)
+            5 -> AdbExplorerPage()
         }
     }
 
@@ -263,25 +266,20 @@ private fun UniverseATab(
 
         Spacer(Modifier.height(Spacing.s16))
 
-        // ── 诊断与工具 ──
+        // ── 诊断与工具（与 Dashboard 共用命令源）──
         SectionCard(title = "诊断与工具") {
-            ListRow(
-                label = "监听端口",
-                desc = "查看当前本地服务端口",
-                onClick = { onExecuteCommand("list-listen-ports") }
+            val diagCmds = com.aidev.six.ui.commands.commandsByCategory(
+                com.aidev.six.ui.commands.CommandCategory.DIAGNOSE,
+                com.aidev.six.ui.commands.CommandCategory.DEBUG,
             )
-            HorizontalDivider()
-            ListRow(
-                label = "检测环境",
-                desc = "AI/Web 通信与工具链",
-                onClick = { onExecuteCommand("check-dev-env\naidev-net-explain") }
-            )
-            HorizontalDivider()
-            ListRow(
-                label = "OpenCode 日志",
-                desc = "查看 OpenCode 任务输出",
-                onClick = { onExecuteCommand("aidev-agent-log") }
-            )
+            diagCmds.forEachIndexed { i, cmd ->
+                if (i > 0) HorizontalDivider()
+                ListRow(
+                    label = cmd.title,
+                    desc = cmd.subtitle,
+                    onClick = { onExecuteCommand(cmd.cmd) },
+                )
+            }
             HorizontalDivider()
             ListRow(
                 label = "SFTP 传输",

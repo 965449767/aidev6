@@ -189,36 +189,20 @@ fun DashboardPage(
         item(span = { GridItemSpan(2) }) {
             AppSectionHeader("快捷操作")
         }
-        item {
+        items(
+            com.aidev.six.ui.commands.commandsByCategory(
+                com.aidev.six.ui.commands.CommandCategory.ANALYZE,
+                com.aidev.six.ui.commands.CommandCategory.GENERATE,
+                com.aidev.six.ui.commands.CommandCategory.DIAGNOSE,
+                com.aidev.six.ui.commands.CommandCategory.DEBUG,
+            ),
+            key = { it.id },
+        ) { cmd ->
             ActionCard(
-                title = "分析工程",
-                subtitle = "模块 / 调用图 · aidev-index",
-                icon = Icons.Rounded.Analytics,
-                onClick = { onExecuteCommand("aidev-index") },
-            )
-        }
-        item {
-            ActionCard(
-                title = "生成组件",
-                subtitle = "Activity/Fragment/VM · aidev-gen",
-                icon = Icons.Rounded.AutoAwesome,
-                onClick = { onExecuteCommand("aidev-gen") },
-            )
-        }
-        item {
-            ActionCard(
-                title = "环境诊断",
-                subtitle = "构建与运行环境 · aidev-doctor",
-                icon = Icons.Rounded.HealthAndSafety,
-                onClick = { onExecuteCommand("aidev-doctor") },
-            )
-        }
-        item {
-            ActionCard(
-                title = "调试",
-                subtitle = "崩溃根因定位 · aidev-logcat",
-                icon = Icons.Rounded.BugReport,
-                onClick = { onExecuteCommand("aidev-logcat") },
+                title = cmd.title,
+                subtitle = cmd.subtitle,
+                icon = cmd.icon,
+                onClick = { onExecuteCommand(cmd.cmd) },
             )
         }
         item(span = { GridItemSpan(2) }) {
