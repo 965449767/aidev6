@@ -17,9 +17,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.aidev.six.PathConfig
 import com.aidev.six.chat.ChatPart
 import com.aidev.six.chat.OpenCodeClient
@@ -56,6 +61,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val PREFS_NAME = "git_review"
+private const val KEY_CURRENT_REPO = "current_repo"
+
 @Composable
 fun GitReviewPage(
     modifier: Modifier = Modifier,
@@ -63,8 +71,13 @@ fun GitReviewPage(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+
     var diff by remember { mutableStateOf<List<GitDiffParser.FileDiff>>(emptyList()) }
-    var repoPath by remember { mutableStateOf<String?>(null) }
+    var repos by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedRepo by remember { mutableStateOf<String?>(null) }
+    var repoMenuExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -72,19 +85,11 @@ fun GitReviewPage(
 
     val summary = remember(diff) { GitDiffParser.summarize(diff) }
 
-    fun scan() {
+    fun loadDiff(repo: String) {
         scope.launch {
             scanning = true
             error = null
             aiReply = null
-            val repo = withContext(Dispatchers.IO) { GitRepoDetector.detect(context) }
-            if (repo == null) {
-                error = "未找到 git 仓库（已探测 /host-home/aidev6 等常见路径）。请确认 PRoot 内 aidev6 源码位置，或在设置中指定仓库路径。"
-                diff = emptyList()
-                scanning = false
-                return@launch
-            }
-            repoPath = repo
             val res = withContext(Dispatchers.IO) {
                 ProotLauncher.run(
                     context,
@@ -103,6 +108,70 @@ fun GitReviewPage(
                 diff = GitDiffParser.parseNumstat(res.stdout)
             }
             scanning = false
+        }
+    }
+
+    fun scan() {
+        scope.launch {
+            scanning = true
+            error = null
+            aiReply = null
+            val all = withContext(Dispatchers.IO) { GitRepoDetector.listRepos(context) }
+            repos = all
+            val saved = prefs.getString(KEY_CURRENT_REPO, "") ?: ""
+            val repo = if (saved in all) saved else all.firstOrNull()
+            selectedRepo = repo
+            if (repo == null) {
+                error = "未找到 git 仓库（已探测 /host-home 下常见路径）。请确认 PRoot 内源码位置，或在终端创建 git 仓库。"
+                diff = emptyList()
+                scanning = false
+                return@launch
+            }
+            val res = withContext(Dispatchers.IO) {
+                ProotLauncher.run(
+                    context,
+                    "git -C $repo diff HEAD --numstat",
+                    ProotLauncher.Options(
+                        rootfs = PathConfig.agentRootfs(context).absolutePath,
+                        cwd = "/host-home",
+                        timeoutSec = 30,
+                    ),
+                )
+            }
+            if (res.exitCode != 0 && res.stdout.isBlank()) {
+                error = res.stderr.ifBlank { "git 执行失败（exit ${res.exitCode}）" }
+                diff = emptyList()
+            } else {
+                diff = GitDiffParser.parseNumstat(res.stdout)
+            }
+            scanning = false
+        }
+    }
+
+    fun selectRepo(repo: String) {
+        selectedRepo = repo
+        prefs.edit().putString(KEY_CURRENT_REPO, repo).apply()
+        repoMenuExpanded = false
+        loadDiff(repo)
+    }
+
+    fun deleteRepo(repo: String) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                ProotLauncher.run(
+                    context,
+                    "rm -rf '$repo'",
+                    ProotLauncher.Options(
+                        rootfs = PathConfig.agentRootfs(context).absolutePath,
+                        cwd = "/host-home",
+                        timeoutSec = 60,
+                    ),
+                )
+            }
+            if (prefs.getString(KEY_CURRENT_REPO, "") == repo) {
+                prefs.edit().remove(KEY_CURRENT_REPO).apply()
+            }
+            scan()
         }
     }
 
@@ -164,8 +233,30 @@ fun GitReviewPage(
             }
         }
 
+        // 项目选择器
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            Box {
+                OutlinedButton(onClick = { repoMenuExpanded = true }, enabled = repos.isNotEmpty()) {
+                    Text(selectedRepo ?: if (repos.isEmpty()) "无仓库" else "选择仓库")
+                }
+                DropdownMenu(expanded = repoMenuExpanded, onDismissRequest = { repoMenuExpanded = false }) {
+                    repos.forEach { repo ->
+                        DropdownMenuItem(
+                            text = { Text(repo, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            onClick = { selectRepo(repo) },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            if (selectedRepo != null) {
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(Icons.Rounded.Delete, "删除项目", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
         Text(
-            repoPath ?: "探测仓库中…",
+            selectedRepo ?: "未选择仓库",
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -192,11 +283,11 @@ fun GitReviewPage(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                OutlinedButton(
-                    onClick = { review() },
-                    enabled = !reviewing,
-                    modifier = Modifier.weight(1f),
-                ) {
+                    OutlinedButton(
+                        onClick = { review() },
+                        enabled = !reviewing,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Icon(Icons.Rounded.AutoAwesome, "AI 评审", modifier = Modifier.size(Spacing.s16))
                         Spacer(Modifier.width(Spacing.s4))
                         Text(if (reviewing) "评审中…" else "AI 深度评审")
@@ -221,6 +312,28 @@ fun GitReviewPage(
                 }
             }
         }
+    }
+
+    if (showDeleteConfirm && selectedRepo != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("删除项目") },
+            text = {
+                Text("将永久删除该仓库目录及其所有文件：\n\n${selectedRepo}\n\n此操作不可恢复，请确认。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val repo = selectedRepo!!
+                        showDeleteConfirm = false
+                        deleteRepo(repo)
+                    },
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+            },
+        )
     }
 }
 

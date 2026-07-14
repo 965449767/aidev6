@@ -26,26 +26,34 @@ object GitRepoDetector {
         "/root/projects",
     )
 
-    fun detect(ctx: Context): String? {
+    fun detect(ctx: Context): String? = listRepos(ctx).firstOrNull()
+
+    /** 列出 PRoot 内所有 git 仓库（候选路径 + /host-home 下 find 兜底）。 */
+    fun listRepos(ctx: Context): List<String> {
         val opts = ProotLauncher.Options(
             rootfs = PathConfig.agentRootfs(ctx).absolutePath,
             cwd = "/host-home",
             timeoutSec = 30,
         )
+        val result = mutableListOf<String>()
         for (c in CANDIDATES) {
-            val r = ProotLauncher.run(
-                ctx,
-                "git -C $c rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo \"$c\"",
-                opts,
-            )
-            if (r.stdout.trim() == c) return c
+            if (isWorkTree(ctx, c, opts)) result.add(c)
         }
-        val f = ProotLauncher.run(
+        val f = ProotLauncher.run(ctx, "find /host-home -maxdepth 4 -name .git 2>/dev/null", opts)
+        f.stdout.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.forEach { gitDir ->
+            val repo = gitDir.removeSuffix("/.git")
+            if (repo.isNotBlank() && repo !in result) result.add(repo)
+        }
+        return result.distinct()
+    }
+
+    private fun isWorkTree(ctx: Context, c: String, opts: ProotLauncher.Options): Boolean {
+        val r = ProotLauncher.run(
             ctx,
-            "d=\$(find /host-home -maxdepth 4 -name .git -type d 2>/dev/null | head -1); [ -n \"\$d\" ] && dirname \"\$d\"",
+            "git -C $c rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo ok",
             opts,
         )
-        return f.stdout.trim().ifBlank { null }
+        return r.stdout.trim() == "ok"
     }
 
     /** 把 PRoot 内路径转回 Android 侧真实文件路径（供 ContextManager 等直接读文件）。 */
