@@ -47,4 +47,30 @@ class SafeCommandGuardTest {
         assertFalse(isAllowed("RM -RF /SDCARD/X"))
         assertFalse(isAllowed("Git Push --Force"))
     }
+
+    @Test
+    fun blocksWhitespaceObfuscation() {
+        // 多空格绕过（旧版只做小写子串匹配，会被 "rm  -rf /" 绕过）
+        assertFalse(isAllowed("rm  -rf /"))
+        assertFalse(isAllowed("rm   -rf    /data/foo"))
+    }
+
+    @Test
+    fun blocksDdOfForm() {
+        // 旧版只拦 "dd if="，漏拦 "dd of="
+        assertFalse(isAllowed("dd of=/dev/sda if=/dev/zero"))
+    }
+
+    @Test
+    fun blocksEvalAndNestedShell() {
+        assertFalse(isAllowed("eval rm -rf /data"))
+        assertFalse(isAllowed("sh -c \"rm -rf /\""))
+        assertFalse(isAllowed("bash -c 'mkfs.ext4 /data/x'"))
+    }
+
+    @Test
+    fun blocksCommandSubstitution() {
+        assertFalse(isAllowed("cat \$(rm -rf /data/x)"))
+        assertFalse(isAllowed("echo `rm -rf /data/x`"))
+    }
 }

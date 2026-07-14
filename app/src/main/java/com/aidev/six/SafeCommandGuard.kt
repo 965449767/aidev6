@@ -13,13 +13,14 @@ object SafeCommandGuard {
 
     data class Result(val verdict: Verdict, val reason: String = "")
 
-    /** 危险命令模式（小写子串匹配，fail-safe：命中即拦截）。 */
+    /** 危险命令模式（小写 + 空白归一化后子串匹配，fail-safe：命中即拦截）。 */
     private val DANGEROUS_PATTERNS = listOf(
         "rm -rf /",
         "rm -rf .",
         "rm -rf ~",
         "mkfs",
-        "dd if=",
+        "dd ",                       // 覆盖 dd if= 与 dd of= 两种写法
+        "shred ",
         ":(){",
         ":(){ :|:& };:",
         "git reset --hard",
@@ -30,7 +31,13 @@ object SafeCommandGuard {
         "truncate table",
         "supabase db reset",
         "prisma migrate reset",
+        "eval ",                     // 阻止 eval 动态执行
+        "sh -c",                     // 阻止嵌套 sh -c 混淆
+        "bash -c",
     )
+
+    /** 命令替换 / 反引号执行（高风险，BYOD 上下文一律拦截）。 */
+    private val SUBSTITUTION_PATTERNS = listOf("$(", "`")
 
     /** 受保护的外部写路径前缀（写屏障）。 */
     private val PROTECTED_PREFIXES = listOf(
@@ -54,11 +61,18 @@ object SafeCommandGuard {
      * @param interactive 是否为用户交互会话（交互时 REQUIRE_CONFIRM 可交由用户决定；非交互直接视为拦截）
      */
     fun check(command: String, interactive: Boolean = false): Result {
+        // 空白归一化（折叠连续空格/制表符），消除 "rm  -rf /" 这类绕过；保持小写便于大小写不敏感
+        val normalized = command.lowercase().replace(Regex("\\s+"), " ")
         val lower = command.lowercase()
 
         for (pattern in DANGEROUS_PATTERNS) {
-            if (lower.contains(pattern)) {
+            if (normalized.contains(pattern)) {
                 return Result(Verdict.BLOCK, "命中危险命令模式：$pattern")
+            }
+        }
+        for (pattern in SUBSTITUTION_PATTERNS) {
+            if (lower.contains(pattern)) {
+                return Result(Verdict.BLOCK, "命中命令替换/反引号执行（高风险）：$pattern")
             }
         }
 

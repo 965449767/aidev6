@@ -64,7 +64,8 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 
 | File | Content |
 |------|---------|
-| `docs/architecture.md` | entrypoints, runtime flow, PRoot details |
+| `docs/app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、自我进化闭环 |
+| `docs/architecture.md` | **（符号链接→`opencode-architecture.md`）** OpenCode HTTP/SSE 协议参考，非 App 架构 |
 | `docs/verification.md` | validation matrix per change type |
 | `docs/coding-guidelines.md` | Android, terminal, and agent conventions |
 | `docs/decisions.md` | stable architecture decisions log |
