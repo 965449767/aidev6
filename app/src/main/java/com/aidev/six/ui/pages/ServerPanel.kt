@@ -80,7 +80,7 @@ import java.io.File
 
 import org.json.JSONObject
 
-private val TAB_LABELS = listOf("总览", "宇宙 A", "宇宙 B", "调试")
+private val TAB_LABELS = listOf("总览", "宇宙 A", "宇宙 B", "调试", "设备")
 
 @Composable
 fun ServerPanel(
@@ -112,6 +112,7 @@ fun ServerPanel(
                 1 -> UniverseATab(onExecuteCommand, dialogManager)
                 2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
                 3 -> DebugCenterPage(onExecuteCommand)
+                4 -> AdbExplorerPage()
             }
         }
     }
