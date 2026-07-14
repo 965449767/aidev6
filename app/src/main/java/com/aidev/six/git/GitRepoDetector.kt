@@ -64,12 +64,24 @@ object GitRepoDetector {
                 if (isWorkTree(ctx, c, opts)) result = result + ProjectEntry(c, true)
             }
         }
-        // 去掉嵌套在其它项目内的目录（如项目根 settings.gradle 已收录，其 app 模块的 build.gradle 不应单列）
+        // 1) 去掉嵌套在其它项目内的目录（如项目根 settings.gradle 已收录，其 app 模块的 build.gradle 不应单列）
         val kept = mutableListOf<ProjectEntry>()
         for (e in result.sortedBy { it.path.length }) {
             if (kept.none { e.path.startsWith(it.path + "/") }) kept.add(e)
         }
-        return kept
+        // 2) 提升：非 git 的 gradle 模块目录（app/mobile/module/feature）若其父目录不在项目列表中，
+        //    说明它只是某项目下的默认模块，应以父目录作为项目根（避免把 app 文件夹当作独立项目展示）。
+        val MODULE_NAMES = setOf("app", "mobile", "module", "feature")
+        val promoted = kept.map { e ->
+            val leaf = e.path.substringAfterLast("/")
+            val parent = e.path.substringBeforeLast("/", "")
+            if (!e.isGit && leaf in MODULE_NAMES && parent.isNotEmpty() && parent != WORKSPACE_PROOT && kept.none { it.path == parent }) {
+                ProjectEntry(parent, e.isGit)
+            } else {
+                e
+            }
+        }.distinctBy { it.path }
+        return promoted
     }
 
     private fun isWorkTree(ctx: Context, c: String, opts: ProotLauncher.Options): Boolean {
