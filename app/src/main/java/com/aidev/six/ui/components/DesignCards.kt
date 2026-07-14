@@ -152,6 +152,7 @@ fun ActionCard(
 fun MetricChip(
     label: String,
     value: String,
+    icon: ImageVector? = null,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -164,6 +165,10 @@ fun MetricChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(Spacing.s8))
+            }
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(Spacing.s8))
             Text(
