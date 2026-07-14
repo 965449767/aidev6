@@ -180,3 +180,27 @@ fun MetricChip(
         }
     }
 }
+
+@Composable
+fun EmptyState(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(Spacing.s32),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+            Spacer(Modifier.height(Spacing.s12))
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (subtitle != null) {
+            Spacer(Modifier.height(Spacing.s4))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
