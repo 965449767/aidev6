@@ -95,13 +95,16 @@ fun ServerPanel(
     val buildTracker = remember { BuildRequestTracker() }
     val selectedTab = remember { mutableIntStateOf(0) }
     var showGitReview by remember { mutableStateOf(false) }
+    var showPromptBuilder by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
-
         if (showGitReview) {
             GitReviewPage(onBack = { showGitReview = false })
+        } else if (showPromptBuilder) {
+            PromptBuilderPage(onBack = { showPromptBuilder = false })
         } else {
+            AppSectionHeader("服务器中心", "移动 Linux 服务器状态与 AI 服务入口")
+
             TabRow(selectedTabIndex = selectedTab.intValue, containerColor = MaterialTheme.colorScheme.surface) {
                 TAB_LABELS.forEachIndexed { index, label ->
                     Tab(
@@ -114,7 +117,7 @@ fun ServerPanel(
 
             Crossfade(targetState = selectedTab.intValue, label = "server-tab") { tab ->
                 when (tab) {
-                    0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true })
+                    0 -> DashboardPage(onExecuteCommand, onOpenGitReview = { showGitReview = true }, onOpenPromptBuilder = { showPromptBuilder = true })
                     1 -> UniverseATab(onExecuteCommand, dialogManager)
                     2 -> UniverseBTab(onExecuteCommand, taskRunner, buildTracker, dialogManager)
                     3 -> DebugCenterPage(onExecuteCommand)

@@ -73,6 +73,7 @@ import java.util.Locale
 fun DashboardPage(
     onExecuteCommand: (String) -> Unit,
     onOpenGitReview: () -> Unit = {},
+    onOpenPromptBuilder: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -269,6 +270,15 @@ fun DashboardPage(
                 subtitle = "扫描 git diff，按文件给出风险星与 AI 深度评审",
                 icon = Icons.Rounded.Rule,
                 onClick = onOpenGitReview,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item(span = { GridItemSpan(2) }) {
+            ActionCard(
+                title = "生成任务书",
+                subtitle = "按 Bug/Compose/Shell 生成 Goal/Scope/Acceptance，可 AI 优化",
+                icon = Icons.Rounded.AutoAwesome,
+                onClick = onOpenPromptBuilder,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
