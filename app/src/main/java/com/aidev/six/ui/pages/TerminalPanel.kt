@@ -97,6 +97,7 @@ import com.aidev.six.TerminalCommandBus
 import com.aidev.six.navigation.LocalImeBottomPx
 import com.aidev.six.terminal.EmbeddedVirtualKey
 import com.aidev.six.terminal.TerminalCompletion
+import com.aidev.six.terminal.PerfSample
 import com.aidev.six.ui.components.AppChip
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -127,6 +128,8 @@ fun TerminalPanel(
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
     var showMoreSheet by remember { mutableStateOf(false) }
     var showThemeOverlay by remember { mutableStateOf(false) }
+    var showPerfHud by remember { mutableStateOf(false) }
+    var perfSample by remember { mutableStateOf<PerfSample?>(null) }
     var currentThemeKey by remember {
         mutableStateOf(
             activity.getSharedPreferences("aidev_ui", Activity.MODE_PRIVATE)
@@ -139,6 +142,7 @@ fun TerminalPanel(
     LaunchedEffect(Unit) {
         page.sessionManager.ensureSession()
         page.completionEngine.focusTerminalInput()
+        page.perfMonitor?.onSample = { perfSample = it }
     }
 
     Box(modifier = modifier) {
@@ -154,6 +158,7 @@ fun TerminalPanel(
                             val text = ClipboardHelper.paste(activity)
                             if (text != null) {
                                 try {
+                                    page.flushInput()
                                     page.sessionManager.currentTerminalSession?.write(text)
                                 } catch (_: Exception) {
                                     Toast.makeText(activity, "粘贴写入失败", Toast.LENGTH_SHORT).show()
@@ -166,6 +171,7 @@ fun TerminalPanel(
                         }
                     },
                     onMore = { showMoreSheet = true },
+                    onTogglePerf = { showPerfHud = !showPerfHud },
                 )
                 TerminalTabBar(page)
                 TerminalStatusBar(
@@ -223,6 +229,9 @@ fun TerminalPanel(
                 TerminalKeyboard(page)
             }
         }
+        if (showPerfHud && perfSample != null) {
+            TerminalPerfHud(perfSample!!, Modifier.align(Alignment.TopStart).padding(8.dp))
+        }
     }
 
     if (showFontSlider) {
@@ -250,6 +259,7 @@ private fun TerminalTopBar(
     onCopy: () -> Unit,
     onPaste: () -> Unit,
     onMore: () -> Unit,
+    onTogglePerf: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -270,6 +280,8 @@ private fun TerminalTopBar(
         TopBarButton("+", onClick = onNewSession)
         Spacer(modifier = Modifier.width(Spacing.s4))
         TopBarButton("粘贴", onClick = onPaste)
+        Spacer(modifier = Modifier.width(Spacing.s4))
+        TopBarButton("性能", onClick = onTogglePerf)
         Spacer(modifier = Modifier.width(Spacing.s4))
         TopBarButton("更多", onClick = onMore)
     }

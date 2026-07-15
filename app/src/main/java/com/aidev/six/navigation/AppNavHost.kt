@@ -47,9 +47,23 @@ fun AppNavHost(
             .imePadding(),
     ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            TerminalPanel(
-                page = terminalPage,
-                modifier = Modifier.fillMaxSize(),
+            EdgeSwipePanel(
+                enabled = true,
+                currentPanel = if (settingsOpen) PanelType.SETTINGS else null,
+                onPanelOpen = { if (it == PanelType.SETTINGS) { settingsOpen = true; onTabSelected(TAB_SETTINGS) } },
+                onPanelClose = { settingsOpen = false; onTabSelected(TAB_TERMINAL) },
+                imeActive = imeActive,
+                settingsContent = {
+                    SettingsPanel(
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+                content = {
+                    TerminalPanel(
+                        page = terminalPage,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
             )
         }
 
@@ -59,23 +73,4 @@ fun AppNavHost(
             )
         }
     }
-
-    EdgeSwipePanel(
-        enabled = true,
-        currentPanel = if (settingsOpen) PanelType.SETTINGS else null,
-        onPanelOpen = { if (it == PanelType.SETTINGS) { settingsOpen = true; onTabSelected(TAB_SETTINGS) } },
-        onPanelClose = { settingsOpen = false; onTabSelected(TAB_TERMINAL) },
-        imeActive = imeActive,
-        settingsContent = {
-            SettingsPanel(
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
-        content = {
-            TerminalPanel(
-                page = terminalPage,
-                modifier = Modifier.fillMaxSize(),
-            )
-        },
-    )
 }

@@ -36,6 +36,8 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import java.io.File
+import com.aidev.six.terminal.TerminalRenderScheduler
+import com.aidev.six.terminal.TerminalInputBuffer
 
 class SessionManager(
     private var activity: Activity? = null,
@@ -82,6 +84,15 @@ class SessionManager(
     private val pendingRunnables = mutableListOf<Pair<View, Runnable>>()
     private var consumeLoopJob: kotlinx.coroutines.Job? = null
     private var finishSessionJob: kotlinx.coroutines.Job? = null
+
+    /** Coalesces PTY-driven screen updates to the display refresh cadence. */
+    var renderScheduler: TerminalRenderScheduler? = null
+    fun updateRenderScheduler(s: TerminalRenderScheduler?) { renderScheduler = s }
+
+    /** Batches IME/key input into the PTY; flushed before any programmatic write. */
+    var inputBuffer: TerminalInputBuffer? = null
+    fun updateInputBuffer(b: TerminalInputBuffer?) { inputBuffer = b }
+    fun flushInput() = inputBuffer?.flushNow()
 
     fun updateActivity(act: Activity?) { activity = act }
     fun updateTerminalView(v: TerminalView?) { terminalView = v }
@@ -255,6 +266,7 @@ class SessionManager(
                 if (ts != null) {
                     scope?.launch {
                         delay(1000)
+                        inputBuffer?.flushNow()
                         ts.write("cd $pwd\r")
                     }
                 }
@@ -283,7 +295,7 @@ class SessionManager(
         item.session.updateTerminalSessionClient(createTerminalSessionClient())
         terminalView?.attachSession(item.session)
         terminalView?.requestFocus()
-        terminalView?.onScreenUpdated()
+        renderScheduler?.flushNow() ?: terminalView?.onScreenUpdated()
         completionEngine?.updateSession(item.session)
         keyboardManager?.updateSession(item.session)
     }
@@ -292,11 +304,11 @@ class SessionManager(
         val tv = terminalView
         return object : TerminalSessionClient {
             override fun onTextChanged(changedSession: TerminalSession) {
-                tv?.onScreenUpdated()
+                renderScheduler?.scheduleUpdate() ?: tv?.onScreenUpdated()
             }
             override fun onTitleChanged(changedSession: TerminalSession) {}
             override fun onSessionFinished(finishedSession: TerminalSession) {
-                tv?.onScreenUpdated()
+                renderScheduler?.scheduleUpdate() ?: tv?.onScreenUpdated()
             }
             override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
                 val act = activity ?: return
@@ -307,16 +319,19 @@ class SessionManager(
                 val act = activity ?: return
                 val clipboard = act.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
                 val clip = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(act)?.toString()
-                if (!clip.isNullOrEmpty()) session.write(clip)
+                if (!clip.isNullOrEmpty()) {
+                    inputBuffer?.flushNow()
+                    session.write(clip)
+                }
             }
             override fun onBell(session: TerminalSession) {
                 tv?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
             }
             override fun onColorsChanged(session: TerminalSession) {
-                tv?.invalidate()
+                renderScheduler?.scheduleInvalidate() ?: tv?.invalidate()
             }
             override fun onTerminalCursorStateChange(state: Boolean) {
-                tv?.invalidate()
+                renderScheduler?.scheduleInvalidate() ?: tv?.invalidate()
             }
             override fun getTerminalCursorStyle(): Int = TerminalEmulator.DEFAULT_TERMINAL_CURSOR_STYLE
             override fun logError(tag: String, message: String) { android.util.Log.e(tag, message) }
@@ -355,6 +370,7 @@ class SessionManager(
 
     fun send(command: String) {
         val ts = currentTerminalSession ?: return
+        inputBuffer?.flushNow()
         ts.write("$command\r")
         inputProxy?.let { proxy ->
             (activity?.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.restartInput(proxy)
@@ -362,11 +378,13 @@ class SessionManager(
     }
 
     fun silentCd(ubuntuPath: String) {
+        inputBuffer?.flushNow()
         currentTerminalSession?.write("cd $ubuntuPath\r")
     }
 
     fun prefillCdCommand(ubuntuPath: String) {
         val ts = currentTerminalSession ?: return
+        inputBuffer?.flushNow()
         val cdCmd = "cd $ubuntuPath"
         completionEngine?.inputBuffer = ""
         completionEngine?.composingBuffer = ""

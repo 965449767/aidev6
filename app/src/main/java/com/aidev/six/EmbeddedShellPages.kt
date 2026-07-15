@@ -19,6 +19,9 @@ import com.aidev.six.terminal.SessionManager
 import com.aidev.six.terminal.TerminalClientImpl
 import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.terminal.VirtualKeyboardManager
+import com.aidev.six.terminal.TerminalRenderScheduler
+import com.aidev.six.terminal.TerminalInputBuffer
+import com.aidev.six.terminal.TerminalPerfMonitor
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
@@ -47,6 +50,8 @@ class EmbeddedTerminalPage {
     val keyboardManager = VirtualKeyboardManager(onInputChanged = { text -> completionEngine.updateInputBuffer(text) })
     private var gestureFeedback: GestureFeedbackManager? = null
     val sessionManager = SessionManager(completionEngine = completionEngine, keyboardManager = keyboardManager)
+    var renderScheduler: TerminalRenderScheduler? = null
+    var perfMonitor: TerminalPerfMonitor? = null
     private val terminalClient = TerminalClientImpl(
         onInputChanged = { text -> completionEngine.updateInputBuffer(text) },
         onTuiCheck = { updateTuiMode() },
@@ -77,51 +82,49 @@ class EmbeddedTerminalPage {
                 completionEngine.composingBuffer = text
                 onCompletionsChanged()
             }
-            onCommittedText = { text ->
+            onCommittedText = inputLabel@ { text ->
                 val s = sessionManager.currentTerminalSession
-                android.util.Log.d("AIDEV_INPUT", "onCommittedText text=\"$text\" session=${s != null}")
-                if (s != null) {
-                    if (text == "\n") {
-                        s.write("\r")
-                    } else if (tuiActive && keyboardManager.ctrlLatched && text.length == 1) {
-                        val codePoint = text[0].code
-                        val ctrlCode = when {
-                            codePoint in 0x41..0x5A -> codePoint - 0x40
-                            codePoint in 0x61..0x7A -> codePoint - 0x60
-                            else -> codePoint
-                        }
-                        if (ctrlCode in 0x01..0x1A) {
-                            s.write(String(byteArrayOf(ctrlCode.toByte())))
-                        } else {
-                            s.write(text)
-                        }
+                if (s == null) {
+                    android.util.Log.w("AIDEV_INPUT", "drop committed text, session null: $text")
+                    return@inputLabel
+                }
+                val out = if (text == "\n") {
+                    "\r"
+                } else if (tuiActive && keyboardManager.ctrlLatched && text.length == 1) {
+                    val codePoint = text[0].code
+                    val ctrlCode = when {
+                        codePoint in 0x41..0x5A -> codePoint - 0x40
+                        codePoint in 0x61..0x7A -> codePoint - 0x60
+                        else -> codePoint
+                    }
+                    if (ctrlCode in 0x01..0x1A) {
+                        String(byteArrayOf(ctrlCode.toByte()))
                     } else {
-                        s.write(text)
-                        completionEngine.updateInputBuffer(text)
+                        text
                     }
                 } else {
-                    android.util.Log.w("AIDEV_INPUT", "drop committed text, session null: $text")
+                    completionEngine.updateInputBuffer(text)
+                    text
                 }
+                sessionManager.inputBuffer?.append(out)
             }
-            onBackspace = {
+            onBackspace = inputLabel@ {
                 val s = sessionManager.currentTerminalSession
-                android.util.Log.d("AIDEV_INPUT", "onBackspace session=${s != null}")
-                if (s != null) {
-                    s.write("\u007F")
-                    completionEngine.updateInputBuffer("\b")
-                } else {
+                if (s == null) {
                     android.util.Log.w("AIDEV_INPUT", "drop backspace, session null")
+                    return@inputLabel
                 }
+                sessionManager.inputBuffer?.append("\u007F")
+                completionEngine.updateInputBuffer("\b")
             }
-            onEnter = {
+            onEnter = inputLabel@ {
                 val s = sessionManager.currentTerminalSession
-                android.util.Log.d("AIDEV_INPUT", "onEnter session=${s != null}")
-                if (s != null) {
-                    s.write("\r")
-                    completionEngine.updateInputBuffer("\n")
-                } else {
+                if (s == null) {
                     android.util.Log.w("AIDEV_INPUT", "drop enter, session null")
+                    return@inputLabel
                 }
+                sessionManager.inputBuffer?.append("\r")
+                completionEngine.updateInputBuffer("\n")
             }
             setOnFocusChangeListener(null)
         }
@@ -140,6 +143,19 @@ class EmbeddedTerminalPage {
         }
         terminalClient.updateTerminalView(terminalView)
         sessionManager.updateTerminalView(terminalView)
+
+        val monitor = TerminalPerfMonitor()
+        val scheduler = TerminalRenderScheduler(terminalView, monitor)
+        val buffer = TerminalInputBuffer(
+            write = { text -> sessionManager.currentTerminalSession?.write(text) },
+            monitor = monitor,
+        )
+        this.renderScheduler = scheduler
+        this.perfMonitor = monitor
+        sessionManager.updateRenderScheduler(scheduler)
+        sessionManager.updateInputBuffer(buffer)
+        monitor.start(activity)
+
         completionEngine.updateInputProxy(inputProxy)
         keyboardManager.updateInputProxy(inputProxy)
         sessionManager.updateInputProxy(inputProxy)
@@ -190,7 +206,7 @@ class EmbeddedTerminalPage {
         act.getSharedPreferences(Constants.PREFS_NAME, Activity.MODE_PRIVATE).edit().putFloat(Constants.PrefKeys.FONT_SP, value).apply()
         pendingFontSp = value
         terminalView?.setTextSize(spToPx(act, value))
-        terminalView?.onScreenUpdated()
+        renderScheduler?.flushNow() ?: terminalView?.onScreenUpdated()
     }
 
     private fun onCompletionsChanged() {
@@ -207,8 +223,8 @@ class EmbeddedTerminalPage {
             .setTitle(item.label)
             .setItems(options) { _, which ->
                 when (options[which]) {
-                    "\u8865\u5168" -> completionEngine.applyCompletion(item)
-                    "\u6267\u884C\u5E76\u56DE\u8F66" -> completionEngine.executeCompletion(item)
+                    "\u8865\u5168" -> { sessionManager.flushInput(); completionEngine.applyCompletion(item) }
+                    "\u6267\u884C\u5E76\u56DE\u8F66" -> { sessionManager.flushInput(); completionEngine.executeCompletion(item) }
                     "\u590D\u5236\u547D\u4EE4" -> {
                         (activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
                             ?.setPrimaryClip(ClipData.newPlainText("AIDev command", item.insertText))
@@ -245,6 +261,7 @@ class EmbeddedTerminalPage {
     }
 
     private fun sendAgentCommand(command: String) {
+        sessionManager.flushInput()
         val dir = completionEngine.currentProjectDir()
         if (dir != null) sessionManager.send("cd ${shellEscape(dir.absolutePath)} && $command") else sessionManager.send(command)
     }
@@ -276,6 +293,7 @@ class EmbeddedTerminalPage {
     }
 
     fun onDestroy(activity: Activity) {
+        disposeTerminal()
         sessionManager.cleanup()
         this.activity = null
     }
@@ -291,8 +309,18 @@ class EmbeddedTerminalPage {
         }
     }
 
-    fun silentCd(ubuntuPath: String) = sessionManager.silentCd(ubuntuPath)
-    fun prefillCdCommand(ubuntuPath: String) = sessionManager.prefillCdCommand(ubuntuPath)
+    fun silentCd(ubuntuPath: String) { sessionManager.flushInput(); sessionManager.silentCd(ubuntuPath) }
+    fun prefillCdCommand(ubuntuPath: String) { sessionManager.flushInput(); sessionManager.prefillCdCommand(ubuntuPath) }
+
+    fun flushInput() = sessionManager.flushInput()
+
+    fun disposeTerminal() {
+        renderScheduler?.dispose()
+        sessionManager.inputBuffer?.dispose()
+        perfMonitor?.stop()
+        renderScheduler = null
+        perfMonitor = null
+    }
 }
 
 private fun com.termux.terminal.TerminalSession.isAlternateScreenActive(): Boolean {
