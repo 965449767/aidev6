@@ -2,17 +2,12 @@ package com.aidev.six.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -42,7 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
-enum class PanelType { SETTINGS, KNOWLEDGE, SERVER }
+enum class PanelType { SETTINGS }
 
 private const val SWIPE_THRESHOLD_FRACTION = 0.15f
 
@@ -55,8 +50,6 @@ fun EdgeSwipePanel(
     imeActive: Boolean = false,
     excludeTop: Dp = 0.dp,
     settingsContent: @Composable () -> Unit,
-    knowledgeContent: @Composable () -> Unit,
-    serverContent: @Composable () -> Unit,
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -79,17 +72,7 @@ fun EdgeSwipePanel(
                 AnimatedContent(
                     targetState = currentPanel,
                     transitionSpec = {
-                        when (targetState) {
-                            PanelType.SETTINGS -> {
-                                slideInHorizontally { -it } togetherWith slideOutHorizontally { -it }
-                            }
-                            PanelType.KNOWLEDGE -> {
-                                slideInHorizontally { it } togetherWith slideOutHorizontally { it }
-                            }
-                            PanelType.SERVER -> {
-                                slideInVertically { it } togetherWith slideOutVertically { it }
-                            }
-                        }
+                        slideInHorizontally { -it } togetherWith slideOutHorizontally { -it }
                     },
                     label = "panel_content",
                 ) { panel ->
@@ -105,29 +88,6 @@ fun EdgeSwipePanel(
                                 tonalElevation = 8.dp,
                                 color = MaterialTheme.colorScheme.surface,
                             ) { settingsContent() }
-                        }
-                        PanelType.KNOWLEDGE -> {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .widthIn(min = 280.dp)
-                                    .fillMaxWidth(0.85f)
-                                    .align(Alignment.CenterEnd),
-                                shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
-                                tonalElevation = 8.dp,
-                                color = MaterialTheme.colorScheme.surface,
-                            ) { knowledgeContent() }
-                        }
-                        PanelType.SERVER -> {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(0.9f)
-                                    .align(Alignment.BottomCenter),
-                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-                                tonalElevation = 8.dp,
-                                color = MaterialTheme.colorScheme.surface,
-                            ) { serverContent() }
                         }
                     }
                 }
@@ -146,57 +106,8 @@ fun EdgeSwipePanel(
                 onPanelOpen = onPanelOpen,
                 onPanelClose = onPanelClose,
             )
-            EdgeGestureZone(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(48.dp)
-                    .fillMaxHeight()
-                    .padding(top = excludeTop, bottom = bottomPad),
-                targetPanel = PanelType.KNOWLEDGE,
-                currentPanel = currentPanel,
-                onPanelOpen = onPanelOpen,
-                onPanelClose = onPanelClose,
-            )
-            BottomEdgeGestureZone(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(horizontal = 48.dp),
-                currentPanel = currentPanel,
-                onPanelOpen = onPanelOpen,
-                onPanelClose = onPanelClose,
-            )
         }
     }
-}
-
-@Composable
-private fun BottomEdgeGestureZone(
-    modifier: Modifier = Modifier,
-    currentPanel: PanelType?,
-    onPanelOpen: (PanelType) -> Unit,
-    onPanelClose: () -> Unit,
-) {
-    var totalDrag by remember { mutableFloatStateOf(0f) }
-
-    Box(
-        modifier = modifier.pointerInput(currentPanel) {
-            val displayHeight = size.height.toFloat()
-            detectVerticalDragGestures(
-                onDragEnd = {
-                    if (abs(totalDrag) > displayHeight * SWIPE_THRESHOLD_FRACTION && totalDrag < 0f) {
-                        if (currentPanel != null) onPanelClose()
-                        else onPanelOpen(PanelType.SERVER)
-                    }
-                    totalDrag = 0f
-                },
-                onDragCancel = { totalDrag = 0f },
-            ) { _, dragAmount ->
-                totalDrag += dragAmount
-            }
-        },
-    )
 }
 
 @Composable
@@ -241,8 +152,6 @@ fun PanelIndicatorDots(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IndicatorDot(active = currentPanel == PanelType.SETTINGS)
-        IndicatorDot(active = currentPanel == PanelType.SERVER)
-        IndicatorDot(active = currentPanel == PanelType.KNOWLEDGE)
     }
 }
 

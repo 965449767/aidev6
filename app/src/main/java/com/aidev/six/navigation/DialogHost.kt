@@ -10,9 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import com.aidev.six.ui.pages.ProjectScaffoldDialog
-import com.aidev.six.ui.pages.SFtpDialog
 
 @Composable
 fun DialogHost(
@@ -38,32 +35,10 @@ private fun ComposeDialogWrapper(
     onExecuteCommand: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val title = when (type) {
-        is DialogType.SFtpTransfer -> "SFTP 文件传输"
-        is DialogType.ProjectScaffold -> "Android 项目脚手架"
-    }
-
-    var ready by remember(type) { mutableStateOf(false) }
-
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text("") },
         text = {
-            when (type) {
-                is DialogType.SFtpTransfer -> SFtpDialog(onDismiss = onDismiss)
-                is DialogType.ProjectScaffold -> {
-                    val context = LocalContext.current
-                    ProjectScaffoldDialog(
-                        onDismiss = onDismiss,
-                        onSendToTerminal = { script ->
-                            val file = java.io.File(context.cacheDir, "scaffold_gen.sh")
-                            file.writeText(script)
-                            file.setExecutable(true)
-                            onExecuteCommand("sh ${file.absolutePath}")
-                        },
-                    )
-                }
-            }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("关闭") }

@@ -8,8 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 
 sealed class DialogType {
-    data object SFtpTransfer : DialogType()
-    data object ProjectScaffold : DialogType()
 }
 
 class DialogManagerState {

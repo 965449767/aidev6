@@ -62,9 +62,9 @@ class ShellActivity : ComponentActivity() {
         val intentTab = intent?.getIntExtra("shell_tab", -1) ?: -1
         val prefsTab = prefs.getInt(Constants.PrefKeys.LAST_TAB, -1)
         val initial = when {
-            savedTab in TAB_TERMINAL..TAB_SERVER -> savedTab
-            intentTab in TAB_TERMINAL..TAB_SERVER -> intentTab
-            prefsTab in TAB_TERMINAL..TAB_SERVER -> prefsTab
+            savedTab in TAB_TERMINAL..TAB_SETTINGS -> savedTab
+            intentTab in TAB_TERMINAL..TAB_SETTINGS -> intentTab
+            prefsTab in TAB_TERMINAL..TAB_SETTINGS -> prefsTab
             else -> TAB_TERMINAL
         }
 
@@ -117,7 +117,7 @@ class ShellActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val tab = intent.getIntExtra("shell_tab", -1)
-        if (tab in TAB_TERMINAL..TAB_SERVER) {
+        if (tab in TAB_TERMINAL..TAB_SETTINGS) {
             switchTo(tab)
         }
     }
@@ -141,7 +141,7 @@ class ShellActivity : ComponentActivity() {
     }
 
     fun switchTo(index: Int) {
-        if (index in TAB_TERMINAL..TAB_SERVER) {
+        if (index in TAB_TERMINAL..TAB_SETTINGS) {
             _currentTab.intValue = index
         }
     }
@@ -154,8 +154,6 @@ class ShellActivity : ComponentActivity() {
         private const val REQ_NOTIFICATION = 4302
         const val TAB_TERMINAL = 0
         const val TAB_SETTINGS = 1
-        const val TAB_KNOWLEDGE = 2
-        const val TAB_SERVER = 3
 
         fun open(activity: Activity, tab: Int) {
             val intent = Intent(activity, ShellActivity::class.java)
