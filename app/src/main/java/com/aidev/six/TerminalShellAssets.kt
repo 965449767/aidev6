@@ -25,6 +25,7 @@ object TerminalShellAssets {
 
         // 第一类：生成脚本（含核心入口 aidev-ubuntu-core），无条件写，且必须先于 .aidevrc
         installAidevCommandScripts(
+            activity,
             home,
             PathConfig.nativeLibDir(activity).absolutePath,
             PathConfig.prootLibDir(activity).absolutePath
@@ -108,7 +109,7 @@ object TerminalShellAssets {
         f.absolutePath != f.canonicalPath
     }.getOrDefault(false)
 
-    private fun installAidevCommandScripts(home: File, nativeDir: String, prootExtraLibsPath: String) {
+    private fun installAidevCommandScripts(activity: Activity, home: File, nativeDir: String, prootExtraLibsPath: String) {
         val bin = File(home, "dev-env/bin").apply { mkdirs() }
         val core = File(bin, "aidev-ubuntu-core")
         core.writeText(UbuntuBootstrapScripts.aidevUbuntuCommandScript(home.absolutePath, nativeDir, prootExtraLibsPath))
@@ -125,12 +126,30 @@ object TerminalShellAssets {
         writeSystemScript(bin, "brightness", "control brightness")
         writeSystemScript(bin, "sysclip", "clipboard get/set")
         writeSystemScript(bin, "aidev-proxy", "proxy manager")
-        // 两端共用脚本（agent 辅助 + 系统工具）
-        UbuntuBootstrapScripts.agentHostScripts().forEach { (name, content) ->
-            val out = File(bin, name)
-            out.writeText(content + "\n")
-            out.setExecutable(true, false)
-            out.setReadable(true, false)
+        // 两端共用脚本（agent 辅助 + 系统工具）——统一从 assets/scripts 读取，作为唯一真源，
+        // 避免与 rootfs 内的副本（copyAssetScripts）双份维护、改 assets 不生效的问题。
+        // 清单与 UbuntuBootstrapScripts.copyAssetScripts 保持一致（改脚本只改 assets/scripts/*.sh）。
+        val agentScripts = listOf(
+            "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh",
+            "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh",
+            "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh", "aidev-crash-report.sh",
+            "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh",
+            "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
+            "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh",
+            "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh"
+        )
+        for (script in agentScripts) {
+            val dstName = script.removeSuffix(".sh")
+            val dst = File(bin, dstName)
+            try {
+                activity.assets.open("scripts/$script").use { input ->
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+                dst.setExecutable(true, false)
+                dst.setReadable(true, false)
+            } catch (e: Exception) {
+                android.util.Log.w("TerminalShellAssets", "无法从 assets 复制脚本 $script: ${e.message}")
+            }
         }
         val prootBin = File(bin, ".privot").apply { mkdirs() }
         UbuntuBootstrapScripts.agentPrivotScripts().forEach { (name, content) ->
