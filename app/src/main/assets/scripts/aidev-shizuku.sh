@@ -75,7 +75,16 @@ case "$SUBCOMMAND" in
     CMD="monkey -p '$PKG' -c android.intent.category.LAUNCHER 1"
     ;;
   status)
-    echo "Shizuku 状态: 桥接通道正常 (在 AIDev Terminal 中)"
+    echo "正在检测 Shizuku 桥接..."
+    local out
+    out=$(aidev-shizuku exec "echo shizuku-ok" 2>&1) || true
+    if echo "$out" | grep -q "shizuku-ok"; then
+      echo "Shizuku 状态: 正常 (桥接通道可用，可静默安装)"
+    else
+      echo "Shizuku 状态: 未响应/未授权。"
+      echo "  → 请确认: 1) Shizuku App 已启动; 2) AIDev (com.aidev.six.dev) 已在 Shizuku 已授权列表中。"
+      echo "  → 桥接原始响应: $out"
+    fi
     exit 0
     ;;
   *)

@@ -30,8 +30,8 @@ EOF
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --silent|-s) INSTALL_MODE="silent"; shift ;;
-        --gui|-g) INSTALL_MODE="gui"; shift ;;
+        --silent|-s|silent) INSTALL_MODE="silent"; shift ;;
+        --gui|-g|gui) INSTALL_MODE="gui"; shift ;;
         --uninstall|-u) shift; PKG_UN="$1"; echo "$PKG_UN" | grep -qE '^[a-zA-Z0-9._]+$' || { echo "错误: 非法包名"; exit 1; }; exec aidev-shizuku exec "pm uninstall -k --user 0 '$PKG_UN'" ;;
         --status) exec aidev-shizuku status ;;
         -h|--help) usage ;;
@@ -128,11 +128,20 @@ install_silent() {
 }
 
 install_gui() {
-    echo "→ 系统安装界面..."
-    local req_dir="/host-home/.aidev-cmd"
-    mkdir -p "$req_dir"
-    echo "{\"action\":\"installapk\",\"path\":\"$APK_PATH\"}" > "$req_dir/req-$(date +%s%N).json"
-    echo "✓ 安装请求已发送"
+    # 无头终端环境不支持系统安装界面（需人工点击，且 .aidev-cmd 通道已废弃）。
+    echo "错误: GUI 系统安装界面在无头终端中不可用，无法完成安装。"
+    echo "请改用 --silent（Shizuku 静默安装），并确保 Shizuku 已启动且已授权 AIDev。"
+    exit 1
+}
+
+shizuku_unavailable() {
+    echo "错误: Shizuku 未响应/未授权，无法静默安装。"
+    echo "请按以下步骤排查："
+    echo "  1) 打开 Shizuku App，确认其已启动（通常通过「无线调试」或已 root 方式启动）。"
+    echo "  2) 在 Shizuku 的「已授权应用」中确认已包含 AIDev (com.aidev.six.dev)。"
+    echo "  3) 在 AIDev 终端中执行「aidev-shizuku status」确认桥接通道正常。"
+    echo "  4) 若仍失败，可在 AIDev 应用内「项目」页使用应用内安装（带清晰错误提示）。"
+    exit 1
 }
 
 case "$INSTALL_MODE" in
@@ -146,8 +155,7 @@ case "$INSTALL_MODE" in
         if shizuku_heartbeat; then
             install_silent
         else
-            echo "Shizuku 未响应，使用系统安装界面"
-            install_gui
+            shizuku_unavailable
         fi
         ;;
 esac
