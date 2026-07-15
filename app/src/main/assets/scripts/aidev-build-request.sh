@@ -8,7 +8,15 @@
 #   - 超时：未在限定时间内收到结果（退出码 2）
 set -u
 
-AIDEV_HOME="${AIDEV_HOME:-$HOME}"
+# 桥目录必须与宿主 BuildBridge 写入位置一致：宿主用 aidevHome=ctx.filesDir/home，
+# 在 Ubuntu 宇宙 A 中挂载为 /host-home。结果/请求都落在 /host-home/.aidev-build-bridge。
+# 若仍按默认 $HOME(=/root) 轮询，则永远找不到 result-<id>.json，导致 900s 超时、
+# agent 在结果回来前就结束会话、收不到构建反馈。
+if [ -d /host-home ]; then
+  AIDEV_HOME="/host-home"
+else
+  AIDEV_HOME="${AIDEV_HOME:-$HOME}"
+fi
 BRIDGE="$AIDEV_HOME/.aidev-build-bridge"
 mkdir -p "$BRIDGE"
 
