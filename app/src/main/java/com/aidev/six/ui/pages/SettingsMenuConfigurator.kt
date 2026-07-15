@@ -37,10 +37,6 @@ internal fun appearanceMenu(
         showDialog(SettingsDialog.ThemePreset(prefs.themePreset))
         onDismiss()
     },
-    MenuEntry("背景模式", "纯色/渐变/自定义图片") {
-        showDialog(SettingsDialog.BackgroundMode(prefs.bgMode))
-        onDismiss()
-    },
 ))
 
 
@@ -130,11 +126,5 @@ internal fun systemMenu(
             checked = { prefs.repoMode == "STRICT" },
             onToggle = { prefs.repoMode = if (it) "STRICT" else "AUTO" },
         ),
-    ),
-    MenuEntry("应用详情", "跳转到系统应用信息页") {
-        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = Uri.parse("package:${context.packageName}")
-        })
-        onDismiss()
-    },
+        ),
 ))

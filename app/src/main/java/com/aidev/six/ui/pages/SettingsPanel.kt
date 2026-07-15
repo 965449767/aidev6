@@ -52,98 +52,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SettingsPanel(
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val prefs = remember { PreferencesManager(context) }
-    var uiState by remember { mutableStateOf(SettingsUiState()) }
-
-    fun toggleSection(key: String) {
-        uiState = uiState.copy(
-            expandedSections = if (key in uiState.expandedSections)
-                uiState.expandedSections - key
-            else
-                uiState.expandedSections + key
-        )
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Text(
-            text = "设置",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(Spacing.s12))
-
-        SettingsRow("外观", "主题预设、背景模式") { toggleSection("appearance") }
-        InlineSection("appearance" in uiState.expandedSections, appearanceMenu(prefs, { uiState = uiState.copy(expandedSections = emptySet()) }, { uiState = uiState.copy(activeDialog = it) }).items)
-        SettingsRow("系统与权限", "权限、电池、Shizuku、后台常驻") { toggleSection("system") }
-        InlineSection("system" in uiState.expandedSections, systemMenu(context, prefs, { uiState = uiState.copy(expandedSections = emptySet()) }, { uiState = uiState.copy(activeDialog = it) }).items)
-        SettingsRow("路径设置", "备份目录、项目目录、外部存储路径") { uiState = uiState.copy(showPathSheet = true) }
-    }
-
-    uiState.activeDialog?.let { d ->
-        SettingsDialogHost(d, onDismiss = { uiState = uiState.copy(activeDialog = null) })
-    }
-
-    if (uiState.showPathSheet) {
-        PathSettingsSheet(context, prefs) { uiState = uiState.copy(showPathSheet = false) }
-    }
-}
-
-@Composable
-private fun InlineSection(expanded: Boolean, items: List<MenuEntry>, modifier: Modifier = Modifier) {
-    AnimatedVisibility(
-        visible = expanded,
-        enter = expandVertically(),
-        exit = shrinkVertically(),
-    ) {
-        Column(modifier = modifier.padding(start = 8.dp)) {
-            items.forEach { entry ->
-                MenuEntryRow(entry)
-                Spacer(Modifier.height(Spacing.s4))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsRow(title: String, desc: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = desc,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-    }
-    Spacer(Modifier.height(Spacing.s8))
-}
-
-@Composable
-private fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
+internal fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
     when (val kind = entry.kind) {
         is MenuEntryKind.Toggle -> {
             var checked by remember { mutableStateOf(kind.checked()) }
@@ -213,7 +122,7 @@ private fun MenuEntryRow(entry: MenuEntry, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SettingsDialogHost(
+internal fun SettingsDialogHost(
     dialog: SettingsDialog,
     onDismiss: () -> Unit,
 ) {
@@ -465,7 +374,7 @@ private fun PathSettingsSheet(
 }
 
 @Composable
-private fun PathRow(title: String, desc: String, path: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun PathRow(title: String, desc: String, path: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -479,7 +388,7 @@ private fun PathRow(title: String, desc: String, path: String, modifier: Modifie
 }
 
 @Composable
-private fun ReadonlyPathRow(title: String, desc: String, path: String, modifier: Modifier = Modifier) {
+internal fun ReadonlyPathRow(title: String, desc: String, path: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Column(
         modifier = modifier

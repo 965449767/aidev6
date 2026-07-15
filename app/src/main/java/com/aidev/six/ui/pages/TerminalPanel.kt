@@ -19,6 +19,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +43,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -51,8 +55,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -98,6 +104,9 @@ import com.aidev.six.navigation.LocalImeBottomPx
 import com.aidev.six.terminal.EmbeddedVirtualKey
 import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.terminal.PerfSample
+import com.aidev.six.PathConfig
+import com.aidev.six.ProjectExporter
+import java.io.File
 import com.aidev.six.ui.components.AppChip
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -1000,6 +1009,9 @@ private fun TerminalMoreSheet(
     var showSwipeDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showBgDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var activeDialog by remember { mutableStateOf<SettingsDialog?>(null) }
+    val showDialog: (SettingsDialog) -> Unit = { activeDialog = it }
     var hapticChecked by remember { mutableStateOf(prefs.hapticTap) }
 
     val currentBgOverride = prefs.bgOverride
@@ -1017,9 +1029,15 @@ private fun TerminalMoreSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {
+            SectionHeader("外观")
+            appearanceMenu(prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
+
+            HorizontalDivider()
+
             SectionHeader("输入")
             SectionToggleItem("触觉反馈", "按键时振动反馈", hapticChecked) {
                 hapticChecked = it; prefs.hapticTap = it
@@ -1032,9 +1050,37 @@ private fun TerminalMoreSheet(
 
             SectionHeader("显示")
             SectionItem("背景色 · $bgPreviewColor") { showBgDialog = true }
+            MenuEntryRow(MenuEntry("背景模式", "纯色/渐变/自定义图片") { activeDialog = SettingsDialog.BackgroundMode(prefs.bgMode) })
 
+            HorizontalDivider()
+
+            SectionHeader("系统")
+            systemMenu(activity, prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
+
+            HorizontalDivider()
+
+            SectionHeader("路径")
+            PathRow("备份目录", "备份文件和恢复数据的存储路径", PathConfig.backupDir(activity).absolutePath) {
+                activeDialog = SettingsDialog.PathEdit("备份目录", PathConfig.backupDir(activity).absolutePath) { prefs.backupDir = it }
+            }
+            PathRow("项目目录", "Ubuntu 内新建项目的默认位置（相对 rootfs）", PathConfig.projectsDir(activity).absolutePath) {
+                activeDialog = SettingsDialog.PathEdit("项目目录（相对 rootfs）", prefs.projectsDirRel.ifBlank { "root/projects" }) { prefs.projectsDirRel = it }
+            }
+            PathRow("外部 AIDev 目录", "Android 侧项目数据存放路径", PathConfig.externalAidevDir(activity).absolutePath) {
+                activeDialog = SettingsDialog.PathEdit("外部 AIDev 目录", PathConfig.externalAidevDir(activity).absolutePath) { prefs.externalAidevDir = it }
+            }
+            ReadonlyPathRow("AIDev Home", "核心数据目录，含 Ubuntu 环境和全部配置（只读）", PathConfig.aidevHome(activity).absolutePath)
+            ReadonlyPathRow("Ubuntu Rootfs", "Ubuntu 根文件系统（只读）", PathConfig.rootfs(activity).absolutePath)
+            ReadonlyPathRow("任务日志目录", "后台任务日志和元数据的存储位置（只读）", PathConfig.tasksDir(activity).absolutePath)
+
+            HorizontalDivider()
+
+            SectionHeader("项目")
+            SectionItem("导出项目源码") { showExportDialog = true }
         }
     }
+
+    activeDialog?.let { SettingsDialogHost(it) { activeDialog = null } }
 
     if (showSwipeDialog) {
         SwipeSensitivityDialog { showSwipeDialog = false }
@@ -1058,6 +1104,96 @@ private fun TerminalMoreSheet(
             onDismiss = { showBgDialog = false },
         )
     }
+    if (showExportDialog) {
+        ExportProjectDialog(activity, page) { showExportDialog = false }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExportProjectDialog(
+    activity: Activity,
+    page: EmbeddedTerminalPage,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val projectDir = page.completionEngine.currentProjectDir() ?: PathConfig.workspaceDir(activity)
+    var includeGit by remember { mutableStateOf(false) }
+    var plainText by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var exportMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!exporting) onDismiss() },
+        title = { Text("导出项目源码") },
+        text = {
+            Column {
+                Text("项目目录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    projectDir.absolutePath,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(Spacing.s8))
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { includeGit = !includeGit }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = includeGit, onCheckedChange = { includeGit = it })
+                    Spacer(Modifier.width(Spacing.s8))
+                    Text("包含 .git", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { plainText = !plainText }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = plainText, onCheckedChange = { plainText = it })
+                    Spacer(Modifier.width(Spacing.s8))
+                    Text("纯文本格式 (.txt)", style = MaterialTheme.typography.bodyMedium)
+                }
+                exportMsg?.let {
+                    Spacer(Modifier.height(Spacing.s8))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    exporting = true
+                    exportMsg = "导出中…"
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val outName = "${projectDir.name}-source.${if (plainText) "txt" else "md"}"
+                            val outFile = File(PathConfig.externalAidevDir(activity), outName)
+                            ProjectExporter.exportToFile(
+                                projectDir,
+                                outFile,
+                                ProjectExporter.Options(includeGit = includeGit, plainText = plainText),
+                            )
+                            withContext(Dispatchers.Main) {
+                                exportMsg = "已导出：${outFile.absolutePath}"
+                                android.widget.Toast.makeText(activity, "已导出源码：${outFile.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                exportMsg = "导出失败：${e.message}"
+                            }
+                        } finally {
+                            withContext(Dispatchers.Main) { exporting = false }
+                        }
+                    }
+                },
+                enabled = !exporting,
+            ) { Text(if (exporting) "导出中…" else "导出") }
+        },
+        dismissButton = {
+            TextButton(onClick = { if (!exporting) onDismiss() }) { Text("取消") }
+        },
+    )
 }
 
 @Composable

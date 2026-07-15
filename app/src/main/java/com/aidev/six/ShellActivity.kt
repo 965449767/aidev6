@@ -58,22 +58,11 @@ class ShellActivity : ComponentActivity() {
         if (prefs.getBoolean(Constants.PrefKeys.KEEPALIVE_AUTO, true)) runCatching { KeepAliveService.start(this) }
             .onFailure { Log.e("ShellActivity", "KeepAliveService start failed", it) }
 
-        val savedTab = savedInstanceState?.getInt("last_tab", -1) ?: -1
-        val intentTab = intent?.getIntExtra("shell_tab", -1) ?: -1
-        val prefsTab = prefs.getInt(Constants.PrefKeys.LAST_TAB, -1)
-        val initial = when {
-            savedTab in TAB_TERMINAL..TAB_SETTINGS -> savedTab
-            intentTab in TAB_TERMINAL..TAB_SETTINGS -> intentTab
-            prefsTab in TAB_TERMINAL..TAB_SETTINGS -> prefsTab
-            else -> TAB_TERMINAL
-        }
-
         terminalPage.init(this)
 
-        _currentTab.intValue = initial
+        _currentTab.intValue = TAB_TERMINAL
 
         setContent {
-            val currentTab = _currentTab.intValue
             AIDevTheme(prefs) {
                 GlobalBackPressHandler(
                     activity = this@ShellActivity,
@@ -90,12 +79,6 @@ class ShellActivity : ComponentActivity() {
                         },
                     ) {
                         AppNavHost(
-                            currentTab = currentTab,
-                            onTabSelected = { tab -> switchTo(tab) },
-                            onExecuteCommand = { command ->
-                                TerminalCommandBus.post(command)
-                                switchTo(TAB_TERMINAL)
-                            },
                             terminalPage = terminalPage,
                         )
                     }
@@ -117,7 +100,7 @@ class ShellActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val tab = intent.getIntExtra("shell_tab", -1)
-        if (tab in TAB_TERMINAL..TAB_SETTINGS) {
+        if (tab == TAB_TERMINAL) {
             switchTo(tab)
         }
     }
@@ -141,8 +124,8 @@ class ShellActivity : ComponentActivity() {
     }
 
     fun switchTo(index: Int) {
-        if (index in TAB_TERMINAL..TAB_SETTINGS) {
-            _currentTab.intValue = index
+        if (index == TAB_TERMINAL) {
+            _currentTab.intValue = TAB_TERMINAL
         }
     }
 
@@ -153,7 +136,6 @@ class ShellActivity : ComponentActivity() {
     companion object {
         private const val REQ_NOTIFICATION = 4302
         const val TAB_TERMINAL = 0
-        const val TAB_SETTINGS = 1
 
         fun open(activity: Activity, tab: Int) {
             val intent = Intent(activity, ShellActivity::class.java)
