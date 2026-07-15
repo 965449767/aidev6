@@ -502,14 +502,14 @@ AIDEV_PWD_HOOK_EOF
           opencode-install|setup-opencode) run_ubuntu_command "/usr/local/bin/setup-opencode" ;;
           aidev-build) run_ubuntu_command "/usr/local/bin/aidev-build" ;;
           aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" ;;
-          aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" ;;
+          aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" "${'$'}@" ;;
           aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" ;;
           aidev-create-android-project) run_ubuntu_command "/usr/local/bin/aidev-create-android-project" ;;
           aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" ;;
           aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" ;;
           aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" ;;
           aidev-opencode) run_ubuntu_command "/usr/local/bin/aidev-opencode" ;;
-          aidev-install) run_ubuntu_command "/usr/local/bin/aidev-install" ;;
+          aidev-install) run_ubuntu_command "/usr/local/bin/aidev-install" "${'$'}@" ;;
           android-sh) run_ubuntu_command "/usr/local/bin/android-sh" ;;
           aidev-clean) run_ubuntu_command "/usr/local/bin/aidev-clean" ;;
           fix-bashrc) fix_bashrc ;;
