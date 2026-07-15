@@ -2,6 +2,7 @@ package com.aidev.six
 
 import java.io.Closeable
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
@@ -37,7 +38,11 @@ class TcpBridgeTransport(
     private val maxConnections: Int = 16,
     private val socketTimeoutMs: Int = 30_000
 ) : BridgeTransport {
-    private val server = ServerSocket(port, 0, InetAddress.getByName(host))
+    private val server = ServerSocket().apply {
+        // SO_REUSEADDR：stop→quick restart 时避免 BindException（地址仍被旧 socket 占用）。
+        reuseAddress = true
+        bind(InetSocketAddress(InetAddress.getByName(host), port))
+    }
     val localPort: Int = server.localPort
     @Volatile private var thread: Thread? = null
     @Volatile override var isRunning: Boolean = false

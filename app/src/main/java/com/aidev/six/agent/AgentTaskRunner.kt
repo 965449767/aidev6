@@ -19,6 +19,8 @@ internal object AgentTaskRunner {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val activeProcesses = ConcurrentHashMap<String, Process>()
     private val activeCancellationFlags = ConcurrentHashMap<String, AtomicBoolean>()
+    // 已请求取消的任务 id（与执行状态解耦）：排队任务尚未建 flag 时也需记住取消信号。
+    private val cancelledIds = ConcurrentHashMap.newKeySet<String>()
 
     private data class ExecResult(val exitCode: Int, val output: String, val failure: Throwable? = null)
 
@@ -27,6 +29,7 @@ internal object AgentTaskRunner {
             val startedAt = System.currentTimeMillis()
             val cancellationFlag = AtomicBoolean(false)
             activeCancellationFlags[definition.id] = cancellationFlag
+            if (cancelledIds.contains(definition.id)) cancellationFlag.set(true)
 
             val logBuilder = StringBuilder()
             fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long) {
@@ -53,6 +56,7 @@ internal object AgentTaskRunner {
             }
 
             activeCancellationFlags.remove(definition.id)
+            cancelledIds.remove(definition.id)
 
             val status = resolveStatus(cancellationFlag, result)
             appendOutcome(logBuilder, cancellationFlag, result)
@@ -65,6 +69,7 @@ internal object AgentTaskRunner {
             val startedAt = System.currentTimeMillis()
             val cancellationFlag = AtomicBoolean(false)
             activeCancellationFlags[plan.id] = cancellationFlag
+            if (cancelledIds.contains(plan.id)) cancellationFlag.set(true)
 
             val definition = AgentTaskDefinition(
                 id = plan.id,
@@ -101,6 +106,7 @@ internal object AgentTaskRunner {
             )
 
             activeCancellationFlags.remove(plan.id)
+            cancelledIds.remove(plan.id)
             publish(outcome.status, outcome.exitCode, System.currentTimeMillis(), outcome.log, outcome.steps)
         }
     }
@@ -185,9 +191,10 @@ internal object AgentTaskRunner {
     }
 
     fun cancelTask(taskId: String) {
+        cancelledIds.add(taskId)
         activeCancellationFlags[taskId]?.set(true)
         activeProcesses[taskId]?.destroyForcibly()
         activeProcesses.remove(taskId)
-        activeCancellationFlags.remove(taskId)
+        // 注意：不在此移除 activeCancellationFlags —— 排队中任务开始后新建的 flag 需保留取消信号。
     }
 }

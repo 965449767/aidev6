@@ -296,7 +296,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             redirectErrorStream = true
         )
 
-        val result = runCatching { ProotLauncher.run(ctx, cmd, opts) }.getOrElse {
+        val result = runCatching { ProotLauncher.run(ctx, cmd, opts) { activeProcesses[id] = it } }.getOrElse {
             val log = "✗ 部署执行异常: ${it.message}"
             publish(AgentTaskStatus.FAILED, -1, System.currentTimeMillis(),
                 listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = it.message ?: "异常")), log)

@@ -5,6 +5,7 @@ import android.util.Log
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +33,19 @@ object ShizukuLogcat {
 
     private const val TAG = "ShizukuLogcat"
     private var ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val activeProcesses = ConcurrentHashMap.newKeySet<java.lang.Process>()
+
+    /** 记录在途 Shizuku 进程，便于 cancelScope 强杀（阻塞型读取无法被协程取消中断）。 */
+    private fun track(p: java.lang.Process?) {
+        if (p == null) return
+        runCatching { activeProcesses.removeIf { !it.isAlive } }
+        activeProcesses.add(p)
+    }
 
     fun cancelScope() {
+        // 先强杀所有在途进程：阻塞 I/O 不会被协程取消中断，否则进程泄漏到自然退出。
+        activeProcesses.forEach { runCatching { it.destroyForcibly() } }
+        activeProcesses.clear()
         ioScope.cancel()
         ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
@@ -207,6 +219,7 @@ object ShizukuLogcat {
                 null,
                 null
             ) as? java.lang.Process
+            track(process)
 
             if (process == null) {
                 onError("无法创建 Shizuku 进程")
@@ -292,6 +305,7 @@ object ShizukuLogcat {
                 val process = method.invoke(
                     null, arrayOf("sh", "-c", "logcat -c"), null, null
                 ) as? java.lang.Process
+                track(process)
                 process?.let { p ->
                     p.inputStream.bufferedReader().use { it.readText() }
                     p.errorStream.bufferedReader().use { it.readText() }
@@ -349,6 +363,7 @@ object ShizukuLogcat {
                     null,
                     null
                 ) as? java.lang.Process
+                track(process)
 
                 if (process == null) {
                     return@withTimeout ShellResult("", "无法创建 Shizuku 进程", -1)
@@ -405,6 +420,7 @@ object ShizukuLogcat {
         ioScope.launch {
             try {
                 val p = method.invoke(null, arrayOf("sh", "-c", cmd), null, null) as? java.lang.Process
+                track(p)
                 if (p != null) {
                     p.inputStream.bufferedReader().use { it.readText() }
                     p.errorStream.bufferedReader().use { it.readText() }

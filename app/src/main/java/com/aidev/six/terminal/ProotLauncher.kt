@@ -73,13 +73,15 @@ object ProotLauncher {
         if (opts.redirectErrorStream) pb.redirectErrorStream(true)
     }
 
-    /** 捕获式执行：一次性读取 stdout/stderr 与退出码。 */
-    fun run(ctx: Context, command: String, opts: Options): ShellResult {
+    /** 捕获式执行：一次性读取 stdout/stderr 与退出码。
+     *  @param processTracker 可选回调，进程启动后立即拿到 [Process] 引用（用于取消/强杀）。 */
+    fun run(ctx: Context, command: String, opts: Options, processTracker: ((Process) -> Unit)? = null): ShellResult {
         val shellCmd = buildCommand(ctx, command, opts)
         return try {
             val pb = ProcessBuilder("/system/bin/sh", "-c", shellCmd)
             setupEnv(ctx, pb, opts)
             val process = pb.start()
+            processTracker?.invoke(process)
             try {
                 val stdout = process.inputStream.bufferedReader().use { it.readText() }
                 val stderr = process.errorStream.bufferedReader().use { it.readText() }
