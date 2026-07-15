@@ -221,7 +221,8 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
         }
         runCatching { File(requestDir, "result-${reqFile.nameWithoutExtension}.json").writeText(result.toString(2)) }
         reqFile.delete()
-        notify(ctx, if (success) "崩溃报告已生成" else "崩溃报告", message, priority = "high")
+        val detail = if (logPath.isNotBlank()) "$message  日志: $logPath" else message
+        notify(ctx, if (success) "崩溃报告已生成" else "崩溃报告", detail, priority = "high")
     }
 
     private fun notify(ctx: Context, title: String, msg: String, priority: String) {

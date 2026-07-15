@@ -106,7 +106,6 @@ import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.terminal.PerfSample
 import com.aidev.six.PathConfig
 import com.aidev.six.ProjectExporter
-import com.aidev.six.agent.BuildRequestTracker
 import com.aidev.six.agent.DeployRequestTracker
 import com.aidev.six.ProjectDetector
 import com.aidev.six.SyncCoordinator
@@ -374,15 +373,17 @@ private fun TerminalActionBar(
             onClick = {
                 if (!canBuild) return@AppChip
                 val dir = projectDir ?: return@AppChip
-                val stateFile = File(PathConfig.tasksDir(activity), "agent-tasks.json")
-                BuildRequestTracker().submit(
-                    context = activity,
-                    project = dir.name,
-                    stateFile = stateFile,
-                    autoInstall = false,
-                    autoLaunch = false,
-                ) {}
-                Toast.makeText(activity, "已提交构建：${dir.name}（不自动安装）", Toast.LENGTH_SHORT).show()
+                // 在终端会话里真正执行构建命令，使构建过程在终端可见（与双宇宙文档一致）
+                val cmd = "aidev-build-request --project ${dir.name} --no-install --no-launch"
+                val ts = page.sessionManager.currentTerminalSession
+                if (ts != null) {
+                    page.completionEngine?.inputBuffer = ""
+                    ts.write("$cmd\r")
+                    page.completionEngine?.focusTerminalInput()
+                    Toast.makeText(activity, "已在终端提交构建：${dir.name}（不自动安装）", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(activity, "当前无可用终端会话", Toast.LENGTH_SHORT).show()
+                }
             },
             bgColor = if (canBuild) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canBuild) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
@@ -402,7 +403,9 @@ private fun TerminalActionBar(
                     pkg = pkg,
                     launch = false,
                 ) {
-                    Toast.makeText(activity, "部署完成：$pkg", Toast.LENGTH_SHORT).show()
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "部署完成：$pkg", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             bgColor = if (canInstall) MaterialTheme.colorScheme.primaryContainer else disabledBg,
