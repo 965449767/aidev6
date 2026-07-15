@@ -325,11 +325,15 @@ private fun TerminalActionBar(
     var pkgName by remember { mutableStateOf<String?>(null) }
     var hasApk by remember { mutableStateOf(false) }
 
-    // 终端 cwd 变化不会驱动 Compose 重组，轮询 cachedCompletionPwd（仅在变化时更新）
+    // 终端 cwd 变化不会驱动 Compose 重组；直接轮询 .aidev-current-pwd（宿主/Ubuntu realm 均会写入），
+    // 以 cachedCompletionPwd 作兜底，避免依赖 observer 传播时机。仅在变化时更新。
+    val pwdFile = File(PathConfig.aidevHome(activity), ".aidev-current-pwd")
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
-            val newPwd = page.completionEngine.cachedCompletionPwd
+            val filePwd = runCatching { pwdFile.takeIf { it.isFile }?.readText()?.trim() }
+                .getOrNull().orEmpty()
+            val newPwd = filePwd.ifEmpty { page.completionEngine.cachedCompletionPwd }
             if (newPwd != pwd) pwd = newPwd
         }
     }
@@ -417,6 +421,15 @@ private fun TerminalActionBar(
             bgColor = if (canLaunch) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canLaunch) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
         )
+        if (!isAndroid) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (pwd.isBlank()) "（cd 到 Android 项目目录以启用）" else "（未检测到 Android 项目：$pwd）",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 

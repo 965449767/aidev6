@@ -236,6 +236,7 @@ object TerminalShellAssets {
             _aidev_ps1() {
               local _p="${'$'}{PWD/#${'$'}HOME/\~}"
               PS1="${'$'}{AIDEV_REALM_COLOR}aidev[${'$'}{AIDEV_REALM:-H}]${'$'}{AIDEV_RESET}:${'$'}{_p}# "
+              pwd > /host-home/.aidev-current-pwd 2>/dev/null || true
             }
             case "${'$'}{PROMPT_COMMAND:-}" in
               *_aidev_ps1*) ;;

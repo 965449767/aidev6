@@ -17,8 +17,12 @@ object PathBridge {
                 File(home, rest.ifBlank { "." })
             }
             clean == "/root" || clean.startsWith("/root/") -> {
-                val rest = if (clean == "/root") "" else clean.removePrefix("/root/")
+                val rest = if (clean == "/root") "" else clean.removePrefix("/root")
                 File(home, "ubuntu-rootfs/root/$rest".trimEnd('/'))
+            }
+            clean == "/workspace" || clean.startsWith("/workspace/") -> {
+                val rest = if (clean == "/workspace") "" else clean.removePrefix("/workspace")
+                File(home, "workspace${rest}".trimEnd('/'))
             }
             clean == "/" -> File(home, "ubuntu-rootfs")
             clean.startsWith("/") -> File(home, "ubuntu-rootfs${clean}")
