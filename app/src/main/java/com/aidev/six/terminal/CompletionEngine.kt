@@ -20,7 +20,7 @@ class CompletionEngine(
         internal set
     var composingBuffer: String = ""
         internal set
-    var cachedCompletionPwd: String = ""
+    @Volatile var cachedCompletionPwd: String = ""
         internal set
 
     fun updateActivity(act: Activity) { activity = act }

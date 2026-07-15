@@ -37,6 +37,16 @@ internal class ProjectManagerState(activity: Activity) {
     var buildLog by mutableStateOf("")
     var runtimeLog by mutableStateOf("")
     var isBuilding by mutableStateOf(false)
+
+    companion object {
+        // 运行日志上限，避免长会话无限增长（同时消除逐行拼接的 O(n²) 拷贝）。
+        private const val RUNTIME_LOG_MAX = 32 * 1024
+    }
+
+    private fun appendRuntime(s: String) {
+        val next = runtimeLog + s
+        runtimeLog = if (next.length > RUNTIME_LOG_MAX) next.takeLast(RUNTIME_LOG_MAX) else next
+    }
     var isRunning by mutableStateOf(false)
     var showAppPicker by mutableStateOf(false)
     @Volatile var buildJob: kotlinx.coroutines.Job? = null
@@ -315,27 +325,19 @@ internal class ProjectManagerState(activity: Activity) {
                     ShizukuLogcat.executeCommand("am start -n $packageName/.MainActivity")
                 }
                 if (launchResult.exitCode != 0) {
-                    runtimeLog += "⚠ 启动可能失败: ${launchResult.stderr}\n"
+                    appendRuntime("⚠ 启动可能失败: ${launchResult.stderr}\n")
                 } else {
-                    runtimeLog += "✓ 已启动 $packageName\n"
+                    appendRuntime("✓ 已启动 $packageName\n")
                 }
 
                 val process = ShizukuLogcat.startLogStream(
                     packageName = packageName,
-                    onLine = { line ->
-                        scope.launch(Dispatchers.Main) {
-                            runtimeLog += "$line\n"
-                        }
-                    },
-                    onError = { err ->
-                        scope.launch(Dispatchers.Main) {
-                            runtimeLog += "✗ $err\n"
-                        }
-                    }
+                    onLine = { line -> appendRuntime("$line\n") },
+                    onError = { err -> appendRuntime("✗ $err\n") }
                 )
                 logcatProcess = process
                 if (process == null) {
-                    runtimeLog += "✗ 日志流启动失败: Shizuku 可能未就绪\n"
+                    appendRuntime("✗ 日志流启动失败: Shizuku 可能未就绪\n")
                     return@launch
                 }
 
@@ -345,11 +347,11 @@ internal class ProjectManagerState(activity: Activity) {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 logcatProcess?.destroy()
                 logcatProcess = null
-                runtimeLog += "\n⏹ 日志已停止\n"
+                appendRuntime("\n⏹ 日志已停止\n")
             } catch (e: Exception) {
                 logcatProcess?.destroy()
                 logcatProcess = null
-                runtimeLog += "\n✗ ${e.message}\n"
+                appendRuntime("\n✗ ${e.message}\n")
                 toast("运行出错")
             } finally {
                 logcatProcess?.destroy()
@@ -370,20 +372,12 @@ internal class ProjectManagerState(activity: Activity) {
             try {
                 val process = ShizukuLogcat.startLogStream(
                     packageName = packageName,
-                    onLine = { line ->
-                        scope.launch(Dispatchers.Main) {
-                            runtimeLog += "$line\n"
-                        }
-                    },
-                    onError = { err ->
-                        scope.launch(Dispatchers.Main) {
-                            runtimeLog += "✗ $err\n"
-                        }
-                    }
+                    onLine = { line -> appendRuntime("$line\n") },
+                    onError = { err -> appendRuntime("✗ $err\n") }
                 )
                 logcatProcess = process
                 if (process == null) {
-                    runtimeLog += "✗ 日志流启动失败: Shizuku 可能未就绪\n"
+                    appendRuntime("✗ 日志流启动失败: Shizuku 可能未就绪\n")
                     return@launch
                 }
                 while (isActive) {
@@ -392,11 +386,11 @@ internal class ProjectManagerState(activity: Activity) {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 logcatProcess?.destroy()
                 logcatProcess = null
-                runtimeLog += "\n⏹ 日志已停止\n"
+                appendRuntime("\n⏹ 日志已停止\n")
             } catch (e: Exception) {
                 logcatProcess?.destroy()
                 logcatProcess = null
-                runtimeLog += "\n✗ ${e.message}\n"
+                appendRuntime("\n✗ ${e.message}\n")
                 toast("运行出错")
             } finally {
                 logcatProcess?.destroy()

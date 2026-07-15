@@ -105,7 +105,7 @@ class OpenCodeMonitorService : Service() {
                     conn.setRequestProperty("Accept", "text/event-stream")
                     conn.setRequestProperty("Cache-Control", "no-cache")
                     conn.connectTimeout = 5000
-                    conn.readTimeout = 0
+                    conn.readTimeout = 30_000
 
                     reader = conn.inputStream.bufferedReader(Charsets.UTF_8)
                     var line: String?

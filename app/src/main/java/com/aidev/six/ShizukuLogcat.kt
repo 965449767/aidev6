@@ -215,14 +215,29 @@ object ShizukuLogcat {
 
             ioScope.launch {
                 try {
+                    // Drain stderr on a separate job: if stderr fills its pipe the blocked
+                    // process would deadlock and never produce stdout.
+                    val errJob = launch {
+                        try {
+                            BufferedReader(InputStreamReader(process.errorStream)).use { er ->
+                                while (er.readLine() != null) { /* discard */ }
+                            }
+                        } catch (_: Exception) {
+                        }
+                    }
                     BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
                         var line: String?
                         while (reader.readLine().also { line = it } != null) {
                             line?.let { onLine(it) }
                         }
                     }
+                    errJob.cancel()
                 } catch (e: Exception) {
                     Log.w(TAG, "Log stream ended", e)
+                } finally {
+                    // Clean up the native process when the stream ends or the scope is cancelled.
+                    try { process.destroyForcibly() } catch (_: Exception) {
+                    }
                 }
             }
 

@@ -18,7 +18,9 @@ import java.util.Locale
  */
 object LogHub {
 
-    private val dateFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+    private val dateFmt: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+    }
 
     // ─── 日志写入 ────────────────────────────────
 
@@ -85,6 +87,7 @@ object LogHub {
         private var warningCount = 0
         private var lastWarning: String = ""
 
+        @Synchronized
         fun shouldKeep(line: String): Boolean {
             val trimmed = line.trim()
             if (trimmed.contains("error:", ignoreCase = true)) return true
@@ -111,6 +114,7 @@ object LogHub {
             return true
         }
 
+        @Synchronized
         fun flushWarnings(): String? {
             if (warningCount == 0) return null
             val msg = "⚠ [已折叠 $warningCount 条 Gradle 警告] $lastWarning"
@@ -135,7 +139,7 @@ object LogHub {
     fun openBuildLog(logsDir: File, project: String): LogWriter {
         val dir = subdir(logsDir, project)
         val file = File(dir, "build.log")
-        file.writeText("=== 构建 $project 开始于 ${dateFmt.format(Date())} ===\n")
+        file.writeText("=== 构建 $project 开始于 ${dateFmt.get()!!.format(Date())} ===\n")
         return LogWriter(file, "build")
     }
 
@@ -147,7 +151,7 @@ object LogHub {
      */
     fun openCrashLog(logsDir: File, tempId: String): LogWriter {
         val file = File(logsDir, "crash-$tempId.log")
-        file.writeText("=== 崩溃报告 开始于 ${dateFmt.format(Date())} ===\n")
+        file.writeText("=== 崩溃报告 开始于 ${dateFmt.get()!!.format(Date())} ===\n")
         return LogWriter(file, "crash")
     }
 

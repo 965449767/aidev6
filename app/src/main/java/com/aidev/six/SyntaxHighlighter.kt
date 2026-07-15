@@ -9,6 +9,14 @@ import androidx.compose.ui.text.font.FontWeight
 
 object SyntaxHighlighter {
 
+    // 热路径用的正则集中编译一次，避免在循环里每字符重新编译（O(n²) 退化）。
+    private val RE_JSON_NUMBER = Regex("""-?\b\d+\.?\d*(?:[eE][+-]?\d+)?\b""")
+    private val RE_CSS_SELECTOR = Regex("""[.#]?[\w-]+(?=\s*\{)""")
+    private val RE_CSS_PROP = Regex("""[\w-]+(?=\s*:)""")
+    private val RE_CSS_VALUE = Regex("""(#[\da-fA-F]{3,8}|\b\d+\.?\d*(?:px|em|rem|%|vh|vw|s|ms)?\b)""")
+    private val RE_CSS_STRING = Regex(""""[^"]*"|'[^']*'""")
+    private val RE_XML_ATTR = Regex("""(\w[\w-]*)\s*=""")
+
     private val comment = Color(0xFF6A9955)
     private val str = Color(0xFFCE9178)
     private val num = Color(0xFFB5CEA8)
@@ -140,14 +148,12 @@ object SyntaxHighlighter {
         val applied = BooleanArray(len)
 
         while (pos < len) {
-            val remaining = code.substring(pos)
-
-            val blockClose = if (commentBlock != null && remaining.startsWith(commentBlock.second)) {
+            val blockClose = if (commentBlock != null && code.startsWith(commentBlock.second, pos)) {
                 pos += commentBlock.second.length
                 continue
             } else null
 
-            if (commentBlock != null && remaining.startsWith(commentBlock.first)) {
+            if (commentBlock != null && code.startsWith(commentBlock.first, pos)) {
                 val end = code.indexOf(commentBlock.second, pos + commentBlock.first.length)
                 val endPos = if (end >= 0) end + commentBlock.second.length else len
                 addStyle(SpanStyle(color = comment), pos, endPos)
@@ -156,7 +162,7 @@ object SyntaxHighlighter {
                 continue
             }
 
-            if (tripleQuote != null && remaining.startsWith(tripleQuote)) {
+            if (tripleQuote != null && code.startsWith(tripleQuote, pos)) {
                 val searchStart = pos + tripleQuote.length
                 val end = code.indexOf(tripleQuote, searchStart)
                 val endPos = if (end >= 0) end + tripleQuote.length else len
@@ -225,7 +231,7 @@ object SyntaxHighlighter {
                         val tagEnd = if (space > 0) space else tag.length - 1
                         addStyle(SpanStyle(color = kw), pos, pos + tagEnd)
 
-                        val attrPattern = Regex("""(\w[\w-]*)\s*=""")
+                        val attrPattern = RE_XML_ATTR
                         for (m in attrPattern.findAll(tag)) {
                             val abs = pos + m.range.first
                             addStyle(SpanStyle(color = prop), abs, abs + m.value.indexOf('=').let { if (it > 0) it else m.value.length })
@@ -286,7 +292,7 @@ object SyntaxHighlighter {
                     pos = e
                 }
                 code[pos] == '-' || code[pos].isDigit() -> {
-                    val m = Regex("""-?\b\d+\.?\d*(?:[eE][+-]?\d+)?\b""").find(code, pos)
+                    val m = RE_JSON_NUMBER.find(code, pos)
                     if (m != null && m.range.first == pos) {
                         addStyle(SpanStyle(color = num), m.range.first, m.range.last + 1)
                         pos = m.range.last + 1
@@ -357,25 +363,25 @@ object SyntaxHighlighter {
                     pos = e
                 }
                 else -> {
-                    val selectorMatch = Regex("""[.#]?[\w-]+(?=\s*\{)""").find(code, pos)
+                    val selectorMatch = RE_CSS_SELECTOR.find(code, pos)
                     if (selectorMatch != null && selectorMatch.range.first == pos) {
                         addStyle(SpanStyle(color = type), selectorMatch.range.first, selectorMatch.range.last + 1)
                         pos = selectorMatch.range.last + 1
                         continue
                     }
-                    val propMatch = Regex("""[\w-]+(?=\s*:)""").find(code, pos)
+                    val propMatch = RE_CSS_PROP.find(code, pos)
                     if (propMatch != null && propMatch.range.first == pos) {
                         addStyle(SpanStyle(color = prop), propMatch.range.first, propMatch.range.last + 1)
                         pos = propMatch.range.last + 1
                         continue
                     }
-                    val valMatch = Regex("""(#[\da-fA-F]{3,8}|\b\d+\.?\d*(?:px|em|rem|%|vh|vw|s|ms)?\b)""").find(code, pos)
+                    val valMatch = RE_CSS_VALUE.find(code, pos)
                     if (valMatch != null && valMatch.range.first == pos) {
                         addStyle(SpanStyle(color = num), valMatch.range.first, valMatch.range.last + 1)
                         pos = valMatch.range.last + 1
                         continue
                     }
-                    val strMatch = Regex(""""[^"]*"|'[^']*'""").find(code, pos)
+                    val strMatch = RE_CSS_STRING.find(code, pos)
                     if (strMatch != null && strMatch.range.first == pos) {
                         addStyle(SpanStyle(color = str), strMatch.range.first, strMatch.range.last + 1)
                         pos = strMatch.range.last + 1

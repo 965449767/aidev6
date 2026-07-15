@@ -15,8 +15,10 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
     private const val REQUEST_DIR = "request"
     private const val RESULT_DIR = "result"
 
-    private var requestDir: File? = null
-    private var resultDir: File? = null
+    @Volatile private var requestDir: File? = null
+    @Volatile private var resultDir: File? = null
+    @Volatile private var activeFollowProcess: java.lang.Process? = null
+    private const val FOLLOW_LOG_MAX = 2 * 1024 * 1024
 
     override val bridgeName: String get() = "shizuku"
 
@@ -146,22 +148,28 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         val follow = fields["FOLLOW"]?.isNotEmpty() == true
         if (follow) {
             atomicWriteText(resFile, "[持续监听中... 按 Ctrl+C 停止]\n")
-            ShizukuLogcat.startLogStream(
+            // 停掉上一个 follow 流，避免 Shizuku 进程与协程无限累积。
+            activeFollowProcess?.destroyForcibly()
+            activeFollowProcess = ShizukuLogcat.startLogStream(
                 packageName = fields["PACKAGE"] ?: "com.aidev.six",
                 level = fields["LEVEL"] ?: "",
                 tag = fields["TAG"] ?: "",
-                onLine = { line ->
-                    runCatching { resFile.appendText("$line\n") }
-                        .onFailure { AIDevLogger.w("ShizukuBridge", "append log line failed", it) }
-                },
-                onError = { err ->
-                    runCatching { resFile.appendText("\nERROR: $err\n") }
-                        .onFailure { AIDevLogger.w("ShizukuBridge", "append log error failed", it) }
-                }
+                onLine = { line -> appendCapped(resFile, "$line\n") },
+                onError = { err -> appendCapped(resFile, "\nERROR: $err\n") }
             )
             return "[持续监听中... 按 Ctrl+C 停止]\n"
         }
         return fetchLogs(fields)
+    }
+
+    private fun appendCapped(file: File, text: String) {
+        runCatching {
+            file.appendText(text)
+            // 防止 follow 日志文件无限增长：超过上限时回收到最近一半。
+            if (file.length() > FOLLOW_LOG_MAX) {
+                file.writeText(file.readText().takeLast(FOLLOW_LOG_MAX / 2))
+            }
+        }.onFailure { AIDevLogger.w("ShizukuBridge", "append log line failed", it) }
     }
 
     private suspend fun computeLog(fields: Map<String, String>): String = fetchLogs(fields)

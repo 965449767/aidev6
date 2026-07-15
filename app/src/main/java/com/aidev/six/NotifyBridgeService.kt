@@ -8,7 +8,7 @@ object NotifyBridgeService : BridgeService("NotifyBridge") {
 
     private const val BRIDGE_DIR = ".aidev-notify"
 
-    private var requestDir: File? = null
+    @Volatile private var requestDir: File? = null
 
     override val bridgeName: String get() = "notify"
 

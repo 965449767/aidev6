@@ -25,6 +25,11 @@ object LocalMetrics {
     /** 测试用核心实现：直接对给定 home 写 JSONL（不依赖 Android Context）。 */
     internal fun appendEvent(home: File, event: String, success: Boolean, detail: Map<String, Any>) {
         val dir = File(home, DIR).apply { mkdirs() }
+        val file = File(dir, FILE)
+        // 防止 metrics 文件无限增长：超过 1MB 时回收到最近 500KB。
+        if (file.length() > 1_000_000) {
+            runCatching { file.writeText(file.readText().takeLast(500_000)) }
+        }
         val line = JSONObject().apply {
             put("t", System.currentTimeMillis())
             put("event", event)

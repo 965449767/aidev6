@@ -33,7 +33,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
 
     private const val BRIDGE_DIR = ".aidev-deploy-bridge"
 
-    private var requestDir: File? = null
+    @Volatile private var requestDir: File? = null
     private val activeProcesses = ConcurrentHashMap<String, Process>()
     private val cancelledIds = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
 

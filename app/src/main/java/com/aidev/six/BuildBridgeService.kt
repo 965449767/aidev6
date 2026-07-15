@@ -1,6 +1,7 @@
 package com.aidev.six
 
 import android.content.Context
+import java.util.concurrent.atomic.AtomicLong
 import com.aidev.six.agent.AgentTaskDefinition
 import com.aidev.six.agent.AgentTaskRecord
 import com.aidev.six.agent.AgentTaskStatus
@@ -34,7 +35,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
     // 便携版 JDK17 (arm64 glibc, 自带完整 cacerts)，多镜像 fallback，免 apt/dpkg/debconf
     private const val JDK_SHA256 = "83a52172678ec8975164648654869cb2e71d7c748b47aca94b29bbfa10c18e81"
 
-    private var requestDir: File? = null
+    @Volatile private var requestDir: File? = null
 
     // 按请求 id 跟踪：活跃协程 Job 与当前 PRoot 进程，供「取消」真正中止编译（否则只删标志不杀进程）。
     private val activeJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
@@ -141,7 +142,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         )
         val startedAt = System.currentTimeMillis()
         var currentPhase = Phase.PREPARE
-        var lastPublish = 0L
+        val lastPublish = AtomicLong(0L)
         fun publishBuild(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, steps: List<AgentTaskStepResult>) {
             val record = AgentTaskRecord(
                 definition = definition,
@@ -164,10 +165,11 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             if (gradleFilter.shouldKeep(line)) {
                 logWriter.append(line)
             }
-            // 节流发布（≥800ms），避免逐行重写状态文件
+            // 节流发布（≥800ms），避免逐行重写状态文件。
+            // 用 getAndSet 保证多线程下只有一个线程“赢得”本次发布窗口。
             val now = System.currentTimeMillis()
-            if (now - lastPublish >= 800) {
-                lastPublish = now
+            val prev = lastPublish.getAndSet(now)
+            if (now - prev >= 800) {
                 publishBuild(AgentTaskStatus.RUNNING, -1, 0L, BuildProgress.deriveUpTo(currentPhase))
             }
         }

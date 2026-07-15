@@ -22,7 +22,7 @@ object CrashReportBridgeService : BridgeService("CrashReportBridge") {
     private const val BRIDGE_DIR = ".aidev-crash-bridge"
     private const val MCP_DIR = ".aidev-mcp"
 
-    private var requestDir: File? = null
+    @Volatile private var requestDir: File? = null
 
     override fun onStart(homeDir: File) {
         requestDir = File(homeDir, BRIDGE_DIR).also { it.mkdirs() }
