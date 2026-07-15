@@ -30,7 +30,7 @@
 
 - 只能用能从 **阿里云镜像 / google / mavenCentral / jitpack** 解析到的依赖。冷门 Maven 仓库解析不到会失败。
 - 默认可用（脚手架已带）：`androidx.core:core-ktx`、`androidx.appcompat:appcompat`、`com.google.android.material:material`、`androidx.activity:activity-ktx`、`androidx.constraintlayout:constraintlayout`。
-- 用 **Jetpack Compose** 时必须完整配置：根 `build.gradle.kts` 加 `org.jetbrains.kotlin.plugin.compose version "2.0.21" apply false`，模块加该插件 + `buildFeatures { compose = true }` + `implementation(platform("androidx.compose:compose-bom:2024.06.00"))`。少任何一项都编不过。缺经验时优先用 XML 布局 + AppCompat（脚手架默认）。
+- 用 **Jetpack Compose** 时必须完整配置：根 `build.gradle.kts` 加 `org.jetbrains.kotlin.plugin.compose version "2.0.21" apply false`，模块加该插件 + `buildFeatures { compose = true }` + `implementation(platform("androidx.compose:compose-bom:2024.12.01"))`。少任何一项都编不过。缺经验时优先用 XML 布局 + AppCompat（脚手架默认）。
 
 ## 构建与验证
 

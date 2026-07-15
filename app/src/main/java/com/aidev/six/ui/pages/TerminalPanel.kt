@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -106,7 +107,7 @@ import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.terminal.PerfSample
 import com.aidev.six.PathConfig
 import com.aidev.six.ProjectExporter
-import com.aidev.six.agent.DeployRequestTracker
+
 import com.aidev.six.ProjectDetector
 import com.aidev.six.SyncCoordinator
 import com.aidev.six.ShizukuLogcat
@@ -163,9 +164,10 @@ fun TerminalPanel(
         Column(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
         ) {
-            TerminalTopBar(
-                activity = activity,
-                onNewSession = { page.sessionManager.addSession() },
+                TerminalTopBar(
+                    activity = activity,
+                    page = page,
+                    onNewSession = { page.sessionManager.addSession() },
                 onCopy = {},
                     onPaste = {
                         try {
@@ -187,7 +189,6 @@ fun TerminalPanel(
                     onMore = { showMoreSheet = true },
                     onTogglePerf = { showPerfHud = !showPerfHud },
                 )
-                TerminalActionBar(page, activity)
                 TerminalTabBar(page)
                 TerminalStatusBar(
                     page = page,
@@ -270,6 +271,7 @@ fun TerminalPanel(
 @Composable
 private fun TerminalTopBar(
     activity: Activity,
+    page: EmbeddedTerminalPage,
     onNewSession: () -> Unit,
     onCopy: () -> Unit,
     onPaste: () -> Unit,
@@ -277,53 +279,10 @@ private fun TerminalTopBar(
     onTogglePerf: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(start = 16.dp, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = BuildConfig.VERSION_NAME,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.padding(end = 8.dp),
-        )
-        TopBarButton("+", onClick = onNewSession)
-        Spacer(modifier = Modifier.width(Spacing.s4))
-        TopBarButton("粘贴", onClick = onPaste)
-        Spacer(modifier = Modifier.width(Spacing.s4))
-        TopBarButton("性能", onClick = onTogglePerf)
-        Spacer(modifier = Modifier.width(Spacing.s4))
-        TopBarButton("更多", onClick = onMore)
-    }
-}
-
-@Composable
-private fun TopBarButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    AppChip(text = label, onClick = onClick, modifier = modifier)
-}
-
-/**
- * 终端底部动作栏：随 `cd` 变化自动识别当前 Android 项目，提供
- * 「编译 / 安装 / 拉起」三按钮（不自动安装，遵循交付规则）。
- * 目标项目解析：终端 pwd → SyncCoordinator.toAndroidDir → ProjectDetector.findProjectRoot，
- * 回退到 currentProjectDir()。
- */
-@Composable
-private fun TerminalActionBar(
-    page: EmbeddedTerminalPage,
-    activity: Activity,
-    modifier: Modifier = Modifier,
-) {
     val scope = rememberCoroutineScope()
     var pwd by remember { mutableStateOf(page.completionEngine.cachedCompletionPwd) }
     var projectDir by remember { mutableStateOf<File?>(null) }
     var pkgName by remember { mutableStateOf<String?>(null) }
-    var hasApk by remember { mutableStateOf(false) }
 
     // 终端 cwd 变化不会驱动 Compose 重组；直接轮询 .aidev-current-pwd（宿主/Ubuntu realm 均会写入），
     // 以 cachedCompletionPwd 作兜底，避免依赖 observer 传播时机。仅在变化时更新。
@@ -346,16 +305,13 @@ private fun TerminalActionBar(
         projectDir = dir
         if (dir != null && ProjectDetector.isAndroidProject(dir)) {
             pkgName = resolveProjectPackage(activity, dir)
-            hasApk = File(dir, "app/build/outputs/apk/debug/app-debug.apk").isFile
         } else {
             pkgName = null
-            hasApk = false
         }
     }
 
     val isAndroid = projectDir != null && ProjectDetector.isAndroidProject(projectDir!!)
     val canBuild = isAndroid
-    val canInstall = isAndroid && hasApk && pkgName != null
     val canLaunch = pkgName != null
 
     val disabledBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -364,13 +320,14 @@ private fun TerminalActionBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .height(40.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 16.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         AppChip(
-            text = if (isAndroid) "编译 ${projectDir!!.name}" else "编译",
+            text = "编译",
+            modifier = Modifier.widthIn(max = 120.dp),
             onClick = {
                 if (!canBuild) return@AppChip
                 val dir = projectDir ?: return@AppChip
@@ -389,38 +346,10 @@ private fun TerminalActionBar(
             bgColor = if (canBuild) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canBuild) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
         )
+        Spacer(modifier = Modifier.width(Spacing.s4))
         AppChip(
-            text = if (hasApk) "安装" else "安装(无APK)",
-            onClick = {
-                if (!canInstall) return@AppChip
-                val dir = projectDir ?: return@AppChip
-                val apk = File(dir, "app/build/outputs/apk/debug/app-debug.apk").absolutePath
-                val pkg = pkgName ?: return@AppChip
-                val id = System.currentTimeMillis().toString()
-                DeployRequestTracker().submit(
-                    context = activity,
-                    id = id,
-                    apk = apk,
-                    pkg = pkg,
-                    launch = false,
-                ) {
-                    activity.runOnUiThread {
-                        // 读取部署结果，如实反馈成败（避免一律显示“部署完成”误导用户）
-                        val resFile = File(PathConfig.aidevHome(activity), ".aidev-deploy-bridge/result-$id.json")
-                        val (ok, msg) = runCatching {
-                            val j = JSONObject(resFile.readText())
-                            j.optBoolean("success", false) to j.optString("message", "")
-                        }.getOrElse { false to "" }
-                        val text = if (ok) "部署完成：$pkg" else "部署失败：${msg.ifBlank { "未知错误" }}（$pkg）"
-                        Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
-                    }
-                }
-            },
-            bgColor = if (canInstall) MaterialTheme.colorScheme.primaryContainer else disabledBg,
-            textColor = if (canInstall) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
-        )
-        AppChip(
-            text = if (pkgName != null) "拉起 $pkgName" else "拉起",
+            text = "拉起",
+            modifier = Modifier.widthIn(max = 120.dp),
             onClick = {
                 if (!canLaunch) return@AppChip
                 val pkg = pkgName ?: return@AppChip
@@ -432,16 +361,26 @@ private fun TerminalActionBar(
             bgColor = if (canLaunch) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canLaunch) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
         )
-        if (!isAndroid) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (pwd.isBlank()) "（cd 到 Android 项目目录以启用）" else "（未检测到 Android 项目：$pwd）",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = BuildConfig.VERSION_NAME,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        TopBarButton("+", onClick = onNewSession)
+        Spacer(modifier = Modifier.width(Spacing.s4))
+        TopBarButton("粘贴", onClick = onPaste)
+        Spacer(modifier = Modifier.width(Spacing.s4))
+        TopBarButton("性能", onClick = onTogglePerf)
+        Spacer(modifier = Modifier.width(Spacing.s4))
+        TopBarButton("更多", onClick = onMore)
     }
+}
+
+@Composable
+private fun TopBarButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    AppChip(text = label, onClick = onClick, modifier = modifier)
 }
 
 private fun resolveProjectPackage(ctx: Context, projectDir: File): String? {
