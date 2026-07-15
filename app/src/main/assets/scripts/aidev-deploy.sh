@@ -86,18 +86,23 @@ if [ "$INSTALL_OK" != true ]; then
     exit 1
 fi
 
-# 2) 落地二次校验（仅参考，不致命）：pm list packages 偶发空结果会误报，
-#    真正安装成功以「能否启动」为准，故校验失败不判负，只记录提示。
+# 2) 落地二次校验（以 pm list packages 为安装是否成功的真相，避免 aidev-install
+#    因 Shizuku 桥不回传退出码而误报成功）。偶发瞬时延迟，故重试 3 次。
 VERIFIED=false
-for v in 1 2; do
+VERIFY_ERR=""
+for v in 1 2 3; do
     VERIFY=$(aidev-shizuku exec "pm list packages --user 0 | grep -i '^package:$PKG\$'" 2>/dev/null | clean_output)
     if echo "$VERIFY" | grep -qi "^package:$PKG\$"; then
         VERIFIED=true
         break
     fi
+    VERIFY_ERR="$VERIFY"
     sleep 1
 done
-[ "$VERIFIED" = true ] || echo "提示：pm list packages 未确认包落地（可能瞬时延迟），以启动结果为准"
+if [ "$VERIFIED" != true ]; then
+    emit false false null "install not verified: $PKG 未落地（${INSTALL_ERR:-${VERIFY_ERR:-无输出}}）"
+    exit 1
+fi
 
 # 3) 启动（可选）
 LAUNCHED=false
