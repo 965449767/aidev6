@@ -136,6 +136,7 @@ cat > build.gradle.kts <<EOF
 plugins {
     id("com.android.application") version "${AGP_VERSION}" apply false
     id("org.jetbrains.kotlin.android") version "${KOTLIN_VERSION}" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "${KOTLIN_VERSION}" apply false
 }
 EOF
 
@@ -200,6 +201,7 @@ cat > app/build.gradle.kts <<EOF
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -223,6 +225,10 @@ android {
             )
         }
     }
+
+    buildFeatures {
+        compose = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -233,11 +239,14 @@ android {
 }
 
 dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.activity:activity-ktx:1.8.2")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended:1.7.6")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.activity:activity-compose:1.8.2")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 }
 EOF
 
@@ -275,18 +284,21 @@ cat > "${SRC_DIR}/MainActivity.kt" <<EOF
 package ${PACKAGE}
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.Text
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContent {
+            Text("Hello, ${APP_NAME}!")
+        }
     }
 }
 EOF
 
 # ─── 资源文件 ───
-mkdir -p app/src/main/res/layout
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/mipmap-hdpi
 mkdir -p app/src/main/res/mipmap-anydpi-v26
@@ -308,26 +320,6 @@ cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'IC_LA_EOF'
 </adaptive-icon>
 IC_LA_EOF
 
-cat > app/src/main/res/layout/activity_main.xml <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent">
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello ${APP_NAME}!"
-        android:textSize="24sp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
-EOF
-
 cat > app/src/main/res/values/strings.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -338,14 +330,7 @@ EOF
 cat > app/src/main/res/values/themes.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.${APP_NAME}" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <item name="colorPrimary">#6200EE</item>
-        <item name="colorPrimaryVariant">#3700B3</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">#03DAC5</item>
-        <item name="colorSecondaryVariant">#018786</item>
-        <item name="colorOnSecondary">#000000</item>
-    </style>
+    <style name="Theme.${APP_NAME}" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>
 EOF
 
@@ -361,10 +346,11 @@ cat > AGENTS.md <<EOF
 本项目由 AIDev 宇宙B 离线编译。**改码时严格遵守，否则编译失败：**
 
 - 版本锁定（勿改）：Gradle ${GRADLE_VERSION} / AGP ${AGP_VERSION} / Kotlin ${KOTLIN_VERSION} / compileSdk 36 / targetSdk 36 / minSdk 26 / Java 17
-- **不要在 app/build.gradle.kts 写 repositories { } 块**（settings.gradle.kts 已开 FAIL_ON_PROJECT_REPOS，统一用阿里云镜像）
+- **不要在 app/build.gradle.kts 写 \`repositories { }\` 块**（settings.gradle.kts 已开 FAIL_ON_PROJECT_REPOS，统一用阿里云镜像）
 - 依赖只用能从 阿里云/google/mavenCentral/jitpack 解析到的
 - 不要改 gradle-wrapper.properties / local.properties / settings.gradle.kts 仓库块 / gradle.properties 的 aapt2 覆盖（环境托管，会被覆盖）
 - namespace / applicationId / 源码 package 保持一致（本项目为 ${PACKAGE}）
+- **本项目默认使用 Jetpack Compose**（已预配：根插件 \`org.jetbrains.kotlin.plugin.compose\` + 模块 \`buildFeatures { compose = true }\` + \`compose-bom:2024.12.01\`）。继续加 Compose 组件直接加依赖即可，勿删这三项。
 - 编译安装：aidev-build-request --project ${PROJECT_DIR}
 EOF
 
@@ -445,6 +431,6 @@ echo "════════════════════════�
 echo "  项目创建完成!"
 echo "═══════════════════════════════════════════"
 echo "  目录: ${PROJECT_DIR}"
-echo "  构建: cd ${PROJECT_DIR} && aidev-build --full"
+echo "  构建: aidev-build-request --project ${PROJECT_DIR}"
 echo "  解析 APK: aidev-apk-info app/build/outputs/apk/debug/app-debug.apk"
 echo "═══════════════════════════════════════════"

@@ -9,11 +9,10 @@ description: 创建新的 Android 项目骨架
 **重要：项目默认建在 `/workspace/` 下，宇宙B 才能编译。不要建到别处。**
 
 生成内容：
-  - settings.gradle.kts / 根 build.gradle.kts / app/build.gradle.kts
+  - settings.gradle.kts / 根 build.gradle.kts / app/build.gradle.kts（已开启 Jetpack Compose）
   - AndroidManifest.xml（启动 Activity + Application 配置）
-  - MainActivity.kt（XML 布局 + AppCompat）
-  - res/layout/activity_main.xml
-  - res/values/strings.xml / themes.xml
+  - MainActivity.kt（Jetpack Compose）
+  - res/values/strings.xml / themes.xml（Material 亮色无 ActionBar）
   - proguard-rules.pro / .gitignore / AGENTS.md（项目级构建约束）
   - Git init + initial commit
 
