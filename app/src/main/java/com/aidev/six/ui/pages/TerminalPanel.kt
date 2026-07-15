@@ -111,6 +111,7 @@ import com.aidev.six.ProjectDetector
 import com.aidev.six.SyncCoordinator
 import com.aidev.six.ShizukuLogcat
 import java.io.File
+import org.json.JSONObject
 import com.aidev.six.ui.components.AppChip
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -404,7 +405,14 @@ private fun TerminalActionBar(
                     launch = false,
                 ) {
                     activity.runOnUiThread {
-                        Toast.makeText(activity, "部署完成：$pkg", Toast.LENGTH_SHORT).show()
+                        // 读取部署结果，如实反馈成败（避免一律显示“部署完成”误导用户）
+                        val resFile = File(PathConfig.aidevHome(activity), ".aidev-deploy-bridge/result-$id.json")
+                        val (ok, msg) = runCatching {
+                            val j = JSONObject(resFile.readText())
+                            j.optBoolean("success", false) to j.optString("message", "")
+                        }.getOrElse { false to "" }
+                        val text = if (ok) "部署完成：$pkg" else "部署失败：${msg.ifBlank { "未知错误" }}（$pkg）"
+                        Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
                     }
                 }
             },
@@ -437,17 +445,19 @@ private fun TerminalActionBar(
 }
 
 private fun resolveProjectPackage(ctx: Context, projectDir: File): String? {
+    // 优先用已构建 APK 的真实包名（pm install 注册的 applicationId 才是真相），
+    // 避免 Gradle namespace 与最终 applicationId 不一致导致装到错误包名。
+    val apk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
+    if (apk.isFile) {
+        val info = runCatching { ctx.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) }.getOrNull()
+        if (!info?.packageName.isNullOrBlank()) return info!!.packageName
+    }
     for (rel in listOf("app/build.gradle.kts", "app/build.gradle")) {
         val file = File(projectDir, rel)
         if (file.isFile) {
             val ns = Regex("""namespace\s*=\s*"([^"]+)"""").find(file.readText())?.groupValues?.getOrNull(1)
             if (ns != null) return ns
         }
-    }
-    val apk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
-    if (apk.isFile) {
-        val info = ctx.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
-        if (info != null) return info.packageName
     }
     return null
 }
