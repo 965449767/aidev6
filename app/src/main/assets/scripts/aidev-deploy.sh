@@ -105,19 +105,11 @@ ACTIVITY=null
 if [ "$LAUNCH" = true ]; then
     for l in 1 2 3; do
         COMP=$(aidev-shizuku exec "cmd package resolve-activity --brief -c android.intent.category.LAUNCHER --user 0 '$PKG' 2>/dev/null | tail -1" 2>/dev/null | clean_output | grep "/" | tail -1 | tr -d '\r' | xargs)
-        if echo "$COMP" | grep -q "/"; then
-            ACTIVITY="$COMP"
-            OUT=$(aidev-shizuku exec "am start -n '$COMP' --user 0" 2>/dev/null | clean_output)
-            if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
-                LAUNCHED=true
-                break
-            fi
-        else
-            OUT=$(aidev-shizuku exec "monkey -p '$PKG' -c android.intent.category.LAUNCHER 1" 2>/dev/null | clean_output)
-            if ! echo "$OUT" | grep -qiE "Error:|No activities"; then
-                LAUNCHED=true
-                break
-            fi
+        [ -n "$COMP" ] && ACTIVITY="$COMP"
+        OUT=$(aidev-shizuku launch "$PKG" 2>/dev/null | clean_output)
+        if ! echo "$OUT" | grep -qiE "Error:|No activities|Exception"; then
+            LAUNCHED=true
+            break
         fi
         echo "启动尝试 $l 未确认，1s 后重试..."
         sleep 1

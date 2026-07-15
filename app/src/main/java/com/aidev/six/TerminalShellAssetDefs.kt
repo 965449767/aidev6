@@ -92,63 +92,6 @@ internal fun systemScriptContent(name: String): String = when (name) {
                 fi
                 """.trimIndent()
 
-            "startapp" -> """#!/bin/sh
-                # AIDev start app script
-                # Usage: startapp <package_name>
-                if [ -z "${'$'}1" ]; then
-                    echo "Usage: startapp <package_name>"
-                    exit 1
-                fi
-                REQ_DIR="${'$'}{AIDEV_HOME}/.aidev-cmd"
-                mkdir -p "${'$'}REQ_DIR"
-                echo "{\"action\":\"startapp\",\"package\":\"${'$'}1\"}" > "${'$'}REQ_DIR/req-$(date +%s%N).json"
-                echo "{\"status\":\"success\",\"action\":\"started\",\"package\":\"${'$'}1\"}"
-                """.trimIndent()
-
-            "stopapp" -> """#!/bin/sh
-                # AIDev stop app script
-                # Usage: stopapp <package_name>
-                if [ -z "${'$'}1" ]; then
-                    echo "Usage: stopapp <package_name>"
-                    exit 1
-                fi
-                REQ_DIR="${'$'}{AIDEV_HOME}/.aidev-cmd"
-                mkdir -p "${'$'}REQ_DIR"
-                echo "{\"action\":\"stopapp\",\"package\":\"${'$'}1\"}" > "${'$'}REQ_DIR/req-$(date +%s%N).json"
-                echo "{\"status\":\"success\",\"action\":\"stopped\",\"package\":\"${'$'}1\"}"
-                """.trimIndent()
-
-            "installapk" -> """#!/bin/sh
-                # AIDev install APK script
-                # Usage: installapk <apk_path>
-                if [ -z "${'$'}1" ] || [ ! -f "${'$'}1" ]; then
-                    echo "Usage: installapk <apk_path>"
-                    exit 1
-                fi
-                # resolve /host-home/ to real Android path
-                APK="${'$'}1"
-                case "${'$'}APK" in /host-home/*)
-                    APK="${'$'}{AIDEV_HOME}${'$'}{APK#/host-home}"
-                esac
-                REQ_DIR="${'$'}{AIDEV_HOME}/.aidev-cmd"
-                mkdir -p "${'$'}REQ_DIR"
-                echo "{\"action\":\"installapk\",\"path\":\"${'$'}APK\"}" > "${'$'}REQ_DIR/req-$(date +%s%N).json"
-                echo "{\"status\":\"success\",\"action\":\"install launched\",\"path\":\"${'$'}1\"}"
-                """.trimIndent()
-
-            "uninstallapp" -> """#!/bin/sh
-                # AIDev uninstall app script
-                # Usage: uninstallapp <package_name>
-                if [ -z "${'$'}1" ]; then
-                    echo "Usage: uninstallapp <package_name>"
-                    exit 1
-                fi
-                REQ_DIR="${'$'}{AIDEV_HOME}/.aidev-cmd"
-                mkdir -p "${'$'}REQ_DIR"
-                echo "{\"action\":\"uninstallapp\",\"package\":\"${'$'}1\"}" > "${'$'}REQ_DIR/req-$(date +%s%N).json"
-                echo "{\"status\":\"success\",\"action\":\"uninstall launched\",\"package\":\"${'$'}1\"}"
-                """.trimIndent()
-
             "sysclip" -> """#!/bin/sh
                 # AIDev clipboard script
                 # Usage: sysclip set <text>

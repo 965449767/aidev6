@@ -106,6 +106,11 @@ import com.aidev.six.terminal.TerminalCompletion
 import com.aidev.six.terminal.PerfSample
 import com.aidev.six.PathConfig
 import com.aidev.six.ProjectExporter
+import com.aidev.six.agent.BuildRequestTracker
+import com.aidev.six.agent.DeployRequestTracker
+import com.aidev.six.ProjectDetector
+import com.aidev.six.SyncCoordinator
+import com.aidev.six.ShizukuLogcat
 import java.io.File
 import com.aidev.six.ui.components.AppChip
 import kotlin.math.abs
@@ -182,6 +187,7 @@ fun TerminalPanel(
                     onMore = { showMoreSheet = true },
                     onTogglePerf = { showPerfHud = !showPerfHud },
                 )
+                TerminalActionBar(page, activity)
                 TerminalTabBar(page)
                 TerminalStatusBar(
                     page = page,
@@ -299,6 +305,135 @@ private fun TerminalTopBar(
 @Composable
 private fun TopBarButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     AppChip(text = label, onClick = onClick, modifier = modifier)
+}
+
+/**
+ * 终端底部动作栏：随 `cd` 变化自动识别当前 Android 项目，提供
+ * 「编译 / 安装 / 拉起」三按钮（不自动安装，遵循交付规则）。
+ * 目标项目解析：终端 pwd → SyncCoordinator.toAndroidDir → ProjectDetector.findProjectRoot，
+ * 回退到 currentProjectDir()。
+ */
+@Composable
+private fun TerminalActionBar(
+    page: EmbeddedTerminalPage,
+    activity: Activity,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    var pwd by remember { mutableStateOf(page.completionEngine.cachedCompletionPwd) }
+    var projectDir by remember { mutableStateOf<File?>(null) }
+    var pkgName by remember { mutableStateOf<String?>(null) }
+    var hasApk by remember { mutableStateOf(false) }
+
+    // 终端 cwd 变化不会驱动 Compose 重组，轮询 cachedCompletionPwd（仅在变化时更新）
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            val newPwd = page.completionEngine.cachedCompletionPwd
+            if (newPwd != pwd) pwd = newPwd
+        }
+    }
+
+    LaunchedEffect(pwd) {
+        val home = PathConfig.aidevHome(activity)
+        val androidDir = SyncCoordinator.toAndroidDir(pwd, home)
+        val base = androidDir ?: page.completionEngine.currentProjectDir()
+        val dir = base?.let { ProjectDetector.findProjectRoot(it) }
+        projectDir = dir
+        if (dir != null && ProjectDetector.isAndroidProject(dir)) {
+            pkgName = resolveProjectPackage(activity, dir)
+            hasApk = File(dir, "app/build/outputs/apk/debug/app-debug.apk").isFile
+        } else {
+            pkgName = null
+            hasApk = false
+        }
+    }
+
+    val isAndroid = projectDir != null && ProjectDetector.isAndroidProject(projectDir!!)
+    val canBuild = isAndroid
+    val canInstall = isAndroid && hasApk && pkgName != null
+    val canLaunch = pkgName != null
+
+    val disabledBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    val disabledFg = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AppChip(
+            text = if (isAndroid) "编译 ${projectDir!!.name}" else "编译",
+            onClick = {
+                if (!canBuild) return@AppChip
+                val dir = projectDir ?: return@AppChip
+                val stateFile = File(PathConfig.tasksDir(activity), "agent-tasks.json")
+                BuildRequestTracker().submit(
+                    context = activity,
+                    project = dir.name,
+                    stateFile = stateFile,
+                    autoInstall = false,
+                    autoLaunch = false,
+                ) {}
+                Toast.makeText(activity, "已提交构建：${dir.name}（不自动安装）", Toast.LENGTH_SHORT).show()
+            },
+            bgColor = if (canBuild) MaterialTheme.colorScheme.primaryContainer else disabledBg,
+            textColor = if (canBuild) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
+        )
+        AppChip(
+            text = if (hasApk) "安装" else "安装(无APK)",
+            onClick = {
+                if (!canInstall) return@AppChip
+                val dir = projectDir ?: return@AppChip
+                val apk = File(dir, "app/build/outputs/apk/debug/app-debug.apk").absolutePath
+                val pkg = pkgName ?: return@AppChip
+                val id = System.currentTimeMillis().toString()
+                DeployRequestTracker().submit(
+                    context = activity,
+                    id = id,
+                    apk = apk,
+                    pkg = pkg,
+                    launch = false,
+                ) {
+                    Toast.makeText(activity, "部署完成：$pkg", Toast.LENGTH_SHORT).show()
+                }
+            },
+            bgColor = if (canInstall) MaterialTheme.colorScheme.primaryContainer else disabledBg,
+            textColor = if (canInstall) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
+        )
+        AppChip(
+            text = if (pkgName != null) "拉起 $pkgName" else "拉起",
+            onClick = {
+                if (!canLaunch) return@AppChip
+                val pkg = pkgName ?: return@AppChip
+                scope.launch {
+                    ShizukuLogcat.executeCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                    Toast.makeText(activity, "已拉起：$pkg", Toast.LENGTH_SHORT).show()
+                }
+            },
+            bgColor = if (canLaunch) MaterialTheme.colorScheme.primaryContainer else disabledBg,
+            textColor = if (canLaunch) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
+        )
+    }
+}
+
+private fun resolveProjectPackage(ctx: Context, projectDir: File): String? {
+    for (rel in listOf("app/build.gradle.kts", "app/build.gradle")) {
+        val file = File(projectDir, rel)
+        if (file.isFile) {
+            val ns = Regex("""namespace\s*=\s*"([^"]+)"""").find(file.readText())?.groupValues?.getOrNull(1)
+            if (ns != null) return ns
+        }
+    }
+    val apk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
+    if (apk.isFile) {
+        val info = ctx.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+        if (info != null) return info.packageName
+    }
+    return null
 }
 
 @OptIn(ExperimentalFoundationApi::class)

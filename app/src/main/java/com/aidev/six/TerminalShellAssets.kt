@@ -118,16 +118,12 @@ object TerminalShellAssets {
             out.writeText("# AIDev command marker. Android 私有目录禁止直接执行脚本；实际入口由 .aidevrc 函数转发。\n")
             out.setReadable(true, false)
         }
-        // 系统控制脚本（通知、截图、音量、亮度、剪贴板、应用管理）
+        // 系统控制脚本（通知、截图、音量、亮度、剪贴板）
         writeSystemScript(bin, "sysnotify", "send notification")
         writeSystemScript(bin, "screencap", "take screenshot")
         writeSystemScript(bin, "volume", "control volume")
         writeSystemScript(bin, "brightness", "control brightness")
         writeSystemScript(bin, "sysclip", "clipboard get/set")
-        writeSystemScript(bin, "startapp", "start app")
-        writeSystemScript(bin, "stopapp", "stop app")
-        writeSystemScript(bin, "installapk", "install apk")
-        writeSystemScript(bin, "uninstallapp", "uninstall app")
         writeSystemScript(bin, "aidev-proxy", "proxy manager")
         // 两端共用脚本（agent 辅助 + 系统工具）
         UbuntuBootstrapScripts.agentHostScripts().forEach { (name, content) ->
@@ -279,8 +275,7 @@ object TerminalShellAssets {
             aidev-error-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-error-why "${'$'}@"; }
             aidev-index() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-index "${'$'}@"; }
             android-sh() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" android-sh "${'$'}@"; }
-            installapk() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" installapk "${'$'}@"; }
-            uninstallapp() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" uninstallapp "${'$'}@"; }
+            aidev-install() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-install "${'$'}@"; }
             aidev-clean() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-clean "${'$'}@"; }
             list-listen-ports() { /system/bin/sh "${'$'}AIDEV_BIN/list-listen-ports" "${'$'}@"; }
             task-list() { /system/bin/sh "${'$'}AIDEV_BIN/task-list" "${'$'}@"; }

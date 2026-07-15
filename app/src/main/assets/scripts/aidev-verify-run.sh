@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "  --pkg <包名>   要监控的应用包名（必填）"
             echo "  --window <秒>  崩溃监控窗口，默认 8 秒"
-            echo "  --launch       监控前先尝试启动应用（经 startapp）"
+            echo "  --launch       监控前先尝试拉起应用（经 aidev-shizuku launch）"
             echo ""
             echo "标准出口: stdout 打印 JSON {pkg,running,crashed,crash_log_path,window_ms,error}"
             exit 0 ;;
@@ -57,7 +57,7 @@ START=$(date +%s)
 
 # 可选：监控前先启动
 if [ "$DO_LAUNCH" = true ]; then
-    startapp "$PKG" 2>/dev/null || aidev-shizuku exec "monkey -p $PKG -c android.intent.category.LAUNCHER 1" 2>/dev/null || true
+    aidev-shizuku launch "$PKG" 2>/dev/null || true
     sleep 1
 fi
 

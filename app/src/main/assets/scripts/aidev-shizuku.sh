@@ -3,6 +3,7 @@
 # 子命令:
 #   exec '<command>'         执行任意 shell 命令
 #   install <apk_path>       静默安装 APK
+#   launch <pkg>             拉起指定包名的应用
 #   input keyevent <key>     模拟按键
 #   input tap <x> <y>        模拟点击
 #   wifi on|off              WiFi 开关
@@ -65,6 +66,14 @@ case "$SUBCOMMAND" in
       *) echo "用法: aidev-shizuku battery level N|reset"; exit 1 ;;
     esac
     ;;
+  launch)
+    PKG="$1"
+    if [ -z "$PKG" ]; then
+      echo "用法: aidev-shizuku launch <package_name>"
+      exit 1
+    fi
+    CMD="monkey -p '$PKG' -c android.intent.category.LAUNCHER 1"
+    ;;
   status)
     echo "Shizuku 状态: 桥接通道正常 (在 AIDev Terminal 中)"
     exit 0
@@ -75,6 +84,7 @@ case "$SUBCOMMAND" in
     echo "子命令:"
     echo "  exec '<command>'         执行任意 shell 命令"
     echo "  install <apk_path>       静默安装 APK"
+    echo "  launch <pkg>             拉起指定包名的应用"
     echo "  input keyevent <key>     模拟按键"
     echo "  input tap <x> <y>        模拟点击"
     echo "  wifi on|off              WiFi 开关"

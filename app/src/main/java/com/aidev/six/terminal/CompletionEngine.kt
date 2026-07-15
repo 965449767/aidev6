@@ -172,10 +172,6 @@ class CompletionEngine(
         TerminalCompletion("volume", "volume", "CMD"),
         TerminalCompletion("brightness", "brightness", "CMD"),
         TerminalCompletion("sysclip", "sysclip", "CMD"),
-        TerminalCompletion("startapp", "startapp", "CMD"),
-        TerminalCompletion("stopapp", "stopapp", "CMD"),
-        TerminalCompletion("installapk", "installapk", "CMD"),
-        TerminalCompletion("uninstallapp", "uninstallapp", "CMD"),
 
         // Shell utilities
         TerminalCompletion("list-listen-ports", "list-listen-ports", "CMD"),
