@@ -18,6 +18,56 @@ REQUEST_DIR="$BRIDGE_DIR/request"
 RESULT_DIR="$BRIDGE_DIR/result"
 mkdir -p "$REQUEST_DIR" "$RESULT_DIR"
 
+# 经 Shizuku 桥执行一条「单一、无 shell 元字符」命令（socket 优先，文件通道兜底）。
+# 返回 0 表示桥执行成功（退出码 0），1 表示被安全策略拒绝/执行失败/超时。
+# 注意：ShizukuBridgeService.isCommandAllowed 仅放行单一「前缀白名单」命令且禁止
+# 任何 shell 元字符（; & | $ ` ( ) < > 等），故 cp 与 pm install 必须拆成两次独立请求。
+shizuku_exec() {
+  _CMD="$1"
+  _PAYLOAD="TYPE=exec
+COMMAND=$_CMD"
+  _RESP=""
+  if command -v aidev-bridge >/dev/null 2>&1; then
+    _RESP=$(aidev-bridge send shizuku "$_PAYLOAD" 2>/dev/null) || true
+    if [ -n "$_RESP" ]; then
+      echo "命令: $_CMD"
+      echo "$_RESP"
+      case "$_RESP" in
+        ERROR:*) return 1 ;;
+      esac
+      return 0
+    fi
+  fi
+  # ── 文件通道兜底 ──
+  _REQ_ID="exec_$(date +%s%N)_$$"
+  _REQ_FILE="$REQUEST_DIR/$_REQ_ID"
+  _RES_FILE="$RESULT_DIR/$_REQ_ID"
+  cat > "$_REQ_FILE" <<EOF
+TYPE=exec
+COMMAND=$_CMD
+EOF
+  echo "命令: $_CMD"
+  echo "等待执行结果..."
+  _WAITED=0
+  while [ ! -s "$_RES_FILE" ] && [ "$_WAITED" -lt 30 ]; do
+    sleep 1
+    _WAITED=$((_WAITED + 1))
+    if [ -f "$_RES_FILE" ] && grep -q "^ERROR:" "$_RES_FILE" 2>/dev/null; then
+      cat "$_RES_FILE"
+      rm -f "$_REQ_FILE" "$_RES_FILE"
+      return 1
+    fi
+  done
+  if [ ! -s "$_RES_FILE" ]; then
+    echo "ERROR: 请求超时。Shizuku 可能未运行或未授权。"
+    rm -f "$_REQ_FILE" "$_RES_FILE"
+    return 1
+  fi
+  cat "$_RES_FILE"
+  rm -f "$_REQ_FILE" "$_RES_FILE"
+  return 0
+}
+
 SUBCOMMAND="${1:-}"
 shift 2>/dev/null || true
 
@@ -37,12 +87,19 @@ case "$SUBCOMMAND" in
     fi
     APK_PATH=$(readlink -f "$APK_PATH")
     SAFE_NAME=$(basename "$APK_PATH" | sed 's/[^a-zA-Z0-9._-]/_/g')
-    TMP_PATH="/data/local/tmp/aidev-install-$SAFE_NAME"
-    # 转义 APK_PATH 中的单引号防止 shell 逃逸
-    APK_PATH_ESC=$(echo "$APK_PATH" | sed "s/'/'\\\\''/g")
-    # HyperOS/MIUI: pm install 需 --user 0 否则查用户报 MANAGE_USERS 权限错；
-    # 用 pm 的真实退出码判断成败，不再取末尾 rm 的退出码（否则永远显示成功）
-    CMD="cp '$APK_PATH_ESC' '$TMP_PATH' && pm install -r -d --user 0 '$TMP_PATH'; RC=\$?; rm -f '$TMP_PATH'; exit \$RC"
+    # 直接使用源文件名的净化版作 tmp 名，避免重复前缀（如 aidev-install-aidev-install-*.apk）
+    TMP_PATH="/data/local/tmp/$SAFE_NAME"
+    # 转义单引号防止 shell 逃逸
+    APK_PATH_ESC=$(printf '%s' "$APK_PATH" | sed "s/'/'\\\\''/g")
+    TMP_PATH_ESC=$(printf '%s' "$TMP_PATH" | sed "s/'/'\\\\''/g")
+    # HyperOS/MIUI: pm install 需 --user 0 否则查用户报 MANAGE_USERS 权限错。
+    # 安全护栏禁止 shell 元字符，故 cp 与 pm install 拆成两次独立请求。
+    echo "→ 复制到 $TMP_PATH"
+    shizuku_exec "cp '$APK_PATH_ESC' '$TMP_PATH_ESC'" || exit 1
+    echo "→ 静默安装 (Shizuku)..."
+    shizuku_exec "pm install -r -d --user 0 '$TMP_PATH_ESC'" || exit 1
+    echo "→ 安装完成"
+    exit 0
     ;;
   input)
     CMD="input $*"
@@ -77,8 +134,9 @@ case "$SUBCOMMAND" in
   status)
     echo "正在检测 Shizuku 桥接..."
     local out
-    out=$(aidev-shizuku exec "echo shizuku-ok" 2>&1) || true
-    if echo "$out" | grep -q "shizuku-ok"; then
+    # getprop 在白名单内且返回数字；echo 不在白名单会被安全护栏拒绝
+    out=$(aidev-shizuku exec "getprop ro.build.version.sdk" 2>&1) || true
+    if echo "$out" | grep -qE '[0-9]+'; then
       echo "Shizuku 状态: 正常 (桥接通道可用，可静默安装)"
     else
       echo "Shizuku 状态: 未响应/未授权。"
