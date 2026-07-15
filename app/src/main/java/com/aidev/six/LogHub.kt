@@ -1,6 +1,8 @@
 package com.aidev.six
 
+import java.io.BufferedWriter
 import java.io.File
+import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -16,27 +18,45 @@ import java.util.Locale
  */
 object LogHub {
 
-    private val tsFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
     private val dateFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
     // ─── 日志写入 ────────────────────────────────
 
     class LogWriter(@JvmField var file: File, private val tag: String) {
         private val startTime = System.currentTimeMillis()
+        private val tsFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+        private var writer: BufferedWriter? = null
+        private var lastFlush = startTime
 
+        @Synchronized
         fun append(line: String) {
             val elapsed = System.currentTimeMillis() - startTime
             val ts = tsFmt.format(Date())
-            file.appendText("[$ts +${elapsed}ms] $line\n")
+            ensureOpen()
+            writer!!.append("[$ts +${elapsed}ms] $line\n")
+            val now = System.currentTimeMillis()
+            if (now - lastFlush > 1000) {
+                writer!!.flush()
+                lastFlush = now
+            }
         }
 
+        @Synchronized
         fun finish() {
             val total = System.currentTimeMillis() - startTime
-            append("=== 完成 (${total}ms) ===")
+            ensureOpen()
+            writer!!.append("=== 完成 (${total}ms) ===\n")
+            writer!!.flush()
+            writer!!.close()
+            writer = null
         }
 
         /** 移动日志文件到指定目录（用于 crash 日志解析出 pkg 后归位）。 */
+        @Synchronized
         fun moveTo(targetDir: File, newName: String): File {
+            writer?.flush()
+            writer?.close()
+            writer = null
             val oldFile = file
             if (!oldFile.exists()) return file
             if (!targetDir.isDirectory) targetDir.mkdirs()
@@ -46,6 +66,10 @@ object LogHub {
                 file = target
             }
             return target
+        }
+
+        private fun ensureOpen() {
+            if (writer == null) writer = BufferedWriter(FileWriter(file, true))
         }
     }
 

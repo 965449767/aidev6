@@ -2,7 +2,6 @@ package com.aidev.six.terminal
 
 import android.os.Handler
 import android.os.Looper
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Buffers IME / key input and flushes it to the PTY in batches.
@@ -18,13 +17,13 @@ class TerminalInputBuffer(
     private val monitor: TerminalPerfMonitor? = null,
 ) {
     private val handler = Handler(Looper.getMainLooper())
-    private val sb = AtomicReference(StringBuilder())
+    private var sb = StringBuilder()
 
     private val flushRunnable = Runnable { flushNow() }
 
     fun append(text: String) {
         if (text.isEmpty()) return
-        sb.get().append(text)
+        synchronized(this) { sb.append(text) }
         handler.removeCallbacks(flushRunnable)
         handler.postDelayed(flushRunnable, FLUSH_MS)
     }
@@ -32,9 +31,14 @@ class TerminalInputBuffer(
     /** Write any pending input immediately (focus loss / command send / paste). */
     fun flushNow() {
         handler.removeCallbacks(flushRunnable)
-        val b = sb.getAndSet(StringBuilder())
-        if (b.isNotEmpty()) {
-            val chunk = b.toString()
+        val chunk = synchronized(this) {
+            if (sb.isEmpty()) "" else {
+                val c = sb.toString()
+                sb = StringBuilder()
+                c
+            }
+        }
+        if (chunk.isNotEmpty()) {
             write(chunk)
             monitor?.onInputFlush(chunk.toByteArray().size)
         }
@@ -42,7 +46,7 @@ class TerminalInputBuffer(
 
     fun dispose() {
         handler.removeCallbacks(flushRunnable)
-        sb.set(StringBuilder())
+        synchronized(this) { sb = StringBuilder() }
     }
 
     companion object {

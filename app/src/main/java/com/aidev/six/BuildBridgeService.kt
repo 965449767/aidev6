@@ -123,7 +123,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]?.let { activeJobs[id] = it }
         val project = (json.optString("project", "MyAndroidProject") ?: "MyAndroidProject").let { if (it.isBlank()) "MyAndroidProject" else it }
 
-        val log = StringBuilder()
+        val log = StringBuffer()
         val logWriter = LogHub.openBuildLog(PathConfig.logsDir(ctx), project)
         val timer = LogHub.StepTimer(logWriter)
         val gradleFilter = LogHub.GradleFilter()
@@ -158,6 +158,8 @@ object BuildBridgeService : BridgeService("BuildBridge") {
 
         val append: (String) -> Unit = { line ->
             log.appendLine(line)
+            // 限长：保留最近输出，避免长构建无限增长（agent-task UI 仅展示最近 6KB）
+            if (log.length > 24000) log.delete(0, log.length - 16000)
             // Gradle 输出过滤：减少噪音，保留关键信息
             if (gradleFilter.shouldKeep(line)) {
                 logWriter.append(line)
@@ -1070,7 +1072,7 @@ include(":app")"""
         append("→ 宇宙 B JDK17: ${if (javaExit == 0) "OK" else "返回非零(可重试)"}")
     }
 
-    private fun finish(ctx: Context, id: String, success: Boolean, message: String, log: StringBuilder, reqFile: File, apkPath: String? = null, logPath: String? = null, pkg: String? = null, project: String) {
+    private fun finish(ctx: Context, id: String, success: Boolean, message: String, log: CharSequence, reqFile: File, apkPath: String? = null, logPath: String? = null, pkg: String? = null, project: String) {
         val result = JSONObject().apply {
             put("id", id)
             put("success", success)

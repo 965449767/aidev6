@@ -87,13 +87,13 @@ class BuildBridgeServiceTest {
         val reqFile = File(tempDir, "req-build-9.json").apply { writeText("{}") }
         val finishMethod = BuildBridgeService::class.java.getDeclaredMethod(
             "finish", Context::class.java, String::class.java, Boolean::class.java, String::class.java,
-            StringBuilder::class.java, File::class.java, String::class.java, String::class.java,
+            CharSequence::class.java, File::class.java, String::class.java, String::class.java,
             String::class.java, String::class.java
         )
         finishMethod.isAccessible = true
         finishMethod.invoke(
             BuildBridgeService, mock(Context::class.java), "build-9", true, "构建成功: /x/app-debug.apk",
-            StringBuilder("ok"), reqFile, "/x/app-debug.apk", "/x/build.log", "com.x.app", "MyApp"
+            StringBuffer("ok"), reqFile, "/x/app-debug.apk", "/x/build.log", "com.x.app", "MyApp"
         )
 
         val result = File(tempDir, "result-build-9.json")

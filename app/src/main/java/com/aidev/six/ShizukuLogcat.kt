@@ -325,9 +325,10 @@ object ShizukuLogcat {
         if (method == null) {
             return@withContext ShellResult("", "Shizuku API 不兼容", -1)
         }
+        var process: java.lang.Process? = null
         try {
             withTimeout(60_000L) {
-                val process = method.invoke(
+                process = method.invoke(
                     null,
                     arrayOf("sh", "-c", cmd),
                     null,
@@ -357,6 +358,14 @@ object ShizukuLogcat {
         } catch (e: Exception) {
             Log.e(TAG, "Shizuku exec failed", e)
             ShellResult("", "Shizuku 执行异常: ${e.message ?: "未知错误"}", -1)
+        } finally {
+            // Ensure the Shizuku process is always reaped, even on timeout/exception
+            // (createProcess runs inside withTimeout, so a timeout would otherwise leak it).
+            try {
+                process?.destroyForcibly()
+                process?.waitFor(5, TimeUnit.SECONDS)
+            } catch (_: Exception) {
+            }
         }
     }
 

@@ -48,7 +48,7 @@ class SessionManager(
 ) {
     companion object {
         private const val TAG = "SessionManager"
-        private var shellAssetsDeployed = false
+        @Volatile private var shellAssetsDeployed = false
         private const val PREFS_KEY_COUNT = "terminal_session_count"
         private const val PREFS_KEY_SESSION = "terminal_session_"
         private const val MAX_SESSIONS = 8
