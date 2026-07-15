@@ -17,6 +17,10 @@ DEPLOY_SCRIPT_VERSION="aidev-deploy 1.0.0 (clean_output fix; source aidev6 f011e
 
 set -u
 
+# 任何未预期退出都尽力回传结构化 JSON，避免 DeployBridge 解析为 null → 按钮显示「未知原因」
+EMITTED=false
+trap 'if [ "$EMITTED" != true ]; then emit false false null "aidev-deploy 异常退出(rc=$?)"; fi' EXIT
+
 APK=""
 PKG=""
 LAUNCH=true
@@ -44,6 +48,7 @@ done
 
 emit() {
     # $1=installed $2=launched $3=activity(|null) $4=error(|"")
+    EMITTED=true
     local installed="$1" launched="$2" activity="$3" err="${4:-}"
     local err_json
     if [ -z "$err" ]; then err_json="null"; else err_json="\"$err\""; fi

@@ -339,12 +339,15 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             if (activity != null) append("   组件: $activity")
         }
 
+        val rawTail = result.stdout.takeLast(400)
         val message = when {
             success && launched -> "部署成功：已安装并拉起"
             success && !launch -> "部署成功：已安装"
-            installed && !launched -> "已安装，但拉起失败"
-            else -> "部署失败：${error ?: "未知原因"}"
+            installed && !launched -> "已安装，但拉起失败：${error ?: ""}"
+            deploy == null -> "部署失败：aidev-deploy 未输出结构化结果。原始输出：\n$rawTail"
+            else -> "部署失败：${error ?: "未知原因"}。原始输出：\n$rawTail"
         }
+        if (!success) AIDevLogger.i("DeployBridge", "request $id 失败 rawStdout=\n${result.stdout.takeLast(1500)}")
 
         val finalStatus = if (success) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED
         publish(finalStatus, if (success) 0 else 1, System.currentTimeMillis(), steps, logText)
