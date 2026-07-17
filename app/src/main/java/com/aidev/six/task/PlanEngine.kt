@@ -1,43 +1,43 @@
-package com.aidev.six.agent
+package com.aidev.six.task
 
 /**
  * 纯逻辑的分步任务执行引擎，不依赖 Android 运行时。
  * 负责按顺序执行步骤、失败即停、聚合日志与步骤状态，便于单元测试。
  */
-internal object AgentPlanEngine {
+internal object PlanEngine {
 
     data class StepOutput(val exitCode: Int, val output: String, val failure: Throwable? = null)
 
     data class PlanOutcome(
-        val status: AgentTaskStatus,
-        val steps: List<AgentTaskStepResult>,
+        val status: TaskStatus,
+        val steps: List<TaskStepResult>,
         val exitCode: Int,
         val log: String,
     )
 
     fun execute(
-        plan: AgentTaskPlan,
+        plan: TaskPlan,
         isCancelled: () -> Boolean,
-        onProgress: (steps: List<AgentTaskStepResult>, log: String) -> Unit = { _, _ -> },
-        exec: (step: AgentTaskStep, onLine: (String) -> Unit) -> StepOutput,
+        onProgress: (steps: List<TaskStepResult>, log: String) -> Unit = { _, _ -> },
+        exec: (step: TaskStep, onLine: (String) -> Unit) -> StepOutput,
     ): PlanOutcome {
         val logBuilder = StringBuilder()
         val stepResults = plan.steps
-            .map { AgentTaskStepResult(name = it.name, status = AgentTaskStatus.PENDING) }
+            .map { TaskStepResult(name = it.name, status = TaskStatus.PENDING) }
             .toMutableList()
 
         onProgress(stepResults.toList(), logBuilder.toString())
 
-        var overallStatus = AgentTaskStatus.SUCCEEDED
+        var overallStatus = TaskStatus.SUCCEEDED
         var lastExitCode = 0
 
         for ((index, step) in plan.steps.withIndex()) {
             if (isCancelled()) {
-                overallStatus = AgentTaskStatus.CANCELLED
+                overallStatus = TaskStatus.CANCELLED
                 break
             }
 
-            stepResults[index] = stepResults[index].copy(status = AgentTaskStatus.RUNNING)
+            stepResults[index] = stepResults[index].copy(status = TaskStatus.RUNNING)
             logBuilder.append("▶ 步骤 ${index + 1}/${plan.steps.size}：${step.name}\n")
             onProgress(stepResults.toList(), logBuilder.toString())
 
@@ -58,31 +58,31 @@ internal object AgentPlanEngine {
             )
 
             when (stepStatus) {
-                AgentTaskStatus.SUCCEEDED -> logBuilder.append("✔ 步骤完成：${step.name}\n\n")
-                AgentTaskStatus.CANCELLED -> {
+                TaskStatus.SUCCEEDED -> logBuilder.append("✔ 步骤完成：${step.name}\n\n")
+                TaskStatus.CANCELLED -> {
                     logBuilder.append("■ 已取消：${step.name}\n")
-                    overallStatus = AgentTaskStatus.CANCELLED
+                    overallStatus = TaskStatus.CANCELLED
                 }
                 else -> {
                     val reason = result.failure?.message?.let { "：$it" } ?: ""
                     logBuilder.append("✖ 步骤失败：${step.name} (exit=${result.exitCode})$reason\n")
                     logBuilder.append("↳ 已停止后续步骤\n")
-                    overallStatus = AgentTaskStatus.FAILED
+                    overallStatus = TaskStatus.FAILED
                 }
             }
 
             onProgress(stepResults.toList(), logBuilder.toString())
-            if (stepStatus != AgentTaskStatus.SUCCEEDED) break
+            if (stepStatus != TaskStatus.SUCCEEDED) break
         }
 
-        val finalExitCode = if (overallStatus == AgentTaskStatus.SUCCEEDED) 0 else lastExitCode
+        val finalExitCode = if (overallStatus == TaskStatus.SUCCEEDED) 0 else lastExitCode
         return PlanOutcome(overallStatus, stepResults.toList(), finalExitCode, logBuilder.toString())
     }
 
-    private fun resolveStatus(cancelled: Boolean, result: StepOutput): AgentTaskStatus = when {
-        cancelled -> AgentTaskStatus.CANCELLED
-        result.failure != null -> AgentTaskStatus.FAILED
-        result.exitCode == 0 -> AgentTaskStatus.SUCCEEDED
-        else -> AgentTaskStatus.FAILED
+    private fun resolveStatus(cancelled: Boolean, result: StepOutput): TaskStatus = when {
+        cancelled -> TaskStatus.CANCELLED
+        result.failure != null -> TaskStatus.FAILED
+        result.exitCode == 0 -> TaskStatus.SUCCEEDED
+        else -> TaskStatus.FAILED
     }
 }

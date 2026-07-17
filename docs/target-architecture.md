@@ -56,7 +56,7 @@ AIDev
 
 > **AI Provider 写死**：原 `OpenCode` 经固定 `Constants.OPENCODE_BASE_URL="http://127.0.0.1:4096"` + SSE 直连，无 Provider 抽象。
 
-其余 5 条（Service 过多、Bridge 混层、无状态机、无事件总线、Bootstrap 过重）经代码核实**多数已存在对应结构**（Bridge 三层、`AgentTaskStatus`/`BuildProgress.Phase` 状态枚举、`TerminalCommandBus` + 任务流），属评审误判。详见 `ARCHITECTURE_REVIEW.md`。
+其余 5 条（Service 过多、Bridge 混层、无状态机、无事件总线、Bootstrap 过重）经代码核实**多数已存在对应结构**（Bridge 三层、`TaskStatus`/`BuildProgress.Phase` 状态枚举、`TerminalCommandBus` + 任务流），属评审误判。详见 `ARCHITECTURE_REVIEW.md`。
 
 ### AI / OpenCode 处理结论（2026-07-17 彻底清除）
 

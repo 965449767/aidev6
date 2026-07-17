@@ -369,5 +369,5 @@ Phase F 目标：把「自我进化闭环」（`宇宙A 写码` → `宇宙B 编
 ### Consequences
 
 - 宿主运行时对 AI 写码工具零耦合：无 4096 端口绑定、无 SSE 监听、无通知中止按钮、无命令部署；终端在无任何 AI Agent 时完整可用。
-- `agent/` 包（`AgentTaskRunner` 等）作为纯人类任务执行基础设施保留，仅注释去 Agent 味；`agent/`→`task/` 改名留待下次单独任务。
+- `agent/` 包（`AgentTaskRunner` 等）作为纯人类任务执行基础设施保留，已重命名为 `task/` 包（`TaskRunner`/`TaskStore`/`PlanEngine`/`BuildProgress`/`ProjectTaskLock`），类与标识符去 Agent 味，无功能改动。
 - 验证全绿：`compileDebugKotlin` / `testDebugUnitTest` / `app/src/test/sh/run.sh`（65→63，删 2 个 opencode 测试）/ `scripts/harness_check.sh` / `assembleDebug`。

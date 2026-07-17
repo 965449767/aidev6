@@ -1,24 +1,24 @@
-package com.aidev.six.agent
+package com.aidev.six.task
 
 import org.junit.Test
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class AgentTaskPlanTest {
+class TaskPlanTest {
 
     @Test
     fun androidPlanBuildsSequentialSteps() {
-        val plan = AgentTaskPlan.fromTemplate(
+        val plan = TaskPlan.fromTemplate(
             name = "Android 闭环",
             description = "构建并验证 Android 项目",
-            template = AgentTaskTemplate(
+            template = TaskTemplate(
                 id = "android-loop",
                 name = "Android 闭环",
                 description = "构建并验证 Android 项目",
                 steps = listOf(
-                    AgentTaskStep("构建", "./gradlew assembleDebug"),
-                    AgentTaskStep("测试", "./gradlew test")
+                    TaskStep("构建", "./gradlew assembleDebug"),
+                    TaskStep("测试", "./gradlew test")
                 )
             )
         )

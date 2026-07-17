@@ -42,9 +42,9 @@
 
 ## 5. 构建与部署（人类驱动）
 
-- `BuildBridgeService` / `DeployBridgeService`：编译与部署黑盒，状态经 `agent-tasks.json` 单一真源回流。
+- `BuildBridgeService` / `DeployBridgeService`：编译与部署黑盒，状态经 `task-records.json` 单一真源回流。
 - 唯一构建入口为终端命令 `aidev-build-request --project <路径>`（App「编译」按钮即向终端会话写入该命令）；构建失败仅把完整日志落到 `logs/<project>/last-build-failure.log`，不自动改写工程文件、不写 AI 回流。
-- `agent/AgentTaskRunner`（`object` 单例）：执行 shell 命令，带超时与 `destroyForcibly()` 强制取消，防挂死。
+- `task/TaskRunner`（`object` 单例）：执行 shell 命令，带超时与 `destroyForcibly()` 强制取消，防挂死。
 
 ## 6. 关键约束
 

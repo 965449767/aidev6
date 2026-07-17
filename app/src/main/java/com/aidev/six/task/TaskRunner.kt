@@ -1,4 +1,4 @@
-package com.aidev.six.agent
+package com.aidev.six.task
 
 import android.os.Handler
 import android.os.Looper
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 单例：避免随 Composable 重组反复 `newSingleThreadExecutor()` 造成的 executor 泄漏与 cancel 失效。
  * 整 App 生命周期内复用同一线程，任务顺序执行。
  */
-internal object AgentTaskRunner {
+internal object TaskRunner {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val activeProcesses = ConcurrentHashMap<String, Process>()
@@ -24,7 +24,7 @@ internal object AgentTaskRunner {
 
     private data class ExecResult(val exitCode: Int, val output: String, val failure: Throwable? = null)
 
-    fun runTask(definition: AgentTaskDefinition, stateFile: File, onUpdate: (AgentTaskRecord) -> Unit) {
+    fun runTask(definition: TaskDefinition, stateFile: File, onUpdate: (TaskRecord) -> Unit) {
         executor.execute {
             val startedAt = System.currentTimeMillis()
             val cancellationFlag = AtomicBoolean(false)
@@ -32,27 +32,27 @@ internal object AgentTaskRunner {
             if (cancelledIds.contains(definition.id)) cancellationFlag.set(true)
 
             val logBuilder = StringBuilder()
-            fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long) {
-                val record = AgentTaskRecord(
+            fun publish(status: TaskStatus, exitCode: Int, finishedAt: Long) {
+                val record = TaskRecord(
                     definition = definition,
                     status = status,
                     startedAt = startedAt,
                     finishedAt = finishedAt,
                     exitCode = exitCode,
                     log = logBuilder.toString().ifBlank {
-                        if (status == AgentTaskStatus.RUNNING) "任务执行中…" else "任务已完成"
+                        if (status == TaskStatus.RUNNING) "任务执行中…" else "任务已完成"
                     },
                     lastUpdatedAt = System.currentTimeMillis()
                 )
-                AgentTaskStore.upsertTask(stateFile, record, limit = 12)
+                TaskStore.upsertTask(stateFile, record, limit = 12)
                 mainHandler.post { onUpdate(record) }
             }
 
-            publish(AgentTaskStatus.RUNNING, -1, 0L)
+            publish(TaskStatus.RUNNING, -1, 0L)
 
             val result = execProcess(definition.id, definition.command, definition.workingDirectory, cancellationFlag) { line ->
                 logBuilder.append(line).append('\n')
-                publish(AgentTaskStatus.RUNNING, -1, 0L)
+                publish(TaskStatus.RUNNING, -1, 0L)
             }
 
             activeCancellationFlags.remove(definition.id)
@@ -64,14 +64,14 @@ internal object AgentTaskRunner {
         }
     }
 
-    fun runPlan(plan: AgentTaskPlan, workingDirectory: String, stateFile: File, tags: List<String>, onUpdate: (AgentTaskRecord) -> Unit) {
+    fun runPlan(plan: TaskPlan, workingDirectory: String, stateFile: File, tags: List<String>, onUpdate: (TaskRecord) -> Unit) {
         executor.execute {
             val startedAt = System.currentTimeMillis()
             val cancellationFlag = AtomicBoolean(false)
             activeCancellationFlags[plan.id] = cancellationFlag
             if (cancelledIds.contains(plan.id)) cancellationFlag.set(true)
 
-            val definition = AgentTaskDefinition(
+            val definition = TaskDefinition(
                 id = plan.id,
                 name = plan.name,
                 description = plan.description,
@@ -80,8 +80,8 @@ internal object AgentTaskRunner {
                 tags = tags
             )
 
-            fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, log: String, steps: List<AgentTaskStepResult>) {
-                val record = AgentTaskRecord(
+            fun publish(status: TaskStatus, exitCode: Int, finishedAt: Long, log: String, steps: List<TaskStepResult>) {
+                val record = TaskRecord(
                     definition = definition,
                     status = status,
                     startedAt = startedAt,
@@ -91,17 +91,17 @@ internal object AgentTaskRunner {
                     lastUpdatedAt = System.currentTimeMillis(),
                     steps = steps
                 )
-                AgentTaskStore.upsertTask(stateFile, record, limit = 12)
+                TaskStore.upsertTask(stateFile, record, limit = 12)
                 mainHandler.post { onUpdate(record) }
             }
 
-            val outcome = AgentPlanEngine.execute(
+            val outcome = PlanEngine.execute(
                 plan = plan,
                 isCancelled = { cancellationFlag.get() },
-                onProgress = { steps, log -> publish(AgentTaskStatus.RUNNING, -1, 0L, log, steps) },
+                onProgress = { steps, log -> publish(TaskStatus.RUNNING, -1, 0L, log, steps) },
                 exec = { step, onLine ->
                     val result = execProcess(plan.id, step.command, workingDirectory, cancellationFlag, onLine = onLine)
-                    AgentPlanEngine.StepOutput(result.exitCode, result.output, result.failure)
+                    PlanEngine.StepOutput(result.exitCode, result.output, result.failure)
                 }
             )
 
@@ -129,7 +129,7 @@ internal object AgentTaskRunner {
         // 安全护栏：拦截危险命令 / 对受保护路径的破坏性写（非交互上下文无人工确认，直接失败）
         val guard = SafeCommandGuard.check(command)
         if (guard.verdict != SafeCommandGuard.Verdict.ALLOW) {
-            AIDevLogger.w("AgentTaskRunner", "SafeCommandGuard 拦截命令: ${guard.reason}")
+            AIDevLogger.w("TaskRunner", "SafeCommandGuard 拦截命令: ${guard.reason}")
             return ExecResult(-1, "", IllegalStateException("SafeCommandGuard 拦截：${guard.reason}"))
         }
         return try {
@@ -175,11 +175,11 @@ internal object AgentTaskRunner {
         }
     }
 
-    private fun resolveStatus(cancellationFlag: AtomicBoolean, result: ExecResult): AgentTaskStatus = when {
-        cancellationFlag.get() -> AgentTaskStatus.CANCELLED
-        result.failure != null -> AgentTaskStatus.FAILED
-        result.exitCode == 0 -> AgentTaskStatus.SUCCEEDED
-        else -> AgentTaskStatus.FAILED
+    private fun resolveStatus(cancellationFlag: AtomicBoolean, result: ExecResult): TaskStatus = when {
+        cancellationFlag.get() -> TaskStatus.CANCELLED
+        result.failure != null -> TaskStatus.FAILED
+        result.exitCode == 0 -> TaskStatus.SUCCEEDED
+        else -> TaskStatus.FAILED
     }
 
     private fun appendOutcome(logBuilder: StringBuilder, cancellationFlag: AtomicBoolean, result: ExecResult) {

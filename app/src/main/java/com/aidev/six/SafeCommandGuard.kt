@@ -1,7 +1,7 @@
 package com.aidev.six
 
 /**
- * 命令安全护栏：在 [com.aidev.six.agent.AgentTaskRunner] 通过
+ * 命令安全护栏：在 [com.aidev.six.task.TaskRunner] 通过
  * `/system/bin/sh -c <command>` 执行命令前做校验，防止跑出毁灭性命令。
  *
  * 规则是单一事实源；[scripts.safe_bash_guard] 的 shell 版仅作 PRoot 终端可选 wrapper，需与这里保持一致。

@@ -1,11 +1,11 @@
 package com.aidev.six
 
 import android.content.Context
-import com.aidev.six.agent.AgentTaskDefinition
-import com.aidev.six.agent.AgentTaskRecord
-import com.aidev.six.agent.AgentTaskStatus
-import com.aidev.six.agent.AgentTaskStepResult
-import com.aidev.six.agent.AgentTaskStore
+import com.aidev.six.task.TaskDefinition
+import com.aidev.six.task.TaskRecord
+import com.aidev.six.task.TaskStatus
+import com.aidev.six.task.TaskStepResult
+import com.aidev.six.task.TaskStore
 import com.aidev.six.terminal.ProotLauncher
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -18,14 +18,14 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 部署桥（黑盒2 落地）。
  *
- * 「服务器中心」面板的「安装 / 拉起」按钮，以及宇宙 A（OpenCode）终端的 `aidev-deploy` 命令，
+ * 「服务器中心」面板的「安装 / 拉起」按钮，以及终端的 `aidev-deploy` 命令，
  * 都走同一套标准入口/出口，保证服务一致性：
  *
  *   标准入口: 写入 home/.aidev-deploy-bridge/req-<id>.json
  *     { "id", "apk": "<宿主绝对路径>", "pkg": "<包名>", "launch": true/false }
- *   本服务轮询该目录，在【宇宙 A（agent rootfs）】内执行 `aidev-deploy --apk ... --pkg ...`，
+ *   本服务轮询该目录，在【Ubuntu rootfs】内执行 `aidev-deploy --apk ... --pkg ...`，
  *   解析其标准出口 JSON（{installed,launched,activity,error}），把进度/结果作为单一真源写入
- *   agent-tasks.json（AF 面板轮询即看到一致过程），并写回 result-<id>.json。
+ *   task-records.json（AF 面板轮询即看到一致过程），并写回 result-<id>.json。
  *
  * 部署黑盒的实现（Shizuku 静默安装 / 启动 / 二次校验）完全由 aidev-deploy 负责，本服务不越界。
  */
@@ -196,27 +196,27 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         val pkg = json.optString("pkg", "")
         val launch = json.optBoolean("launch", true)
 
-        val stateFile = File(PathConfig.tasksDir(ctx), "agent-tasks.json")
+        val stateFile = File(PathConfig.tasksDir(ctx), "task-records.json")
 
         // MD5 握手 + Fail-Fast：脚本缺失/损坏时直接回报错误，避免闭环误判「已成功」
         val scriptErr = validateDeployScript(PathConfig.aidevHome(ctx))
         if (scriptErr != null) {
             processingFile.delete()
-            val rec = AgentTaskRecord(
-                definition = AgentTaskDefinition(
+            val rec = TaskRecord(
+                definition = TaskDefinition(
                     id = "deploy-$id", name = "部署 $pkg",
                     description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
                     command = "aidev-deploy --apk $apk --pkg $pkg${if (launch) " --launch" else " --no-launch"}",
                     workingDirectory = PathConfig.workspaceDir(ctx).absolutePath,
                     tags = listOf("deploy", "self-evolution")
                 ),
-                status = AgentTaskStatus.FAILED, startedAt = System.currentTimeMillis(),
+                status = TaskStatus.FAILED, startedAt = System.currentTimeMillis(),
                 finishedAt = System.currentTimeMillis(), exitCode = 1,
                 log = scriptErr.takeLast(6000),
                 lastUpdatedAt = System.currentTimeMillis(),
-                steps = listOf(AgentTaskStepResult("准备", AgentTaskStatus.FAILED, log = scriptErr))
+                steps = listOf(TaskStepResult("准备", TaskStatus.FAILED, log = scriptErr))
             )
-            runCatching { AgentTaskStore.upsertTask(stateFile, rec, limit = 12) }
+            runCatching { TaskStore.upsertTask(stateFile, rec, limit = 12) }
             writeResult(ctx, id, false, scriptErr, apk, pkg, false, false, null, scriptErr)
             notify(ctx, "AIDev 部署失败", scriptErr, "high")
             return
@@ -225,7 +225,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         // 部署在 PRoot 内执行，宿主绝对路径（/data/user/0/.../files/home/...）在 PRoot 视图中不可见；
         // 必须用 PRoot 绑定视图路径 /host-home/...（与 line 259 的 AIDEV_HOME 一致）。
         val deployScript = "/host-home/dev-env/bin/aidev-deploy"
-        val definition = AgentTaskDefinition(
+        val definition = TaskDefinition(
             id = "deploy-$id",
             name = "部署 $pkg",
             description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
@@ -235,8 +235,8 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         )
         val startedAt = System.currentTimeMillis()
 
-        fun publish(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, steps: List<AgentTaskStepResult>, log: String) {
-            val record = AgentTaskRecord(
+        fun publish(status: TaskStatus, exitCode: Int, finishedAt: Long, steps: List<TaskStepResult>, log: String) {
+            val record = TaskRecord(
                 definition = definition,
                 status = status,
                 startedAt = startedAt,
@@ -246,29 +246,29 @@ object DeployBridgeService : BridgeService("DeployBridge") {
                 lastUpdatedAt = System.currentTimeMillis(),
                 steps = steps
             )
-            runCatching { AgentTaskStore.upsertTask(stateFile, record, limit = 12) }
+            runCatching { TaskStore.upsertTask(stateFile, record, limit = 12) }
         }
 
         if (apk.isBlank() || pkg.isBlank()) {
             val log = "✗ 缺少 apk 或 pkg，无法部署"
-            publish(AgentTaskStatus.FAILED, 1, System.currentTimeMillis(),
-                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = "缺少参数")), log)
+            publish(TaskStatus.FAILED, 1, System.currentTimeMillis(),
+                listOf(TaskStepResult("安装", TaskStatus.FAILED, log = "缺少参数")), log)
             writeResult(ctx, id, false, "缺少 apk 或 pkg", apk, pkg, false, false, null, "缺少 apk/pkg")
             processingFile.delete()
             return
         }
         if (!isValidApkPath(apk)) {
             val log = "✗ apk 路径包含非法字符或非 .apk 文件: $apk"
-            publish(AgentTaskStatus.FAILED, 1, System.currentTimeMillis(),
-                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = "apk 校验失败")), log)
+            publish(TaskStatus.FAILED, 1, System.currentTimeMillis(),
+                listOf(TaskStepResult("安装", TaskStatus.FAILED, log = "apk 校验失败")), log)
             writeResult(ctx, id, false, "apk 路径校验失败", apk, pkg, false, false, null, log)
             processingFile.delete()
             return
         }
         if (!isValidPkg(pkg)) {
             val log = "✗ package name 格式非法: $pkg"
-            publish(AgentTaskStatus.FAILED, 1, System.currentTimeMillis(),
-                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = "pkg 校验失败")), log)
+            publish(TaskStatus.FAILED, 1, System.currentTimeMillis(),
+                listOf(TaskStepResult("安装", TaskStatus.FAILED, log = "pkg 校验失败")), log)
             writeResult(ctx, id, false, "package name 格式非法", apk, pkg, false, false, null, log)
             processingFile.delete()
             return
@@ -276,10 +276,10 @@ object DeployBridgeService : BridgeService("DeployBridge") {
 
         // 初始进度（与构建按钮同款步骤呈现，保证面板一致）
         val initSteps = if (launch) listOf(
-            AgentTaskStepResult("安装", AgentTaskStatus.RUNNING),
-            AgentTaskStepResult("拉起", AgentTaskStatus.PENDING)
-        ) else listOf(AgentTaskStepResult("安装", AgentTaskStatus.RUNNING))
-        publish(AgentTaskStatus.RUNNING, -1, 0L, initSteps, "已提交部署请求，等待执行…")
+            TaskStepResult("安装", TaskStatus.RUNNING),
+            TaskStepResult("拉起", TaskStatus.PENDING)
+        ) else listOf(TaskStepResult("安装", TaskStatus.RUNNING))
+        publish(TaskStatus.RUNNING, -1, 0L, initSteps, "已提交部署请求，等待执行…")
         notify(ctx, "AIDev 部署", "开始部署 $pkg", "default")
 
         val (prootApk, extraBinds) = toProotPath(apk, PathConfig.workspaceDir(ctx))
@@ -298,8 +298,8 @@ object DeployBridgeService : BridgeService("DeployBridge") {
 
         val result = runCatching { ProotLauncher.run(ctx, cmd, opts) { activeProcesses[id] = it } }.getOrElse {
             val log = "✗ 部署执行异常: ${it.message}"
-            publish(AgentTaskStatus.FAILED, -1, System.currentTimeMillis(),
-                listOf(AgentTaskStepResult("安装", AgentTaskStatus.FAILED, log = it.message ?: "异常")), log)
+            publish(TaskStatus.FAILED, -1, System.currentTimeMillis(),
+                listOf(TaskStepResult("安装", TaskStatus.FAILED, log = it.message ?: "异常")), log)
             writeResult(ctx, id, false, "部署执行异常", apk, pkg, false, false, null, it.message ?: "异常")
             processingFile.delete()
             return
@@ -308,7 +308,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
 
         if (id in cancelledIds) {
             val log = "⏹ 已取消"
-            publish(AgentTaskStatus.CANCELLED, -1, System.currentTimeMillis(), initSteps, log)
+            publish(TaskStatus.CANCELLED, -1, System.currentTimeMillis(), initSteps, log)
             writeResult(ctx, id, false, "已取消", apk, pkg, false, false, null, "已取消")
             processingFile.delete()
             return
@@ -322,12 +322,12 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         val success = installed && (if (launch) launched else true)
 
         val steps = if (launch) listOf(
-            AgentTaskStepResult("安装", if (installed) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED,
+            TaskStepResult("安装", if (installed) TaskStatus.SUCCEEDED else TaskStatus.FAILED,
                 log = if (!installed) (error ?: "安装失败") else ""),
-            AgentTaskStepResult("拉起", if (launched) AgentTaskStatus.SUCCEEDED else if (installed) AgentTaskStatus.FAILED else AgentTaskStatus.PENDING,
+            TaskStepResult("拉起", if (launched) TaskStatus.SUCCEEDED else if (installed) TaskStatus.FAILED else TaskStatus.PENDING,
                 log = if (installed && !launched) (error ?: "拉起失败") else "")
         ) else listOf(
-            AgentTaskStepResult("安装", if (installed) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED,
+            TaskStepResult("安装", if (installed) TaskStatus.SUCCEEDED else TaskStatus.FAILED,
                 log = if (!installed) (error ?: "安装失败") else "")
         )
 
@@ -349,7 +349,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         }
         if (!success) AIDevLogger.i("DeployBridge", "request $id 失败 rawStdout=\n${result.stdout.takeLast(1500)}")
 
-        val finalStatus = if (success) AgentTaskStatus.SUCCEEDED else AgentTaskStatus.FAILED
+        val finalStatus = if (success) TaskStatus.SUCCEEDED else TaskStatus.FAILED
         publish(finalStatus, if (success) 0 else 1, System.currentTimeMillis(), steps, logText)
         writeResult(ctx, id, success, message, apk, pkg, installed, launched, activity, error)
         notify(ctx, if (success) "AIDev 部署完成" else "AIDev 部署失败", message, if (success) "default" else "high")

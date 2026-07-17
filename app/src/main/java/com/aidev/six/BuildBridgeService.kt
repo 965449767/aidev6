@@ -2,15 +2,15 @@ package com.aidev.six
 
 import android.content.Context
 import java.util.concurrent.atomic.AtomicLong
-import com.aidev.six.agent.AgentTaskDefinition
-import com.aidev.six.agent.AgentTaskRecord
-import com.aidev.six.agent.AgentTaskStatus
-import com.aidev.six.agent.AgentTaskStepResult
-import com.aidev.six.agent.AgentTaskStore
-import com.aidev.six.agent.BuildProgress
+import com.aidev.six.task.TaskDefinition
+import com.aidev.six.task.TaskRecord
+import com.aidev.six.task.TaskStatus
+import com.aidev.six.task.TaskStepResult
+import com.aidev.six.task.TaskStore
+import com.aidev.six.task.BuildProgress
 import com.aidev.six.monitor.SystemMetricsCollector
-import com.aidev.six.agent.BuildProgress.Phase
-import com.aidev.six.agent.ProjectTaskLock
+import com.aidev.six.task.BuildProgress.Phase
+import com.aidev.six.task.ProjectTaskLock
 import com.aidev.six.terminal.ProotLauncher
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -130,9 +130,9 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val gradleFilter = LogHub.GradleFilter()
 
         // 单一真源：BuildBridge 无论请求来自 App「编译」按钮还是终端 `aidev-build-request`，都把构建进度
-        // 写入同一份 agent-tasks.json，面板轮询即可看到一致的过程（准备→编译→安装→拉起）。
-        val stateFile = File(PathConfig.tasksDir(ctx), "agent-tasks.json")
-        val definition = AgentTaskDefinition(
+        // 写入同一份 task-records.json，面板轮询即可看到一致的过程（准备→编译→安装→拉起）。
+        val stateFile = File(PathConfig.tasksDir(ctx), "task-records.json")
+        val definition = TaskDefinition(
             id = "build-$id",
             name = "构建 $project",
             description = "宇宙 B 编译 → 静默安装 → 自动拉起",
@@ -143,8 +143,8 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val startedAt = System.currentTimeMillis()
         var currentPhase = Phase.PREPARE
         val lastPublish = AtomicLong(0L)
-        fun publishBuild(status: AgentTaskStatus, exitCode: Int, finishedAt: Long, steps: List<AgentTaskStepResult>) {
-            val record = AgentTaskRecord(
+        fun publishBuild(status: TaskStatus, exitCode: Int, finishedAt: Long, steps: List<TaskStepResult>) {
+            val record = TaskRecord(
                 definition = definition,
                 status = status,
                 startedAt = startedAt,
@@ -154,12 +154,12 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                 lastUpdatedAt = System.currentTimeMillis(),
                 steps = steps
             )
-            runCatching { AgentTaskStore.upsertTask(stateFile, record, limit = 12) }
+            runCatching { TaskStore.upsertTask(stateFile, record, limit = 12) }
         }
 
         val append: (String) -> Unit = { line ->
             log.appendLine(line)
-            // 限长：保留最近输出，避免长构建无限增长（agent-task UI 仅展示最近 6KB）
+            // 限长：保留最近输出，避免长构建无限增长（任务 UI 仅展示最近 6KB）
             if (log.length > 24000) log.delete(0, log.length - 16000)
             // Gradle 输出过滤：减少噪音，保留关键信息
             if (gradleFilter.shouldKeep(line)) {
@@ -170,7 +170,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             val now = System.currentTimeMillis()
             val prev = lastPublish.getAndSet(now)
             if (now - prev >= 800) {
-                publishBuild(AgentTaskStatus.RUNNING, -1, 0L, BuildProgress.deriveUpTo(currentPhase))
+                publishBuild(TaskStatus.RUNNING, -1, 0L, BuildProgress.deriveUpTo(currentPhase))
             }
         }
 
@@ -200,7 +200,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                     log.appendLine(summary)
                     logWriter.append(summary)
                 }
-                // 构建失败回流：写入 .aidev-loop/ 供宇宙 A 自动修复
+                // 构建失败记录：完整日志落到 logs/<project>/last-build-failure.log 供人工排查
                 writeLoopBuildFailure(ctx, id, project, log.toString())
             }
             timer.endStep(if (success) "成功" else "失败")
@@ -214,9 +214,9 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             runCatching { LogHub.saveProfile(PathConfig.logsDir(ctx), timer.profileJson(), "build", project) }
             finish(ctx, id, success, message, log, processingFile, apkPath, logPath, pkg, project)
             val status = when {
-                cancelled -> AgentTaskStatus.CANCELLED
-                success -> AgentTaskStatus.SUCCEEDED
-                else -> AgentTaskStatus.FAILED
+                cancelled -> TaskStatus.CANCELLED
+                success -> TaskStatus.SUCCEEDED
+                else -> TaskStatus.FAILED
             }
             publishBuild(
                 status,
@@ -233,13 +233,13 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         if (!ProjectTaskLock.tryAcquire(lockKey, "build:$id")) {
             val holder = ProjectTaskLock.holder(lockKey)
             append("⏸ 该项目已有任务进行中（${holder?.source ?: "?"}），本次请求跳过")
-            publishBuild(AgentTaskStatus.RUNNING, -1, 0L, emptyList())
+            publishBuild(TaskStatus.RUNNING, -1, 0L, emptyList())
             finishAndPublish(false, "该项目已有任务进行中，已跳过")
             return
         }
 
         append("=== BuildBridge 构建请求 $id (project=$project) ===")
-        publishBuild(AgentTaskStatus.RUNNING, -1, 0L, emptyList())
+        publishBuild(TaskStatus.RUNNING, -1, 0L, emptyList())
         notify(ctx, "AIDev 构建", "开始编译 $project", priority = "default")
 
         try {
@@ -321,7 +321,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
                         ctx, id,
                         "cd /workspace/$rel && ./gradlew dependencies --no-daemon$aapt2Arg",
                         ProotLauncher.Options(
-                            rootfs = compilerRootfs,
+                rootfs = compilerRootfs,
                             cwd = "/workspace/$rel",
                             binds = listOf(bind),
                             env = mapOf(
@@ -798,10 +798,9 @@ class MainActivity : ComponentActivity() {
         }
         append("→ 准备宇宙 B（编译器 rootfs）...")
 
-        // Step 1: 在 agent rootfs 内调用 aidev-ubuntu-core install-ubuntu，
+        // Step 1: 在 compiler rootfs 内调用 aidev-ubuntu-core install-ubuntu，
         // 通过环境变量覆盖 AIDEV_HOME / AIDEV_ROOTFS / AIDEV_PROOT，
         // 使 Ubuntu base 安装到 compiler_rootfs 而非默认的 ubuntu-rootfs。
-        val agentRootfs = PathConfig.agentRootfs(ctx).absolutePath
         val installExit = runStreaming(
             ctx,
             id,
@@ -810,7 +809,7 @@ class MainActivity : ComponentActivity() {
                 "AIDEV_PROOT=/bin/true " +
                 "sh /host-home/dev-env/bin/aidev-ubuntu-core install-ubuntu",
             ProotLauncher.Options(
-                rootfs = agentRootfs,
+                rootfs = compilerRootfs.absolutePath,
                 timeoutSec = 600,
                 redirectErrorStream = true
             ),

@@ -276,7 +276,7 @@ Shell
 
 Android（PRoot）
 
-桥接数据流：宿主 AgentTaskRunner → `/system/bin/sh -c <command>` → 产出 → BuildRequestTracker（落盘 `req-<id>.json`）→ BridgeSocketServer / 文件轮询 → PRoot 侧 `aidev-bridge` 转发到对应桥 → `dispatch`。
+桥接数据流：宿主 TaskRunner → `/system/bin/sh -c <command>` → 产出 → BuildBridgeService（落盘 `req-<id>.json`）→ BridgeSocketServer / 文件轮询 → PRoot 侧 `aidev-bridge` 转发到对应桥 → `dispatch`。
 
 Never bypass layers.
 
@@ -368,7 +368,7 @@ Handle unsupported devices.
 
 Fail safely.
 
-桥接 Socket 用静态共享密钥鉴权（`Constants.BRIDGE_SOCKET_TOKEN`）；Agent 命令经 SafeCommandGuard 校验（危险命令 / 受保护路径破坏性写拦截）。
+桥接 Socket 用静态共享密钥鉴权（`Constants.BRIDGE_SOCKET_TOKEN`）；任务命令经 SafeCommandGuard 校验（危险命令 / 受保护路径破坏性写拦截）。
 
 ---
 

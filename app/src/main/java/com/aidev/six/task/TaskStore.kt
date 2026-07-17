@@ -1,11 +1,11 @@
-package com.aidev.six.agent
+package com.aidev.six.task
 
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal enum class AgentTaskStatus {
+internal enum class TaskStatus {
     PENDING,
     RUNNING,
     SUCCEEDED,
@@ -13,7 +13,7 @@ internal enum class AgentTaskStatus {
     CANCELLED
 }
 
-internal data class AgentTaskDefinition(
+internal data class TaskDefinition(
     val id: String,
     val name: String,
     val description: String,
@@ -22,47 +22,47 @@ internal data class AgentTaskDefinition(
     val tags: List<String> = emptyList()
 )
 
-internal data class AgentTaskStepResult(
+internal data class TaskStepResult(
     val name: String,
-    val status: AgentTaskStatus = AgentTaskStatus.PENDING,
+    val status: TaskStatus = TaskStatus.PENDING,
     val exitCode: Int = -1,
     val log: String = ""
 )
 
-internal data class AgentTaskRecord(
-    val definition: AgentTaskDefinition,
-    val status: AgentTaskStatus,
+internal data class TaskRecord(
+    val definition: TaskDefinition,
+    val status: TaskStatus,
     val startedAt: Long = 0L,
     val finishedAt: Long = 0L,
     val exitCode: Int = -1,
     val log: String = "",
     val lastUpdatedAt: Long = System.currentTimeMillis(),
-    val steps: List<AgentTaskStepResult> = emptyList(),
-    // 宇宙 A（OpenCode）闭环回填：读到崩溃回流后应用了什么修复（F04/G 反向驱动）
+    val steps: List<TaskStepResult> = emptyList(),
+    // 可选备注：构建/部署任务完成后回填的说明（如人工修复说明）
     val note: String = ""
 )
 
-internal data class AgentTaskStep(
+internal data class TaskStep(
     val name: String,
     val command: String,
 )
 
-internal data class AgentTaskTemplate(
+internal data class TaskTemplate(
     val id: String,
     val name: String,
     val description: String,
-    val steps: List<AgentTaskStep> = emptyList(),
+    val steps: List<TaskStep> = emptyList(),
 )
 
-internal data class AgentTaskPlan(
+internal data class TaskPlan(
     val id: String,
     val name: String,
     val description: String,
-    val steps: List<AgentTaskStep> = emptyList(),
+    val steps: List<TaskStep> = emptyList(),
 ) {
     companion object {
-        fun fromTemplate(name: String, description: String, template: AgentTaskTemplate): AgentTaskPlan =
-            AgentTaskPlan(
+        fun fromTemplate(name: String, description: String, template: TaskTemplate): TaskPlan =
+            TaskPlan(
                 id = template.id,
                 name = name,
                 description = description,
@@ -71,7 +71,7 @@ internal data class AgentTaskPlan(
     }
 }
 
-internal object AgentTaskStore {
+internal object TaskStore {
 
     private const val FIELD_SEPARATOR = "\u001F"
     private const val LIST_SEPARATOR = "\u001E"
@@ -80,17 +80,17 @@ internal object AgentTaskStore {
     private const val DEBOUNCE_MS = 2000L
 
     // 内存缓存：file.absolutePath → tasks
-    private val cache = ConcurrentHashMap<String, List<AgentTaskRecord>>()
+    private val cache = ConcurrentHashMap<String, List<TaskRecord>>()
     // 脏标记：哪些文件有未落盘的修改
     private val dirty = ConcurrentHashMap.newKeySet<String>()
     // 待执行的延迟写盘任务（用于取消上一个、实现真正防抖）
     private val pendingWrites = ConcurrentHashMap<String, java.util.concurrent.ScheduledFuture<*>>()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "AgentTaskStore-debounce").apply { isDaemon = true }
+        Thread(r, "TaskStore-debounce").apply { isDaemon = true }
     }
     private val lock = Any()
 
-    fun loadState(file: File): List<AgentTaskRecord> {
+    fun loadState(file: File): List<TaskRecord> {
         val key = file.absolutePath
         synchronized(lock) {
             cache[key]?.let { return it }
@@ -103,7 +103,7 @@ internal object AgentTaskStore {
         }
     }
 
-    fun saveState(file: File, tasks: List<AgentTaskRecord>) {
+    fun saveState(file: File, tasks: List<TaskRecord>) {
         val key = file.absolutePath
         synchronized(lock) {
             cache[key] = tasks
@@ -115,7 +115,7 @@ internal object AgentTaskStore {
         }
     }
 
-    fun upsertTask(file: File, task: AgentTaskRecord, limit: Int = 12): List<AgentTaskRecord> {
+    fun upsertTask(file: File, task: TaskRecord, limit: Int = 12): List<TaskRecord> {
         val key = file.absolutePath
         synchronized(lock) {
             val existing = (cache[key] ?: loadState(file).toMutableList()).toMutableList()
@@ -128,9 +128,9 @@ internal object AgentTaskStore {
         return cache[key] ?: emptyList()
     }
 
-    fun removeTask(file: File, id: String): List<AgentTaskRecord> {
+    fun removeTask(file: File, id: String): List<TaskRecord> {
         val key = file.absolutePath
-        val remaining: List<AgentTaskRecord>
+        val remaining: List<TaskRecord>
         synchronized(lock) {
             val existing = (cache[key] ?: loadState(file)).toMutableList()
             remaining = existing.filterNot { it.definition.id == id }
@@ -140,7 +140,7 @@ internal object AgentTaskStore {
         return remaining
     }
 
-    fun clearTasks(file: File): List<AgentTaskRecord> {
+    fun clearTasks(file: File): List<TaskRecord> {
         val key = file.absolutePath
         synchronized(lock) {
             cache[key] = emptyList()
@@ -181,7 +181,7 @@ internal object AgentTaskStore {
         }, DEBOUNCE_MS, TimeUnit.MILLISECONDS)
     }
 
-    private fun serializeTask(task: AgentTaskRecord): String {
+    private fun serializeTask(task: TaskRecord): String {
         return buildString {
             append(encode(task.definition.id))
             append(FIELD_SEPARATOR)
@@ -213,7 +213,7 @@ internal object AgentTaskStore {
         }
     }
 
-    private fun serializeSteps(steps: List<AgentTaskStepResult>): String {
+    private fun serializeSteps(steps: List<TaskStepResult>): String {
         return steps.joinToString(STEP_SEPARATOR) { step ->
             buildString {
                 append(encode(step.name))
@@ -227,26 +227,26 @@ internal object AgentTaskStore {
         }
     }
 
-    private fun parseSteps(value: String): List<AgentTaskStepResult> {
+    private fun parseSteps(value: String): List<TaskStepResult> {
         if (value.isEmpty()) return emptyList()
         return value.split(STEP_SEPARATOR).mapNotNull { raw ->
             val fields = raw.split(STEP_FIELD_SEPARATOR)
             if (fields.size < 4) return@mapNotNull null
-            AgentTaskStepResult(
+            TaskStepResult(
                 name = decode(fields[0]),
-                status = runCatching { AgentTaskStatus.valueOf(fields[1]) }.getOrDefault(AgentTaskStatus.PENDING),
+                status = runCatching { TaskStatus.valueOf(fields[1]) }.getOrDefault(TaskStatus.PENDING),
                 exitCode = fields[2].toIntOrNull() ?: -1,
                 log = decode(fields[3])
             )
         }
     }
 
-    private fun parseTaskLine(line: String): AgentTaskRecord? {
+    private fun parseTaskLine(line: String): TaskRecord? {
         val parts = line.split(FIELD_SEPARATOR)
         if (parts.size < 12) return null
         val tags = parts[5].takeIf { it.isNotEmpty() }?.split(LIST_SEPARATOR)?.map(::decode)?.filter(String::isNotBlank) ?: emptyList()
-        return AgentTaskRecord(
-            definition = AgentTaskDefinition(
+        return TaskRecord(
+            definition = TaskDefinition(
                 id = decode(parts[0]),
                 name = decode(parts[1]),
                 description = decode(parts[2]),
@@ -254,7 +254,7 @@ internal object AgentTaskStore {
                 workingDirectory = decode(parts[4]),
                 tags = tags
             ),
-            status = runCatching { AgentTaskStatus.valueOf(parts[6]) }.getOrDefault(AgentTaskStatus.PENDING),
+            status = runCatching { TaskStatus.valueOf(parts[6]) }.getOrDefault(TaskStatus.PENDING),
             startedAt = parts[7].toLongOrNull() ?: 0L,
             finishedAt = parts[8].toLongOrNull() ?: 0L,
             exitCode = parts[9].toIntOrNull() ?: -1,
