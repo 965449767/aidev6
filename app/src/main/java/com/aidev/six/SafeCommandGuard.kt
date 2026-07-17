@@ -1,11 +1,11 @@
 package com.aidev.six
 
 /**
- * Agent 命令安全护栏：在 [com.aidev.six.agent.AgentTaskRunner] 通过
- * `/system/bin/sh -c <command>` 执行命令前做校验，防止 AI 自动跑出毁灭性命令。
+ * 命令安全护栏：在 [com.aidev.six.agent.AgentTaskRunner] 通过
+ * `/system/bin/sh -c <command>` 执行命令前做校验，防止跑出毁灭性命令。
  *
  * 规则是单一事实源；[scripts.safe_bash_guard] 的 shell 版仅作 PRoot 终端可选 wrapper，需与这里保持一致。
- * 设计目标：只拦"明确危险 / 对受保护外部路径的破坏性写"，放行正常构建产物拷贝等良性操作，避免误伤自进化闭环。
+ * 设计目标：只拦"明确危险 / 对受保护外部路径的破坏性写"，放行正常构建产物拷贝等良性操作。
  */
 object SafeCommandGuard {
 
@@ -40,8 +40,8 @@ object SafeCommandGuard {
     private val SUBSTITUTION_PATTERNS = listOf("$(", "`")
 
     /**
-     * 非交互（agent 自动执行）上下文的「可执行名白名单」（P2-8 纵深防御）。
-     * 仅放行构建/工具链常见命令；其余一律拦截，避免 agent 自生成命令跑出意外程序。
+     * 非交互（自动化执行）上下文的「可执行名白名单」（P2-8 纵深防御）。
+     * 仅放行构建/工具链常见命令；其余一律拦截，避免自动化脚本跑出意外程序。
      * 交互会话（用户手动）不受此限，仅受下方危险模式/受保护路径约束。
      */
     private val AGENT_ALLOWED_BINARIES = setOf(
@@ -76,7 +76,7 @@ object SafeCommandGuard {
             .filter { it.isNotBlank() }
     }
 
-    /** 判断某可执行 token 是否落入 agent 白名单（支持相对路径 ./x、aidev-* 工具、已知工作区绝对路径）。 */
+    /** 判断某可执行 token 是否落入白名单（支持相对路径 ./x、aidev-* 工具、已知工作区绝对路径）。 */
     private fun isAllowedExecutable(token: String): Boolean {
         if (token.startsWith("./")) return true
         if (token.startsWith("/workspace/") || token.startsWith("/host-home/") ||

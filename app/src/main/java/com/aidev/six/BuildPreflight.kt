@@ -8,8 +8,8 @@ import java.net.Socket
 /**
  * 预构建体检的纯逻辑（无 Android 依赖，可单测）。
  *
- * 针对 vibe coding 小白：OpenCode 生成的 `app/build.gradle.kts` 常犯几类宇宙B 必失败的错误，
- * 编译前扫描并尽力自动修复 + 产出中文告警。
+ * 编译前扫描 `app/build.gradle.kts` 常见宇宙B 必失败的错误模式，产出中文告警提示，
+ * 供人类在提交构建前自行修正（仅提示，不自动改写工程文件）。
  */
 object BuildPreflight {
 

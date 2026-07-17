@@ -8,14 +8,14 @@ object PathConfig {
 
     fun aidevHome(ctx: Context) = File(ctx.filesDir, "home")
 
-    /** 宇宙 A：OpenCode + AI 工具宿主（当前实现沿用既有 ubuntu-rootfs 目录） */
+    /** 宇宙 A：终端开发环境宿主（沿用既有 ubuntu-rootfs 目录） */
     fun rootfs(ctx: Context) = File(aidevHome(ctx), "ubuntu-rootfs")
     fun agentRootfs(ctx: Context) = rootfs(ctx)
 
-    /** 宇宙 B：纯净编译器（JDK + Android SDK + Gradle 缓存），用于自我进化闭环编译 */
+    /** 宇宙 B：纯净编译器（JDK + Android SDK + Gradle 缓存），用于离线编译 */
     fun compilerRootfs(ctx: Context) = File(aidevHome(ctx), "compiler_rootfs")
 
-    /** 共享硬盘：OpenCode 与编译器零延迟共享同一份源码 */
+    /** 共享工作区：终端与编译器零延迟共享同一份源码 */
     fun workspaceDir(ctx: Context) = File(aidevHome(ctx), "workspace")
 
     fun tasksDir(ctx: Context) = File(aidevHome(ctx), "tasks")
