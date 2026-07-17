@@ -22,11 +22,11 @@
 - **脚本部署**：`TerminalShellAssets.copyAssetScripts` 每次 App 启动重放资产脚本到 rootfs（改脚本后需强制停止+重启 AIDev 才生效）。
 - **运行时家目录**：`filesDir/home`（宿主侧）；rootfs 内经 `/host-home` 挂载可见。
 
-## 3. OpenCode 集成
+## 3. 终端与 AI 工具关系（已彻底解除耦合）
 
-- 固定端口 `127.0.0.1:4096`（`Constants.OPENCODE_BASE_URL`），落非 4096 端口时由 aidev-opencode 脚本写 `.aidev-opencode-port` 供 `OpenCodeEngine` 读取。
-- OpenCode 仅作为**人类驱动的写代码工具**；宿主被动提供人机交互入口（通知「中止」按钮经 `OpenCodeActionReceiver` → `OpenCodeEngine.abortSession`），不挂任何自动代码编辑 / 自动重建 / 自动修复能力。`OpenCodeMonitorService` 已删除。
-- 详见 `docs/opencode-architecture.md`。
+- 项目**不含任何 OpenCode / AI 写码代理集成代码**：`OpenCodeEngine` / `AIEngine` / `OpenCodeActionReceiver` / `OpenCodeMonitorService` 已全部删除，`Constants.OPENCODE_BASE_URL` 等常量已移除。
+- 终端是人类的**唯一开发入口**；若用户自行在 Ubuntu 容器内安装 OpenCode 等工具，也只是普通终端命令，宿主不与之有任何程序级耦合（无端口绑定、无 SSE 监听、无通知按钮）。
+- `docs/opencode-architecture.md` 仅保留为 OpenCode HTTP/SSE 协议参考，与宿主 App 的运行时解耦。
 
 ## 4. 桥接通信（宿主 ↔ PRoot）
 

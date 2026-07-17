@@ -41,7 +41,7 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 - **Navigation**: Jetpack Navigation Compose via `AppNavHost`
 - **Terminal**: Termux `terminal-view` library, `EmbeddedTerminalPage` session manager
 - **Ubuntu**: bundled PRoot (`--link2symlink`), readiness = `home/ubuntu-rootfs/.aidev-rootfs-ready` (NOT `etc/os-release`)
-- **OpenCode**: fixed port 4096, SSE event bus for session status monitoring
+- **OpenCode / AI 代理**: 宿主已彻底解除耦合，不含任何 AI 写码代理集成；若用户在 Ubuntu 内自装 OpenCode 等工具，仅为普通终端命令
 - **Elevation**: Shizuku for privileged operations
 - **Runtime home**: `filesDir/home`
 - **Entrypoints**: `ShellActivity.kt`, `EmbeddedShellPages.kt`, `AIDevApp.kt`, `KeepAliveService.kt`
@@ -66,11 +66,11 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 
 | File | Content |
 |------|---------|
-| `docs/app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、自我进化闭环 |
-| `docs/architecture.md` | **（符号链接→`opencode-architecture.md`）** OpenCode HTTP/SSE 协议参考，非 App 架构 |
-| `docs/opencode-architecture.md` | OpenCode HTTP/SSE 集成参考 |
+| `docs/app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、与 AI 工具解耦关系 |
+| `docs/architecture.md` | **（符号链接→`opencode-architecture.md`）** OpenCode HTTP/SSE 协议参考（仅供用户自装工具查阅），非 App 集成 |
+| `docs/opencode-architecture.md` | OpenCode HTTP/SSE 协议参考（仅参考，宿主已不集成） |
 | `docs/opencode-web-ui-reference.md` | OpenCode 官方 Web 前端设计参考 |
-| `docs/self-evolution-loop.md` | 自我进化闭环文件契约（Phase F/G） |
+| `docs/self-evolution-loop.md` | 自我进化闭环文件契约（**已退役**，保留为历史参考） |
 | `docs/verification.md` | validation matrix per change type |
 | `docs/coding-guidelines.md` | Android, terminal, and agent conventions |
 | `docs/decisions.md` | 稳定架构决策日志（single source of truth；含 Phase F/G 冻结判据） |

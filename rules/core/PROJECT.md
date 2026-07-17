@@ -18,10 +18,10 @@ aidev6
 
 Purpose
 
-一个运行在 Android 设备上的「设备内 AI 开发环境」。在本地（Xiaomi 14 Pro / HyperOS / Android 16 / arm64-v8a）通过 PRoot 运行 Ubuntu，集成 Termux 终端、Shizuku 提权、OpenCode（本地 AI 编码服务）与 AIDev 宿主 App，让开发者在手机上完成「写代码 → 编译 → 装包 → 运行」的闭环，且离线可用。
+一个运行在 Android 设备上的「设备内终端开发环境」。在本地（Xiaomi 14 Pro / HyperOS / Android 16 / arm64-v8a）通过 PRoot 运行 Ubuntu，集成 Termux 终端、Shizuku 提权与 AIDev 宿主 App，让开发者在手机上完成「写代码 → 编译 → 装包 → 运行」的闭环，且离线可用。
 
-- 谁用：Android 开发者、终端 / AI 编码爱好者、需要在设备上自维护 App 的用户。
-- 为何存在：把「AI 写代码 + 本地编译 + 真机部署」收敛到一个离线、受控、可回滚的环境，避免把项目源码 / 密钥外发到云端。
+- 谁用：Android 开发者、终端爱好者、需要在设备上自维护 App 的用户。
+- 为何存在：把「本地编译 + 真机部署」收敛到一个离线、受控、可回滚的环境，避免把项目源码 / 密钥外发到云端；宿主不挂任何 AI 写码代理，终端在无 AI 工具时也必须完整可用。
 - 只描述业务目的，不描述实现。
 
 ---
@@ -30,7 +30,7 @@ Purpose
 
 Primary Goal
 
-提供现代、稳定、离线的 Android 终端 + AI 开发环境（Shizuku + PRoot Ubuntu + OpenCode）。
+提供现代、稳定、离线的 Android 终端开发环境（Shizuku + PRoot Ubuntu）。
 
 Secondary Goals
 
@@ -48,7 +48,7 @@ The following are intentionally NOT part of this project.
 - 重写 Android 框架
 - 成为通用 shell 管理器
 
-Never allow AI to introduce these accidentally.
+Never allow accidental coupling to any AI coding agent (OpenCode / Claude Code / etc.).
 
 ---
 
@@ -61,7 +61,6 @@ Primary Users
 - Terminal Users
 - Root Users
 - Shizuku Users
-- AI Coding Users
 
 Secondary Users
 
@@ -205,9 +204,9 @@ Describe every major module.
 
 - Shell / Terminal：Termux terminal-view，EmbeddedTerminalPage 会话管理；PRoot Ubuntu（宇宙 A）。
 - Bridge：宿主 ↔ PRoot 请求桥（5 桥 Notify / Shizuku / Build / Deploy / Crash）；TCP loopback 127.0.0.1:14096（`BRIDGE_SOCKET_ENABLED` 开关）+ 文件轮询兜底；有界线程池 + `soTimeout` + 静态共享密钥鉴权（`Constants.BRIDGE_SOCKET_TOKEN`，帧内 `auth` 字段）。
-- AI / OpenCode：固定端口 4096，SSE 事件总线监控 session 状态（busy→idle 触发通知）。
+- AI / OpenCode：**已彻底解除耦合**（2026-07-17 清除全部 OpenCode 集成代码）。终端为唯一开发入口；用户自装 AI 工具仅为普通命令，宿主不与之程序级耦合。
 - Bootstrap：PRoot rootfs 部署、`copyAssetScripts` 每次启动重放资产脚本、就绪判定 `home/ubuntu-rootfs/.aidev-rootfs-ready`。
-- Build / Self-Evolution：AgentTaskRunner（`object` 单例 + 进程超时 + `destroyForcibly()`）、BuildRequestTracker（提交写 `req-<id>.json` + 插入 RUNNING 记录）、BuildBridgeService / DeployBridgeService；构建闭环（宇宙 B 编译 → 产出 APK）。
+- Build：AgentTaskRunner（`object` 单例 + 进程超时 + `destroyForcibly()`，纯人类任务执行基础设施，非 AI）、BuildRequestTracker（提交写 `req-<id>.json` + 插入 RUNNING 记录）、BuildBridgeService / DeployBridgeService；构建闭环（宇宙 B 编译 → 产出 APK）。
 - Installer / Elevation：Shizuku 静默安装（android-shizuku / aidev-install），产物交用户手动安装到 `/sdcard/AIDev/`。
 - Launcher：ShellActivity（唯一入口，`ComponentActivity` + `setContent`，无 XML 布局）、AppNavHost 导航、KeepAliveService 保活。
 
@@ -236,7 +235,7 @@ Every module must answer.
 |---|---|---|
 | `UI` | Compose 页面 / 主题 / 组件 | 任何 shell / 业务调用（必须经 ViewModel） |
 | `IDE` | Project / Editor / Terminal 会话管理 | 直接执行构建 / 安装 |
-| `AI` | 编码引擎抽象（AIEngine）/ 会话中止 | 写死单一 Provider（OpenCode）；仅人类触发 |
+| `AI` | （已移除）原编码引擎抽象（AIEngine）/ 会话中止 | 不得重新挂 AI 写码代理 |
 | `Runtime` | PRoot / Shell Layer / Bootstrap（rootfs / 资产 / 就绪判定） | 向 UI 暴露内部状态 |
 | `Bridge` | Transport（Socket / File）+ Protocol（Build / Notify / Install）分层 | Transport 与 Protocol 混写 |
 | `Build` | Compiler 驱动 / Installer / Deploy（人类提交 `aidev-build-request`） | 持有 UI 引用 |
@@ -248,7 +247,7 @@ Every module must answer.
 - 新增类必须归入对应 Domain 包；**禁止新增顶层全局 `*Service` 组件**导致跨 Domain 蔓延（评审问题一）。
 - Bridge 保持 Transport / Protocol 分离，二者不得混写（评审问题二）。
 - 闭环状态演进须走显式状态枚举 / FSM，不得散落 callback（评审问题四）。
-- AI Provider 经 `AIEngine` 抽象接入，OpenCode 为首个实现；OpenCode 仅作为人类驱动的写代码工具，宿主被动提供中止等人机交互入口，**不挂任何自动代码编辑 / 自动重建 / 自动修复能力**（契约见 `docs/target-architecture.md`）。
+- 宿主**不挂任何 AI 写码代理 / OpenCode 集成**：终端是人类的唯一开发入口，不得引入任何自动代码编辑 / 自动重建 / 自动修复能力（决策见 `docs/target-architecture.md` 与 `docs/decisions.md`）。
 - 每个落地子任务遵守 `rules/workflow/EXECUTION.md`（≤5 文件、核心模块批准、行为锁），不一次性大改。
 
 ---

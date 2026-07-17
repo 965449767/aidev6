@@ -19,7 +19,7 @@ Use this file to record stable project decisions.
   `logs/<project>/last-build-failure.log` 供人类排查，不再写 `self-evolution/build-failure` 回流、不再自动改写工程文件。
 - **建项目统一到 `create-compose-project`**：对齐宿主版本（AGP 9.0.1 / Kotlin 2.0.21 / Gradle 9.1.0 / compileSdk·targetSdk 36）；
   `aidev-create-android-project` 退化为其兼容封装。
-- **OpenCode 仅保留人类触发能力**：`OpenCodeEngine` 只提供会话中止（通知「中止」按钮），不挂任何自动能力。
+- **OpenCode 接入已被整体推翻**：后续（2026-07-17 第二阶段）`OpenCodeEngine`/`AIEngine`/`OpenCodeActionReceiver`/`OpenCodeMonitorService` 与全部 OpenCode 部署代码、资产、文档均被彻底删除，宿主不再含任何 AI 写码代理集成。
 - **UI 按钮即终端快捷方式**：「编译」按钮在终端会话写入 `aidev-build-request --project …`，过程对人类可见。
 
 ### Consequences
@@ -350,3 +350,24 @@ Phase F 目标：把「自我进化闭环」（`宇宙A 写码` → `宇宙B 编
 
 - 新增/修订文档：`docs/target-architecture.md`（蓝图 + AIEngine 契约）、`docs/ARCHITECTURE_REVIEW.md`（断言 vs 事实）、`rules/core/PROJECT.md`（DOMAIN OWNERSHIP 护栏）、`rules/core/ARCHITECTURE.md`（APPROVED ARCHITECTURE DIRECTION）。
 - 无代码改动，无回归风险；纯文档护栏，授予后续子任务按护栏落地的执行权。
+
+---
+
+## 2026-07-17 - 彻底清除全部 OpenCode / AI 代理集成（全量精炼，选项 B）
+
+### Context
+
+「人类驱动重构」第一阶段仅收敛 OpenCode 为「人类触发中止」，但保留了 `OpenCodeEngine`/`AIEngine` 抽象、OpenCode 部署代码、资产脚本、`config/opencode/` 命令与 `knowledge_base.json` 中 opencode/agent 条目。用户最终判定：目标姿态是「人类作为唯一开发主体」，宿主不应保留任何 AI 写码代理的程序级耦合（端口绑定、SSE 监听、通知按钮、命令部署），且 `agent/` 包虽保留但仅作人类任务执行基础设施（改名留待下次单独任务）。
+
+### Decision
+
+- **代码层全删**：`monitor/OpenCodeEngine.kt`、`monitor/AIEngine.kt`、`OpenCodeActionReceiver.kt`、`monitor/BatteryMonitor.kt`（孤儿）、`config/opencode/` 整目录；`Constants.kt` 删除 `OPENCODE_BASE_URL`/`SELF_EVOLUTION_MODELS`/`SELF_EVOLUTION_DEFAULT_MODEL`。
+- **部署层停发**：`TerminalShellAssets.kt` 移除 `deployOpenCodeCommands`/`deployWorkspaceAgents` 调用与 `agentScripts` 中 3 个安装器；`UbuntuBootstrapScriptDefs.kt` 移除 `aidev-agent-context`/`aidev-agent-context-file`/`aidev-opencode`/`aidev-agent-summary`/`aidev-agent-log`/`aidev-agent-tail`/`opencode-check`/`setup-opencode` 脚本定义（保留 `aidev-current-project`/`list-listen-ports`/`task-list`/`task-run` 人类工具）；`CompletionEngine` 去 opencode/agent 补全；`DevEnvironmentChecker` 去 OpenCode 检测。
+- **资产与根脚本全删**：`opencode-check.sh`/`setup-opencode.sh`/`install-aitool.sh` 资产、`scripts/aidev-self-evolution`/`scripts/verify-self-evolution.sh`、`app/src/test/sh/opencode-check_test.sh`/`setup-opencode_test.sh`；`knowledge_base.json` 去 opencode/agent 条目。
+- **文档收敛**：`docs/target-architecture.md`（改「AIEngine 已落地」为「已彻底清除」）、`docs/app-architecture.md`（第 3 节改「无 OpenCode 耦合」）、`rules/core/PROJECT.md`（去 OpenCode/AI 描述、`AI` Domain 标已移除）、本文件追加本决策。
+
+### Consequences
+
+- 宿主运行时对 AI 写码工具零耦合：无 4096 端口绑定、无 SSE 监听、无通知中止按钮、无命令部署；终端在无任何 AI Agent 时完整可用。
+- `agent/` 包（`AgentTaskRunner` 等）作为纯人类任务执行基础设施保留，仅注释去 Agent 味；`agent/`→`task/` 改名留待下次单独任务。
+- 验证全绿：`compileDebugKotlin` / `testDebugUnitTest` / `app/src/test/sh/run.sh`（65→63，删 2 个 opencode 测试）/ `scripts/harness_check.sh` / `assembleDebug`。
