@@ -38,9 +38,6 @@ object TerminalShellAssets {
         writeCanonicalRc(activity, home, rc)
         writeShellEntry(home, rc, entry)
         writeGradleInitScripts(home, rootfs)
-        // 工作区规范 AGENTS.md（每次启动刷新，确保与内置规范同步）
-        runCatching { deployWorkspaceAgents(activity, home) }
-            .onFailure { Log.e("TerminalShellAssets", "deployWorkspaceAgents failed (non-fatal)", it) }
 
         // 第二类：大文件用 versionCode 门控（rootfs 相关，失败不致命，不连累核心环境）
         val deployMarker = File(home, ".asset-deploy-code")
@@ -59,11 +56,8 @@ object TerminalShellAssets {
             runCatching { deployMarker.writeText("$currentCode\n") }
         }
 
-        // OpenCode 命令配置文件每次启动都部署（确保与新命令同步），失败不致命
+        // rootfs 辅助脚本每次检查（rootfs 可能被重装），失败不致命
         if (rootfs.isDirectory) {
-            runCatching { deployOpenCodeCommands(activity, rootfs) }
-                .onFailure { Log.e("TerminalShellAssets", "deployOpenCodeCommands failed (non-fatal)", it) }
-            // rootfs 辅助脚本每次检查（rootfs 可能被重装），失败不致命
             runCatching { UbuntuBootstrapScripts.copyAssetScripts(activity, rootfs) }
                 .onFailure { Log.e("TerminalShellAssets", "copyAssetScripts failed (non-fatal)", it) }
         }
@@ -126,12 +120,12 @@ object TerminalShellAssets {
         writeSystemScript(bin, "brightness", "control brightness")
         writeSystemScript(bin, "sysclip", "clipboard get/set")
         writeSystemScript(bin, "aidev-proxy", "proxy manager")
-        // 两端共用脚本（agent 辅助 + 系统工具）——统一从 assets/scripts 读取，作为唯一真源，
+        // 两端共用脚本（开发工具）——统一从 assets/scripts 读取，作为唯一真源，
         // 避免与 rootfs 内的副本（copyAssetScripts）双份维护、改 assets 不生效的问题。
         // 清单与 UbuntuBootstrapScripts.copyAssetScripts 保持一致（改脚本只改 assets/scripts/*.sh）。
         val agentScripts = listOf(
-            "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh",
-            "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh",
+            "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh",
+            "aidev-logcat.sh", "aidev-shizuku.sh",
             "aidev-apk-info.sh", "aidev-build-request.sh",
             "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh",
             "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
@@ -178,39 +172,6 @@ object TerminalShellAssets {
             }
             File(caCertsDir, "ca-certificates.crt").setReadable(true)
         }.onFailure { Log.e("TerminalShellAssets", "deployLargeAssets: ca-certificates failed", it) }
-    }
-
-    /** 部署 OpenCode 命令配置 .md 文件，每次启动都执行 */
-    private fun deployOpenCodeCommands(activity: Activity, rootfs: File) {
-        val cmdsDir = File(rootfs, "root/.config/opencode/commands").apply { mkdirs() }
-        listOf(
-            "aidev-build-request", "aidev-verify-run", "aidev-deploy", "aidev-apk-info", "aidev-create-android-project",
-            "aidev-gen", "aidev-error-why", "aidev-logcat", "aidev-index"
-        ).forEach { name ->
-            runCatching {
-                activity.assets.open("config/opencode/commands/$name.md").use { input ->
-                    File(cmdsDir, "$name.md").outputStream().use { output -> input.copyTo(output) }
-                }
-            }.onFailure { Log.e("TerminalShellAssets", "deployOpenCodeCommands: $name.md failed", it) }
-        }
-        // 全局 AGENTS.md：OpenCode 每次会话都加载 ~/.config/opencode/AGENTS.md，
-        // 用它给 vibe coding 立宇宙B 构建规范（黄金版本/项目须在 /workspace/禁模块级 repositories 等）
-        runCatching {
-            val cfgDir = File(rootfs, "root/.config/opencode").apply { mkdirs() }
-            activity.assets.open("config/opencode/AGENTS.md").use { input ->
-                File(cfgDir, "AGENTS.md").outputStream().use { output -> input.copyTo(output) }
-            }
-        }.onFailure { Log.e("TerminalShellAssets", "deployOpenCodeCommands: AGENTS.md failed", it) }
-    }
-
-    /** 把工作区规范 AGENTS.md 放到 workspace 根，作为项目级规范（与全局互为补充），每次启动刷新 */
-    private fun deployWorkspaceAgents(activity: Activity, home: File) {
-        runCatching {
-            val ws = File(home, "workspace").apply { mkdirs() }
-            activity.assets.open("config/opencode/AGENTS.md").use { input ->
-                File(ws, "AGENTS.md").outputStream().use { output -> input.copyTo(output) }
-            }
-        }.onFailure { Log.e("TerminalShellAssets", "deployWorkspaceAgents failed", it) }
     }
 
     private fun writeCanonicalRc(activity: Activity, home: File, rc: File) {
@@ -276,14 +237,7 @@ object TerminalShellAssets {
             aidev-auto-bootstrap() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-auto-bootstrap "${'$'}@"; }
             aidev-doctor() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-doctor "${'$'}@"; }
             setup-dev-env() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" setup-dev-env "${'$'}@"; }
-            opencode-check() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" opencode-check "${'$'}@"; }
-            setup-opencode() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" setup-opencode "${'$'}@"; }
             aidev-current-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-current-project" "${'$'}@"; }
-            aidev-agent-context() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-agent-context" "${'$'}@"; }
-            aidev-agent-context-file() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-agent-context-file" "${'$'}@"; }
-            aidev-agent-summary() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-agent-summary" "${'$'}@"; }
-            aidev-agent-log() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-agent-log" "${'$'}@"; }
-            aidev-agent-tail() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-agent-tail" "${'$'}@"; }
             aidev-shizuku() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-shizuku" "${'$'}@"; }
             aidev-logcat() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-logcat "${'$'}@"; }
             aidev-apk-info() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-apk-info "${'$'}@"; }

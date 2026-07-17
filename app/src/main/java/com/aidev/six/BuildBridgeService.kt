@@ -17,9 +17,9 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * 自我进化闭环的构建桥。
+ * 构建桥（人类驱动的构建请求入口）。
  *
- * OpenCode（宇宙 A）通过其工具 `aidev-build-request` 写入结构化请求文件：
+ * 人类在终端执行 `aidev-build-request` 写入结构化请求文件：
  *   home/.aidev-build-bridge/req-<id>.json
  *   { "project": "<workspace 下相对路径或 /workspace/...>", "flavor": "debug" }
  *
@@ -129,8 +129,8 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val timer = LogHub.StepTimer(logWriter)
         val gradleFilter = LogHub.GradleFilter()
 
-        // 单一真源：BuildBridge 无论请求来自手动按钮还是宇宙 A（OpenCode）终端，都把构建进度
-        // 写入同一份 agent-tasks.json，AF 面板轮询即可看到一致的过程（准备→编译→安装→拉起）。
+        // 单一真源：BuildBridge 无论请求来自 App「编译」按钮还是终端 `aidev-build-request`，都把构建进度
+        // 写入同一份 agent-tasks.json，面板轮询即可看到一致的过程（准备→编译→安装→拉起）。
         val stateFile = File(PathConfig.tasksDir(ctx), "agent-tasks.json")
         val definition = AgentTaskDefinition(
             id = "build-$id",
@@ -284,7 +284,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             runCatching { TerminalShellAssets.installGradleUserHomeInit(File(PathConfig.aidevHome(ctx), "gradle-cache")) }
                 .onFailure { AIDevLogger.e("BuildBridge", "安装 GRADLE_USER_HOME init.d 失败", it) }
 
-            // 2.7) 预构建体检：扫描并修复 OpenCode 常见的、宇宙B 必失败的写法（vibe coding 护栏）
+            // 2.7) 预构建体检：扫描并提示宇宙B 必失败的写法（仅告警，不自动改写工程文件）
             runCatching { preflightCheck(projectDir, append) }
                 .onFailure { AIDevLogger.e("BuildBridge", "预构建体检失败(非致命)", it) }
 
@@ -893,7 +893,7 @@ class MainActivity : ComponentActivity() {
      * 官方 google()/mavenCentral() 兜底——任一镜像 502/被禁用时仍可从其它仓库解析。
      */
     private fun writeSettingsGradle(projectDir: File) {
-        // 保留已有 settings 里的 rootProject.name（用户/OpenCode 命名），否则用目录名——不再硬编码 MyAndroidProject
+        // 保留已有 settings 里的 rootProject.name（用户命名），否则用目录名——不再硬编码 MyAndroidProject
         val settingsFile = File(projectDir, "settings.gradle.kts")
         val existingName = runCatching {
             if (settingsFile.isFile) {
@@ -930,8 +930,7 @@ include(":app")"""
     }
 
     /**
-     * 预构建体检：针对 vibe coding 小白，OpenCode 生成的代码常犯几类宇宙B 必失败的错误。
-     * 编译前扫描 app/build.gradle.kts：
+     * 预构建体检：编译前扫描 app/build.gradle.kts，提示几类宇宙B 必失败的错误写法。
      *  1) 模块级 repositories{} → 自动移除（settings 已开 FAIL_ON_PROJECT_REPOS，统一阿里云镜像）
      *  2) compileSdk ≠ 36 → 告警（宇宙B 只装了 android-36）
      *  3) 使用 Compose 但配置不完整 → 告警
@@ -1077,7 +1076,7 @@ include(":app")"""
             put("success", success)
             put("message", message)
             put("time", System.currentTimeMillis())
-            // 宇宙 B 标准出口：构建产物路径与完整日志路径，供消费方（OpenCode/AF 面板）直接读取，不再自行猜测。
+            // 宇宙 B 标准出口：构建产物路径与完整日志路径，供消费方（AF 面板/终端）直接读取，不再自行猜测。
             put("apk_path", apkPath ?: JSONObject.NULL)
             put("log_path", logPath ?: JSONObject.NULL)
             put("pkg", pkg ?: JSONObject.NULL)

@@ -15,7 +15,7 @@ object UbuntuBootstrapScripts {
         if (!rootfs.isDirectory) return
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh", "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
@@ -289,7 +289,7 @@ AIDEV_BOOTSTRAP_EOF
           chmod 755 "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-auto-bootstrap" 2>/dev/null || true
 
           # 将 dev-env/bin 中的两端共用脚本复制到 rootfs（单来源 → 双端可用）
-          for script in aidev-current-project aidev-agent-context aidev-agent-context-file aidev-agent-summary aidev-agent-log aidev-agent-tail list-listen-ports task-list task-run aidev-opencode; do
+          for script in aidev-current-project list-listen-ports task-list task-run; do
             if [ -f "${'$'}AIDEV_BIN/.privot/${'$'}script" ]; then
               cp "${'$'}AIDEV_BIN/.privot/${'$'}script" "${'$'}AIDEV_ROOTFS/usr/local/bin/${'$'}script"
               chmod 755 "${'$'}AIDEV_ROOTFS/usr/local/bin/${'$'}script" 2>/dev/null || true
@@ -498,8 +498,6 @@ AIDEV_PWD_HOOK_EOF
           aidev-ensure-envs) ensure_all_rootfs ;;
           aidev-doctor) aidev_doctor_android ;;
           setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" "${'$'}@" ;;
-          opencode-check) run_ubuntu_command "/usr/local/bin/opencode-check" ;;
-          opencode-install|setup-opencode) run_ubuntu_command "/usr/local/bin/setup-opencode" ;;
           aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" ;;
           aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" "${'$'}@" ;;
           aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" ;;
@@ -507,14 +505,12 @@ AIDEV_PWD_HOOK_EOF
           aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" ;;
           aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" ;;
           aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" ;;
-          aidev-opencode) run_ubuntu_command "/usr/local/bin/aidev-opencode" ;;
           aidev-install) run_ubuntu_command "/usr/local/bin/aidev-install" "${'$'}@" ;;
           android-sh) run_ubuntu_command "/usr/local/bin/android-sh" ;;
           aidev-clean) run_ubuntu_command "/usr/local/bin/aidev-clean" ;;
           fix-bashrc) fix_bashrc ;;
           check-dev-env) run_ubuntu_command "/usr/local/bin/check-dev-env" ;;
           repair-dev-env) run_ubuntu_command "/usr/local/bin/repair-dev-env" ;;
-          install-aitool) run_ubuntu_command "/usr/local/bin/install-aitool" ;;
           aidev-backup) run_ubuntu_command "/usr/local/bin/aidev-backup" ;;
           aidev-logcat) run_ubuntu_command "/usr/local/bin/aidev-logcat" ;;
           aidev-anr) run_ubuntu_command "/usr/local/bin/aidev-anr" ;;

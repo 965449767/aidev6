@@ -41,7 +41,7 @@ class DevEnvironmentChecker(
         for ((cmd, label) in devTools) {
             val binPaths = listOf(
                 File(rootfs, "usr/bin/$cmd"), File(rootfs, "usr/local/bin/$cmd"),
-                File(rootfs, "root/.opencode/bin/$cmd"), File(rootfs, "bin/$cmd"),
+                File(rootfs, "bin/$cmd"),
             )
             val exists = if (cmd == "java") {
                 binPaths.any { it.exists() } || File(rootfs, "usr/lib/jvm").listFiles()?.any { it.isDirectory } == true
@@ -51,14 +51,14 @@ class DevEnvironmentChecker(
         val baseLabel = if (missingTools.isNotEmpty()) "基础开发工具包 · 缺失：${missingTools.joinToString("、")}" else "基础开发工具包"
         checks.add(CheckItem(baseLabel, missingTools.isEmpty(), if (missingTools.isNotEmpty()) "setup-dev-env" else null))
 
-        val optionalTools = listOf("opencode" to "OpenCode", "gradle" to "Gradle", "go" to "Go", "cargo" to "Rust/Cargo")
+        val optionalTools = listOf("gradle" to "Gradle", "go" to "Go", "cargo" to "Rust/Cargo")
         for ((cmd, label) in optionalTools) {
             val binPaths = listOf(
                 File(rootfs, "usr/bin/$cmd"), File(rootfs, "usr/local/bin/$cmd"),
-                File(rootfs, "root/.opencode/bin/$cmd"), File(rootfs, "bin/$cmd"),
+                File(rootfs, "bin/$cmd"),
             )
             val exists = binPaths.any { it.exists() }
-            checks.add(CheckItem(label, exists, if (cmd == "opencode" && !exists) "install-aitool" else null))
+            checks.add(CheckItem(label, exists, null))
         }
 
         val failedChecks = checks.filter { !it.ok }

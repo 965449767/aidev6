@@ -117,15 +117,12 @@ class CompletionEngine(
         TerminalCompletion("aidev-auto-bootstrap", "aidev-auto-bootstrap", "CMD"),
         TerminalCompletion("aidev-doctor", "aidev-doctor", "CMD"),
         TerminalCompletion("setup-dev-env", "setup-dev-env", "CMD"),
-        TerminalCompletion("opencode-check", "opencode-check", "CMD"),
-        TerminalCompletion("setup-opencode", "setup-opencode", "CMD"),
         TerminalCompletion("aidev-build-request", "aidev-build-request", "CMD"),
         TerminalCompletion("aidev-apk-info", "aidev-apk-info", "CMD"),
         TerminalCompletion("aidev-create-android-project", "aidev-create-android-project", "CMD"),
         TerminalCompletion("aidev-gen", "aidev-gen", "CMD"),
         TerminalCompletion("aidev-error-why", "aidev-error-why", "CMD"),
         TerminalCompletion("aidev-index", "aidev-index", "CMD"),
-        TerminalCompletion("aidev-opencode", "aidev-opencode", "CMD"),
         TerminalCompletion("aidev-install", "aidev-install", "CMD"),
         TerminalCompletion("aidev-clean", "aidev-clean", "CMD"),
         TerminalCompletion("aidev-proxy", "aidev-proxy", "CMD"),
@@ -158,13 +155,8 @@ class CompletionEngine(
         TerminalCompletion("aidev-dumpsys activity", "aidev-dumpsys activity", "CMD"),
         TerminalCompletion("aidev-dumpsys battery", "aidev-dumpsys battery", "CMD"),
 
-        // Agent helper scripts
+        // 开发辅助脚本
         TerminalCompletion("aidev-current-project", "aidev-current-project", "CMD"),
-        TerminalCompletion("aidev-agent-context", "aidev-agent-context", "CMD"),
-        TerminalCompletion("aidev-agent-context-file", "aidev-agent-context-file", "CMD"),
-        TerminalCompletion("aidev-agent-summary", "aidev-agent-summary", "CMD"),
-        TerminalCompletion("aidev-agent-log", "aidev-agent-log", "CMD"),
-        TerminalCompletion("aidev-agent-tail", "aidev-agent-tail", "CMD"),
 
         // System control
         TerminalCompletion("sysnotify", "sysnotify", "CMD"),
