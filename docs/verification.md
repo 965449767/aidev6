@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file defines how agents verify aidev3 changes before reporting completion.
+This file defines how agents verify aidev6 changes before reporting completion.
 
 ## Baseline Harness Check
 

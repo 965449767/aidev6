@@ -1,6 +1,6 @@
 # OpenCode 架构参考
 
-> 给 AI agent 的参考文档。记录 OpenCode 架构事实，用于指导 aidev3 项目的 OpenCode 相关功能开发。
+> 给 AI agent 的参考文档。记录 OpenCode 架构事实，用于指导 aidev6 项目的 OpenCode 相关功能开发。
 > 来源：OpenCode 官方文档、源码分析、实际测试。标注了每条事实的来源和验证方式。
 
 ---
@@ -217,7 +217,7 @@ GET /doc → OpenAPI 3.1 规范的 HTML 页面
 
 ### Android 终端的问题
 
-- **aidev3 的终端模拟器没有实现这些 escape sequence 的解析**
+- **aidev6 的终端模拟器没有实现这些 escape sequence 的解析**
 - OpenCode 发出的通知事件在 Android 端被静默丢弃
 - 核心缺口：不是"OpenCode 没有通知机制"，而是"Android 终端 App 没有桥接 OpenCode 的通知事件"
 
@@ -395,6 +395,6 @@ exit $EC
 | GitHub Issue #26866 | https://github.com/anomalyco/opencode/issues/26866 | SSE 事件流回归问题 |
 | GitHub Issue #27966 | https://github.com/anomalyco/opencode/issues/27966 | SyncEvent SSE 发布问题 |
 | OpenCode 中文社区 | https://opencode.runman.ai/ | 远程模式基础教程 |
-| aidev3 源码 `TerminalShellAssets.kt` | 项目内 | opencode 命令部署和 shell 函数 |
-| aidev3 源码 `UbuntuBootstrapScripts.kt` | 项目内 | PRoot 内脚本和 aidev-ubuntu-core 路由 |
-| aidev3 源码 `NotifyBridgeService.kt` | 项目内 | sysnotify 通知桥接实现 |
+| aidev6 源码 `TerminalShellAssets.kt` | 项目内 | opencode 命令部署和 shell 函数 |
+| aidev6 源码 `UbuntuBootstrapScripts.kt` | 项目内 | PRoot 内脚本和 aidev-ubuntu-core 路由 |
+| aidev6 源码 `NotifyBridgeService.kt` | 项目内 | sysnotify 通知桥接实现 |

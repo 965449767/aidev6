@@ -11,7 +11,7 @@
 |---|---|
 | `AGENTS.md` | **AI 开发宪法**：稳定性>安全>可维护性>可预测性；小改动（≤3 文件，最多 5）；最小 diff；风险优先；禁止惊喜重构；响应必须含 Summary（文件/原因/风险/验证/回滚/剩余）；绝不编造 API/行为。 |
 | `ARCHITECTURE.md` | **架构治理**：架构属于人类，AI 只实现；AI 无权决定 MVVM/MVI/Clean/模块化/包结构/DI/导航/状态管理/持久化/线程模型；大文件≠坏架构；架构变更须先给"现状/问题/证据/替代/收益/风险/迁移成本/回滚"并等批准。 |
-| `PROJECT.md` | **项目知识库（single source of truth）**：改代码前必读。当前为**模板**（含 `<Project Name>` 等占位符），需填充为 aidev6 实际信息（见下方"待办"）。 |
+| `PROJECT.md` | **项目知识库（single source of truth）**：改代码前必读。已填充为 aidev6 真实信息（项目名/目标/非目标/技术栈/模块/约束/已知限制/技术债/优先级）。 |
 | `ANDROID.md` | **Android 工程标准**：生命周期优先；Kotlin/Compose；SSOT；ViewModel 拥有业务状态；不阻塞主线程；Shizuku/Root 可选须有 fallback；Shell 必须经 Shell Layer；日志不记 token/secret。 |
 | `UI.md` | **UI 设计标准（宪法级）**：开发工具定位（稳定>信息密度>层级>效率>动画）；从信息架构出发；NavigationRail/≤5 Tab；Card+Grid 非留白；颜色只用 Token（禁止散落 `Color(0xFF…)`）；间距 4/8/12/16/24/32、圆角 12/16/28；图标 Material Symbols Rounded；动效仅 4 种。详细依据 `docs/DESIGN_SYSTEM.md`。 |
 | `人类.md` | **人类技术负责人手册**：定义人与 AI 的协作契约（方向/优先级/架构/风险/质量归人；单任务规则；审批事项；要求证据；结构化沟通）。AI 应理解，但不"遵守"其人类侧职责。 |
@@ -32,9 +32,6 @@
 - 项目根 `AGENTS.md` 是 **aidev6 特定的环境/交付约束**（Gradle 版本锁定、单模块/无 Hilt、手动安装 APK、PRoot 集成、架构入口等），属于"项目事实"。
 - 本目录 `rules/` 是 **通用 AI 工程纪律**（如何安全地改任何代码），属于"行为准则"。
 - 二者互补：做 aidev6 改动时，既遵守根 `AGENTS.md` 的硬约束，也遵守 `rules/` 的工程纪律。若二者冲突，**根 `AGENTS.md` 的硬约束（如 Gradle 版本禁止改、禁止多模块）优先**。
-
-## 待办（后续任务，非本次）
-- **填充 `core/PROJECT.md`**：把 aidev6 的真实信息（项目名、目标、非目标、技术栈版本、模块职责、约束、已知限制、技术债、优先级）写进去，使其成为本项目 single source of truth。当前仍是模板。
 
 ## 使用约定
 - 开始任何开发任务前，先读 `core/AGENTS.md` + `core/PROJECT.md`（填充后）+ 相关 `workflow/` 文件。

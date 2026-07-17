@@ -1,4 +1,4 @@
-# aidev3 — AGENTS.md
+# aidev6 — AGENTS.md
 
 An on-device AI dev environment for Android (Xiaomi 14 Pro / HyperOS / Android 16 / arm64-v8a). Kotlin + Jetpack Compose, single-module, bundled Ubuntu via PRoot.
 
@@ -68,13 +68,21 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 |------|---------|
 | `docs/app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、自我进化闭环 |
 | `docs/architecture.md` | **（符号链接→`opencode-architecture.md`）** OpenCode HTTP/SSE 协议参考，非 App 架构 |
+| `docs/opencode-architecture.md` | OpenCode HTTP/SSE 集成参考 |
+| `docs/opencode-web-ui-reference.md` | OpenCode 官方 Web 前端设计参考 |
+| `docs/self-evolution-loop.md` | 自我进化闭环文件契约（Phase F/G） |
 | `docs/verification.md` | validation matrix per change type |
 | `docs/coding-guidelines.md` | Android, terminal, and agent conventions |
-| `docs/decisions.md` | stable architecture decisions log |
-| `docs/error-journal.md` | repeated bugs and non-obvious failures |
-| `docs/android-guidelines.md` | HyperOS rules, permission scope, validation |
-| `docs/opencode-architecture.md` | OpenCode HTTP/SSE integration reference |
+| `docs/decisions.md` | 稳定架构决策日志（single source of truth；含 Phase F/G 冻结判据） |
+| `docs/error-journal.md` | 重复 bug、非显然失败、经验教训（含 Android 开发通用教训） |
+| `docs/android-guidelines.md` | HyperOS 规则、权限范围、验证 |
 | `docs/silent-install.md` | Shizuku 静默安装（App UI + 终端）的方法、修复记录、架构 |
+| `docs/DESIGN_SYSTEM.md` | UI 设计系统依据（`rules/core/UI.md` 配套） |
+| `docs/compose-capabilities.md` | `create-compose-project` 生成模板的 Compose 能力边界 |
+| `docs/AIDEV6_PROOT_DIAGNOSIS.md` | PRoot 启动失败完整诊断 |
+| `docs/aidev6-init-runbook.md` / `real-device-runbook.md` | 实机初始化 / 自我进化闭环真机实测手册 |
+| `docs/backlog-opt.md` | 待办 OPT 清单 |
+| `docs/chat-issues-memo.md` | 聊天 UI 与官方客户端差异备忘 |
 
 ## Skills
 

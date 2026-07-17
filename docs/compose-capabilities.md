@@ -1,8 +1,10 @@
-# Compose 能力边界（模板基线）
+# Compose 能力边界（create-compose-project 生成模板基线）
 
+> 适用范围：**`create-compose-project` 脚本生成的子项目**基线（与 `ScaffoldBaseline.kt`、`docs/decisions.md` 对齐），
+> 非 aidev6 宿主自身基线（宿主为 AGP 9.0.1 / Kotlin 2.0.21 / compileSdk 36 / BOM 2024.12.01）。
 > 适用基线：`compose-bom:2024.12.01` → `material3 1.3.1`、`material-icons-extended 1.7.6`、
 > `AGP 8.7.0` / `Kotlin 2.0.20` / `compileSdk 35`。
-> 写代码前先看清「能用什么、不能用什么」，避免运行时/编译时才发现用不了。
+> 为生成的新项目写代码前先看清「能用什么、不能用什么」，避免运行时/编译时才发现用不了。
 
 ## 一、Material 3 组件可用性（material3 1.3.1）
 

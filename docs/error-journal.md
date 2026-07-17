@@ -690,3 +690,26 @@ LeakCanary 2.x 把 `leakcanary-android` 拆成**薄壳** AAR（mavenCentral 与 
 - 处理模式：`#!/bin/sh` 替换；剥 `pipefail`/`-E`、`&>`、`[[ =~ ]]`、bash 数组（`( )`/`${arr[@]}`→空格分隔字符串+未引号展开）、进程替换 `<(...)`/`>(tee)`（dev-backup/restore-dev-env 的 `exec > >(tee)` → 直接去掉 tee 落地；aidev-index/aidev-build 的 `< <()` → 临时文件重定向）。
 - 全部 `dash -n` 通过；shell 测试 76 passed/0 failed。APK b162 已交付，需强制停止+重启 AIDev 部署。
 - 现状：assets/scripts 下 38 个脚本**全部 `#!/bin/sh` 且 dash 兼容**，PRoot bash 不可用隐患已彻底消除。
+
+---
+
+## Android 开发经验（通用教训）
+
+> 原记录见根 `ANDROID_DEV_EXPERIENCE.md`（已并入本文件）。
+
+### 不要用 FileObserver —— 用协程轮询
+
+- **场景**：监控目录中新出现的文件，处理跨进程请求（如 Ubuntu PRoot → Android 通知）。
+- **教训**：`FileObserver` 依赖 Linux `inotify`，而 Android 新设备多用 F2FS 文件系统，`inotify` 在 F2FS 上行为不一致，事件可能根本不触发。调试极难——无错误、无日志、静默失败。
+- **替代方案**：`CoroutineScope(Dispatchers.IO)` 内 `while (isActive) { dir.listFiles()?.filter { it.name.startsWith("req-") }?.forEach { ...; file.delete() }; delay(500) }`。每 500ms 轮询，不依赖内核、100% 可靠、无线程安全问题。
+
+### 异步初始化坑：Handler.post 还没执行就开始使用
+
+- **场景**：`homeDir` 在 `ensureSession()` 的 `Handler(Looper.getMainLooper()).post { ... }` 中赋值，但调用方在同一帧直接读取。
+- **教训**：`Handler.post` 回调不会在当前帧执行。后续依赖其赋值结果的代码必须加重试机制。
+- **模式**：`val dep = dependency ?: run { postDelayed(3000) { initXxx(ctx) }; return }; // 使用 dep`。
+
+### 两点总结
+
+1. Android 上永远别用 FileObserver，用轮询。
+2. 异步赋值的字段，永远加 null→重试兜底，不要假设调用时已赋值。
