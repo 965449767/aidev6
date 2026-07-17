@@ -10,12 +10,12 @@ import java.lang.Thread.UncaughtExceptionHandler
 /**
  * 宿主全局未捕获异常守卫（P0-1）。
  *
- * 让「崩溃回流 → 自我进化闭环」也能覆盖 aidev6 宿主自身：捕获任意线程未捕获异常后，
- * 写一个 crash 请求到 CrashReportBridge 入队目录（与 aidev-crash-report 同格式），
+ * 捕获 aidev6 宿主自身的任意线程未捕获异常，写一个本地 crash 请求文件到
+ * `${aidevHome}/.aidev-crash-bridge/`，供人类在终端用 aidev-crash-why 等命令排查；
  * 随后立即委托原 handler 终止进程，保留系统原生崩溃行为（不自吞、不阻塞）。
  *
- * 真正的 logcat 抓取与 crash-*.json 报告生成由 CrashReportBridgeService 异步完成，
- * 本类只做极轻量的文件写入（几 KB），绝不在崩溃路径上做网络/Shizuku/重 IO。
+ * 本类只做极轻量的本地文件写入（几 KB），绝不在崩溃路径上做网络/Shizuku/重 IO，
+ * 不触发任何自动修复或 AI 闭环。
  */
 object CrashGuard {
     @Volatile
@@ -29,7 +29,7 @@ object CrashGuard {
     }
 
     /**
-     * 把宿主崩溃写成 CrashReportBridge 的 req 文件（package=宿主自身，让闭环也覆盖宿主）。
+     * 把宿主崩溃写成本地 crash 请求文件（package=宿主自身），供人类排查。
      * 返回是否写入成功；失败不影响崩溃流程（仍会委托原 handler 终止）。
      */
     internal fun writeCrashRequest(home: File, packageName: String): Boolean {

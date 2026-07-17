@@ -69,25 +69,8 @@ class LongBridgeDispatchTest {
     }
 
     @Test
-    fun crashDispatchEnqueuesFileAndReturnsAccepted() {
-        val dir = newTempDir("crash-disp")
-        try {
-            setRequestDir(CrashReportBridgeService, dir)
-            val resp = CrashReportBridgeService.dispatch(
-                BridgeFrame("crash", "c-1", """{"id":"c-1","package":"com.x","lines":500}""")
-            )
-            assertNotNull(resp)
-            assertEquals("accepted", resp?.payload)
-            assertTrue(File(dir, "req-c-1.json").isFile)
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test
     fun bridgeNamesRegistered() {
         assertEquals("build", BuildBridgeService.bridgeName)
         assertEquals("deploy", DeployBridgeService.bridgeName)
-        assertEquals("crash", CrashReportBridgeService.bridgeName)
     }
 }

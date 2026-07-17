@@ -3,7 +3,6 @@ package com.aidev.six
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
-import com.aidev.six.agent.consumeLegacyCrashes
 import java.lang.ref.WeakReference
 
 /**
@@ -24,7 +23,6 @@ class AIDevApp : Application() {
         super.onCreate()
         BackupResumeState.init(this)
         CrashGuard.install(this)
-        consumeLegacyCrashes(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {}

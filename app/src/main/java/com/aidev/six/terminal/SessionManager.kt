@@ -12,7 +12,6 @@ import com.aidev.six.ClipboardHelper
 import com.aidev.six.Constants
 import com.aidev.six.NotifyBridgeService
 import com.aidev.six.BuildBridgeService
-import com.aidev.six.CrashReportBridgeService
 import com.aidev.six.DeployBridgeService
 import com.aidev.six.ShizukuBridgeService
 import com.aidev.six.ShizukuLogcat
@@ -103,7 +102,6 @@ class SessionManager(
         val home = homeDir ?: return
         NotifyBridgeService.start(act, home)
         BuildBridgeService.start(act, home)
-        CrashReportBridgeService.start(act, home)
         DeployBridgeService.start(act, home)
         if (ShizukuLogcat.isAvailable()) {
             ShizukuBridgeService.start(act, home)
