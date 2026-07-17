@@ -206,44 +206,11 @@ else
     echo ""
     echo "  完整日志: $BUILD_LOG"
 
-    # ── 回流：写入 .aidev-loop，供宇宙 A（OpenCode）自动/手动修复 ──
-    LOOP_HOME="${AIDEV_HOME:-/host-home}"
-    LOOP_DIR="$LOOP_HOME/.aidev-loop"
-    mkdir -p "$LOOP_DIR" 2>/dev/null || true
+    # ── 落盘：把完整失败日志放到稳定路径，供人类在终端排查（aidev-error-why 直接读此文件）──
     BF_PROJECT=$(basename "$PWD")
-    BF_ID="term-$(date +%s)"
-    BF_ERR_JSON=""
-    TMP_ERR="/tmp/aidev-build-err.$$"
-    grep -E 'error:|FAILED|What went wrong|Exception in' "$BUILD_LOG" 2>/dev/null | head -20 > "$TMP_ERR"
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        esc=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g; s/\n/\\n/g')
-        if [ -z "$BF_ERR_JSON" ]; then BF_ERR_JSON="\"$esc\""; else BF_ERR_JSON="$BF_ERR_JSON, \"$esc\""; fi
-    done < "$TMP_ERR"
-    rm -f "$TMP_ERR"
-    BF_TAIL=$(tail -60 "$BUILD_LOG" 2>/dev/null | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r//g' | tr '\n' ' ' | head -c 10000)
-
-    # 把【完整失败日志】落到稳定、不可变路径，避免被后续构建覆盖 build.log 而读到旧日志
     BF_LOGS_DIR="/sdcard/AIDev/logs/$BF_PROJECT"
     mkdir -p "$BF_LOGS_DIR" 2>/dev/null || true
     cp "$BUILD_LOG" "$BF_LOGS_DIR/last-build-failure.log" 2>/dev/null || true
-    cp "$BUILD_LOG" "$LOOP_DIR/build-failure-$BF_ID.log" 2>/dev/null || true
-
-    cat > "$LOOP_DIR/build-failure-$BF_ID.json" 2>/dev/null <<JSON || true
-{
-  "type": "self-evolution/build-failure",
-  "id": "$BF_ID",
-  "project": "$BF_PROJECT",
-  "time": $(date +%s)000,
-  "failed": true,
-  "errors": [${BF_ERR_JSON}],
-  "hints": [],
-  "log_tail": "$BF_TAIL",
-  "log_file": "$LOOP_DIR/build-failure-$BF_ID.log",
-  "fix_applied": false
-}
-JSON
-    echo "  已写入构建失败回流: $LOOP_DIR/build-failure-$BF_ID.json"
     echo "  完整失败日志: $BF_LOGS_DIR/last-build-failure.log"
 fi
 

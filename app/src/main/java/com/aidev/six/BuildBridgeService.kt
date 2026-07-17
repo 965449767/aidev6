@@ -951,12 +951,9 @@ include(":app")"""
         if (!gradleFile.isFile) return
         val original = runCatching { gradleFile.readText() }.getOrNull() ?: return
         val rootGradle = runCatching { File(projectDir, "build.gradle.kts").readText() }.getOrDefault("")
+        // 仅体检 + 提示，绝不自动改写用户工程文件（人类自行决定是否修复）。
         val result = BuildPreflight.inspect(original, rootGradle)
         result.messages.forEach(append)
-        if (result.fixedText != original) {
-            runCatching { gradleFile.writeText(result.fixedText) }
-                .onFailure { append("⚠ 体检：自动修复写回失败: ${it.message}") }
-        }
         // 源码预检：import 引用 + Manifest 组件声明
         val sourceMessages = runCatching { BuildPreflight.inspectSourceCode(projectDir) }.getOrDefault(emptyList())
         sourceMessages.forEach(append)
@@ -1100,71 +1097,13 @@ include(":app")"""
     }
 
     /**
-     * 构建失败回流：把编译错误写到 `home/.aidev-loop/build-failure-<id>.json`。
-     * 无论请求来自 App UI 还是宇宙 A 终端，只要构建失败就写，确保健壮性。
-     * 写文件是第一优先级，诊断/JSON 构建各自防御，避免任何一步抛异常导致整条回流丢失。
+     * 构建失败落盘：把完整失败日志写到稳定、不可变路径，供人类在终端排查
+     * （例如 aidev-error-why 直接读 `logs/<project>/last-build-failure.log`）。
+     * 仅写日志，不生成任何自动修复/AI 闭环回流文件。
      */
     private fun writeLoopBuildFailure(ctx: Context, buildId: String, project: String, logText: String) {
-        val errorLines = runCatching {
-            logText.lines().filter { line ->
-                line.contains("error:", ignoreCase = true) ||
-                line.contains("FAILED") ||
-                line.contains("Exception") ||
-                line.contains("What went wrong")
-            }.take(20)
-        }.getOrDefault(emptyList())
-        val hints = runCatching { BuildDiagnostics.diagnoseBuildErrors(logText) }.getOrDefault(emptyList())
-        val tailLog = runCatching { logText.lines().takeLast(80).joinToString("\n") }.getOrDefault("")
-
-        // 把【完整失败日志】落到稳定、不可变路径，避免被后续构建覆盖 build.log 而读到旧日志。
-        // - logs/<project>/last-build-failure.log：按钮回流用（OpenCode 直接读此文件）
-        // - .aidev-loop/build-failure-<id>.log：守护进程自动闭环用
         val stableLog = File(File(PathConfig.logsDir(ctx), project), "last-build-failure.log")
-        val loopLog = File(File(PathConfig.aidevHome(ctx), ".aidev-loop"), "build-failure-$buildId.log")
         runCatching { stableLog.parentFile?.mkdirs(); stableLog.writeText(logText) }
-            .onFailure { e -> LoopTrace.log("AutoLoop", "写稳定失败日志失败: $e") }
-        runCatching { loopLog.parentFile?.mkdirs(); loopLog.writeText(logText) }
-            .onFailure { e -> LoopTrace.log("AutoLoop", "写回流日志失败: $e") }
-
-        val payload = runCatching {
-            JSONObject().apply {
-                put("type", "self-evolution/build-failure")
-                put("id", buildId)
-                put("project", project)
-                put("time", System.currentTimeMillis())
-                put("failed", true)
-                put("errors", org.json.JSONArray().apply { errorLines.forEach { put(it) } })
-                put("hints", org.json.JSONArray().apply { hints.forEach { put(it) } })
-                put("log_tail", tailLog)
-                put("log_file", "/host-home/.aidev-loop/build-failure-$buildId.log")
-                put("fix_applied", false)
-            }.toString(2)
-        }.getOrNull() ?: return
-
-        // 主路径：home/.aidev-loop/（宇宙 A 守护进程与手动按钮共享）
-        val targets = listOf(
-            File(PathConfig.aidevHome(ctx), ".aidev-loop"),
-            File(PathConfig.logsDir(ctx), project),
-        )
-        var written: File? = null
-        for (dir in targets) {
-            runCatching {
-                dir.mkdirs()
-                val out = File(dir, "build-failure-$buildId.json")
-                out.writeText(payload)
-                written = out
-            }.onFailure { e ->
-                AIDevLogger.e("BuildBridge", "写构建失败回流失败: ${dir.absolutePath} -> $e")
-                LoopTrace.log("AutoLoop", "写回流失败: ${dir.absolutePath} -> $e")
-            }
-            if (written != null) break
-        }
-        if (written != null) {
-            AIDevLogger.i("BuildBridge", "写入构建失败回流: ${written.absolutePath}")
-            LoopTrace.log("AutoLoop", "写入构建失败回流: ${written.absolutePath}")
-        } else {
-            AIDevLogger.e("BuildBridge", "构建失败回流全部写入失败（project=$project）")
-            LoopTrace.log("AutoLoop", "构建失败回流全部写入失败（project=$project）")
-        }
+            .onFailure { e -> AIDevLogger.e("BuildBridge", "写稳定失败日志失败: ${e.message}") }
     }
 }
