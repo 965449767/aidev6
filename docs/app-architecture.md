@@ -24,8 +24,8 @@
 
 ## 3. OpenCode 集成
 
-- 固定端口 `127.0.0.1:4096`（`Constants.OPENCODE_BASE_URL`）。
-- `OpenCodeMonitorService` 经 SSE 监听 `session.status: busy→idle` 触发 `sysnotify` 通知。
+- 固定端口 `127.0.0.1:4096`（`Constants.OPENCODE_BASE_URL`），落非 4096 端口时由 aidev-opencode 脚本写 `.aidev-opencode-port` 供 `OpenCodeEngine` 读取。
+- OpenCode 仅作为**人类驱动的写代码工具**；宿主被动提供人机交互入口（通知「中止」按钮经 `OpenCodeActionReceiver` → `OpenCodeEngine.abortSession`），不挂任何自动代码编辑 / 自动重建 / 自动修复能力。`OpenCodeMonitorService` 已删除。
 - 详见 `docs/opencode-architecture.md`。
 
 ## 4. 桥接通信（宿主 ↔ PRoot）
@@ -38,13 +38,13 @@
   - 有界线程池 + `Semaphore` 限连 + `soTimeout` 防本地滥用。
 - **文件轮询兜底（长期保留）**：`poll()` 每 500ms 扫描各自 `BRIDGE_DIR`，`claimFile` 重命名锁防重复消费；socket 不可用时自动回退。
 - **路由**：`BridgeRegistry` 按桥名分发到对应 `*BridgeService.dispatch`。
-- **五大桥**：`Notify`/`Shizuku`/`Build`/`Deploy`/`Crash`；前两者同步返回结果，后三者仅落盘 `req-<id>.json` 并返回 `"accepted"`，由既有轮询流程异步处理。
+- **四桥**：`Notify`/`Shizuku`/`Build`/`Deploy`；前两者同步返回结果，后两者仅落盘 `req-<id>.json` 并返回 `"accepted"`，由既有轮询流程异步处理。（原 `Crash` 桥已移除：崩溃仅由 `CrashGuard` 落本地文件供人类排查。）
 
-## 5. 自我进化闭环
+## 5. 构建与部署（人类驱动）
 
-- `agent/BuildRequestTracker`：提交构建请求（`submit` 写 `req-<id>.json` + 插入 RUNNING 记录）、崩溃回流（`watchCrashReport`）、自治重建（未修复则自动触发下一轮，上限 `MAX_AUTO_ITERATIONS=10`）。
-- `agent/AgentTaskRunner`（`object` 单例）：执行 shell 命令，带超时与 `destroyForcibly()` 强制取消，防挂死。
 - `BuildBridgeService` / `DeployBridgeService`：编译与部署黑盒，状态经 `agent-tasks.json` 单一真源回流。
+- 唯一构建入口为终端命令 `aidev-build-request --project <路径>`（App「编译」按钮即向终端会话写入该命令）；构建失败仅把完整日志落到 `logs/<project>/last-build-failure.log`，不自动改写工程文件、不写 AI 回流。
+- `agent/AgentTaskRunner`（`object` 单例）：执行 shell 命令，带超时与 `destroyForcibly()` 强制取消，防挂死。
 
 ## 6. 关键约束
 

@@ -221,7 +221,7 @@ Every module must answer.
 
 - 为何存在 / 谁依赖它 / 谁拥有它 / 解决什么问题。
 
-例：Bridge 归宿主侧，被 Notify/Shizuku/Build/Deploy/Crash 五桥共享；Bootstrap 归 PRoot 部署，被 Terminal 与 Build 依赖；Build 归自我进化闭环，被 AgentTaskRunner 驱动。
+例：Bridge 归宿主侧，被 Notify/Shizuku/Build/Deploy 四桥共享；Bootstrap 归 PRoot 部署，被 Terminal 与 Build 依赖；Build 由人类经 `aidev-build-request` 提交，被 App「编译」按钮与终端命令驱动。
 
 ---
 
@@ -236,11 +236,11 @@ Every module must answer.
 |---|---|---|
 | `UI` | Compose 页面 / 主题 / 组件 | 任何 shell / 业务调用（必须经 ViewModel） |
 | `IDE` | Project / Editor / Terminal 会话管理 | 直接执行构建 / 安装 |
-| `AI` | 编码 Agent 抽象（AIEngine）/ Session / Context | 写死单一 Provider |
+| `AI` | 编码引擎抽象（AIEngine）/ 会话中止 | 写死单一 Provider（OpenCode）；仅人类触发 |
 | `Runtime` | PRoot / Shell Layer / Bootstrap（rootfs / 资产 / 就绪判定） | 向 UI 暴露内部状态 |
-| `Bridge` | Transport（Socket / File）+ Protocol（Build / Notify / Crash / Install）分层 | Transport 与 Protocol 混写 |
-| `Build` | Compiler 驱动 / Installer / Deploy | 持有 UI 引用 |
-| `Automation` | 自我进化闭环 / 崩溃回流 / 闭环 FSM | 散落 callback 协调 |
+| `Bridge` | Transport（Socket / File）+ Protocol（Build / Notify / Install）分层 | Transport 与 Protocol 混写 |
+| `Build` | Compiler 驱动 / Installer / Deploy（人类提交 `aidev-build-request`） | 持有 UI 引用 |
+| `Automation` | （已移除）原自我进化闭环 / 崩溃回流 / 闭环 FSM | 散落 callback 协调 |
 | `Core` | 统一事件模型 / Config / Storage | 业务规则 |
 
 ## 硬护栏
@@ -248,7 +248,7 @@ Every module must answer.
 - 新增类必须归入对应 Domain 包；**禁止新增顶层全局 `*Service` 组件**导致跨 Domain 蔓延（评审问题一）。
 - Bridge 保持 Transport / Protocol 分离，二者不得混写（评审问题二）。
 - 闭环状态演进须走显式状态枚举 / FSM，不得散落 callback（评审问题四）。
-- AI Provider 经 `AIEngine` 抽象接入，OpenCode 为首个实现；新增 Provider 不触碰 `Constants.kt` 硬编码以外的既有闭环（评审唯一证实缺口，契约见 `docs/target-architecture.md`）。
+- AI Provider 经 `AIEngine` 抽象接入，OpenCode 为首个实现；OpenCode 仅作为人类驱动的写代码工具，宿主被动提供中止等人机交互入口，**不挂任何自动代码编辑 / 自动重建 / 自动修复能力**（契约见 `docs/target-architecture.md`）。
 - 每个落地子任务遵守 `rules/workflow/EXECUTION.md`（≤5 文件、核心模块批准、行为锁），不一次性大改。
 
 ---

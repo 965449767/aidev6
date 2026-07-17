@@ -37,7 +37,7 @@ Do not expand ROM-specific work to Huawei, OPPO, vivo, or other vendors unless e
 - Launcher: `ShellActivity` (ComponentActivity + setContent)
 - Terminal page: `EmbeddedShellPages.kt` (via session manager)
 - Keep-alive: `KeepAliveService`
-- Bridge services: `BuildBridgeService`, `NotifyBridgeService`, `ShizukuBridgeService`, `CrashReportBridgeService`
+ - Bridge services: `BuildBridgeService`, `NotifyBridgeService`, `ShizukuBridgeService`（`CrashReportBridgeService` 已随自我进化闭环移除；崩溃仅由 `CrashGuard` 落本地文件）
 
 Do not force these changes during normal feature work:
 

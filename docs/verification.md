@@ -94,30 +94,18 @@ Git unavailable: not a repository
 
 Do not initialize Git or create commits without explicit user approval.
 
-## Phase H — 自我进化闭环验证
+## Phase H — 自我进化闭环验证（已退役）
 
-闭环相关改动（Phase F/G：BuildRequestTracker、自治开关、aidev-self-evolution 守护）的验证分两层。
+> ⚠️ **2026-07-17 起「自我进化闭环」整体移除**，本阶段原验证项（`BuildRequestTrackerTest`、`verify-self-evolution.sh`、自治开关、守护）已随代码删除不再适用。
+> 取而代之的是**人类驱动验证**：构建失败由人类读 `logs/<项目>/last-build-failure.log` + `aidev-error-why` 排查，无自动改码。
 
-### 本环境可验（已自动化）
+### 等价验证（本环境可验）
 
-1. **单元测试**（已持续绿灯）：`testDebugUnitTest`
-   - `BuildRequestTrackerTest`：崩溃写共享工作区、requestRebuild 写 req、自治三场景（触发/已修复收敛/手动不自动）、note 向后兼容。
+1. **单元测试**：`testDebugUnitTest`（已移除 `BuildRequestTrackerTest` 等 AI 闭环测试，无新增失败）。
 2. **构建**：`assembleDebug`（aapt2 覆盖）。
-3. **闭环文件契约模拟**（无真机）：`bash scripts/verify-self-evolution.sh`
-   - 用 fake OpenCode 模拟 崩溃→改码→标记 fix_applied→写 req→构建桥 result 成功，断言契约闭合。
-
-### 必须真机 / Shizuku（冻结为待办，非漏做）
-
-在真实设备上跑一次完整闭环，确认下面各项实战没问题（详见 `current-task.md` Phase H 待办）：
-
-- [ ] 完整闭环：改码 → 提交 → 宇宙B 编译 → Shizuku 安装 → 自动拉起 → logcat 抓崩溃 → 守护改码 → 再构建，自动收敛
-- [ ] B5：崩溃回流 60s 轮询窗口是否够（App 启动慢 / 晚崩场景）
-- [ ] B6：长构建（>5min）期间 App 被 HyperOS 杀进程是否中断闭环（前台 Service / KeepAlive 覆盖）
-- [ ] B8：首次 install-compiler 静默长任务是否需进度提示
-- [ ] B9：parseCrash 误报 / 截断率
-- [ ] 设备开机后 OpenCode `serve` + 守护自启（目前需手动起）
-
- 判据：以上默认冻结，仅当用户实测完整闭环出现断点、或某项误报/中断率实测偏高时才解冻动工（见 `decisions.md`）。
+3. **Shell 测试**：`bash app/src/test/sh/run.sh`（含 `aidev-build-request`、建项目等命令测试）。
+4. **Harness**：`bash scripts/harness_check.sh`。
+5. **人工端到端**：见 `docs/real-device-runbook.md` 第 1–4 步（装 App → 宇宙B 编译 → 可选 OpenCode 改码 → 人类提交 `aidev-build-request`）。
 
 ## Phase I — 面板部署黑盒（DeployBridgeService）验证
 

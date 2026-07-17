@@ -1,6 +1,6 @@
 # aidev6 实机初始化操作手册（闭环验证前置）
 
-> 目标：让新装的 aidev6（`com.aidev.six.dev`）具备跑通自我进化闭环的环境。
+> 目标：让新装的 aidev6（`com.aidev.six.dev`）具备跑通**人类驱动构建闭环**的环境（终端 + 宇宙B 编译 + 可选 OpenCode 写码，无自动改码）。
 > 适用：在手机上打开 aidev6，按本手册初始化；**全部为设备侧手动操作，agent 无法代做**。
 > 架构基准（代码写死，见 `PathConfig.kt` / `BuildBridgeService.kt`）：
 > - `aidevHome` = `/data/data/com.aidev.six.dev/files/home`
@@ -110,15 +110,9 @@ ls "$ANDROID_SDK_ROOT/platforms/android-36"        # 应存在
 
 ## 三、自进化（宇宙A 改码）的前置拓扑（务必注意）
 
-闭环的"崩溃 → 改码"那一半，**宇宙A 的 OpenCode 必须跑在 aidev6 自己的 `home/ubuntu-rootfs` 里**，且读写同一份 `home/workspace`。
-
-- 错误：在 agent 构建环境（`/root/workspace`）起 `opencode serve` + `aidev-self-evolution` —— 与 aidev6 沙箱不是同一份工作区，崩溃文件/源码契约永远接不上。
-- 正确：`aidev-self-evolution` 守护与 OpenCode serve **从 aidev6 的终端（宇宙A rootfs）内启动**，或至少：
-  - `AIDEV_WORKSPACE` 指向 `/data/data/com.aidev.six.dev/files/home/workspace`
-  - `OPENCODE_URL` 指向 aidev6 沙箱内起的 OpenCode 服务
-  - 调用的是 rootfs 内的 `opencode`
-
-> 即 Phase G 设计的"宇宙A 与宇宙B 共享 `home/workspace`"成立的前提是：宇宙A 也在 aidev6 进程内/同沙箱，而不是外置的 agent PRoot。本手册第二节步骤 2 装好的 OpenCode 才是真正参与闭环的那个。
+> 本手册描述的早期"自我进化闭环"（`崩溃 → 自动改码`）已在 2026-07-17 重构中移除：**不再有任何自动改码守护**。
+> OpenCode 仅作为**人类驱动的写代码工具**——你可以在 aidev6 终端（宇宙A rootfs）内自行 `opencode serve` 并用它改码，但改码与构建完全由你掌控，宿主不会自动调用 OpenCode 做任何事。
+> 构建统一用 `aidev-build-request --project /workspace/<应用名>`（App「编译」按钮等价），失败日志在 `logs/<项目>/last-build-failure.log`，由你人工排查。
 
 ---
 

@@ -43,11 +43,11 @@ AIDev
 |---|---|---|
 | `UI` | Compose 页面、主题、组件 | 任何 shell / 业务调用（经 ViewModel） |
 | `IDE` | Project / Editor / Terminal 会话管理 | 直接执行构建/安装 |
-| `AI` | 编码 Agent 抽象、Session、Context | 写死单一 Provider（见 AIEngine 契约） |
+| `AI` | 编码引擎抽象（AIEngine）/ 会话中止 | 写死单一 Provider（OpenCode）；仅人类触发 |
 | `Runtime` | PRoot、Shell Layer、Bootstrap（rootfs/资产/就绪判定） | 暴露内部状态给 UI |
-| `Bridge` | Transport（Socket/File）+ Protocol（Build/Notify/Crash/Install）分层 | Transport 与 Protocol 混写 |
-| `Build` | Compiler 驱动、Installer、Deploy | 持有 UI 引用 |
-| `Automation` | 自我进化闭环、崩溃回流、闭环 FSM | 散落 callback 协调 |
+| `Bridge` | Transport（Socket/File）+ Protocol（Build/Notify/Install）分层 | Transport 与 Protocol 混写 |
+| `Build` | Compiler 驱动、Installer、Deploy（人类提交 `aidev-build-request`） | 持有 UI 引用 |
+| `Automation` | （已移除）原自我进化闭环 / 崩溃回流 / 闭环 FSM | 散落 callback 协调 |
 | `Core` | 统一事件模型、Config、Storage | 业务规则 |
 
 ## 已确认的真实缺口 → 纳入目标架构
@@ -75,18 +75,19 @@ interface AIEngine {
 // OpenCode 为首个实现；未来可加 ClaudeCodeEngine / GeminiCliEngine 等
 ```
 
-- 约束：`status()` 语义对齐现有 `OpenCodeMonitorService.MonitorState`（DISCONNECTED/IDLE/BUSY）。
+- 约束：`status()` 语义对齐现有 OpenCode 会话状态（DISCONNECTED/IDLE/BUSY）。
 - 事件流对齐现有 OpenCode SSE 事件协议（`server.connected` / `session.status` / `session.idle` / heartbeat）。
 - 实现子任务须走 EXECUTION.md：≤5 文件、核心模块（含 Self Evolution）改动需批准、行为锁（不改现有闭环行为）。
 
-### 实现状态（2026-07-17）
+### 实现状态（2026-07-17，已二次收敛）
 
-`AIEngine` 抽象**已落地**：
-- 新增 `monitor/AIEngine.kt`（接口）+ `monitor/OpenCodeEngine.kt`（OpenCode 实现，搬迁原 `OpenCodeMonitorService` 全部 HTTP/SSE/通知逻辑）。
-- `OpenCodeMonitorService` 退化为薄壳，仅管前台通知与协程生命周期；`OpenCodeActionReceiver` 中止请求 delegate 给 `OpenCodeEngine.abortSession`。
-- `baseUrl` 解析：优先读 `${aidevHome}/.aidev-opencode-port`（OpenCode 落非 4096 端口时由 aidev-opencode 脚本写出），回退 `Constants.OPENCODE_BASE_URL`（4096）——顺带修复原「写死 4096、端口回落时静默失效」的潜在 bug。
-- 行为锁：SSE 协议解析、MonitorState 状态机、通知文案/中止按钮、轮询节奏均与重构前一致；未触碰自我进化文件契约、未动 `SELF_EVOLUTION_*` 模型列表。
-- 编译 `compileDebugKotlin` 通过、单元测试与 shell 测试无新增失败。
+`AIEngine` 抽象**已落地**，但职责在「人类驱动重构」中进一步收敛：
+
+- `monitor/AIEngine.kt`（接口）+ `monitor/OpenCodeEngine.kt`（OpenCode 实现）保留，但 `OpenCodeEngine` 现在**只提供人类触发的能力**（查询会话状态、中止指定会话，供通知「中止」按钮调用），**不参与任何自动代码编辑或闭环**。
+- **`OpenCodeMonitorService` 已删除**（原被动 SSE 监控前台服务，对人无用）：`OpenCodeActionReceiver` 的中止请求直接 delegate 给 `OpenCodeEngine.abortSession`，不再依赖任何监控 Service。
+- `baseUrl` 解析：优先读 `${aidevHome}/.aidev-opencode-port`（OpenCode 落非 4096 端口时由 aidev-opencode 脚本写出），回退 `Constants.OPENCODE_BASE_URL`（4096）。
+- **自我进化闭环已整体移除**：`BuildRequestTracker` / `DeployRequestTracker` / `CrashReportBridgeService` 删除；`SELF_EVOLUTION_*` 偏好键与 `consumeLegacyCrashes` 移除；构建失败仅把完整日志落到 `logs/<project>/last-build-failure.log` 供人类排查，不再写 `self-evolution/build-failure` 回流文件、不再自动改写用户 `app/build.gradle.kts`。
+- 设计原则（本期硬约束）：**终端在无 AI Agent 时也必须完整可用**；OpenCode 仅作为人类驱动的写代码工具，宿主被动提供中止等人机交互入口，不挂任何自动能力。
 
 ## 不在本期（严守评审「非现在」+ 治理红线）
 

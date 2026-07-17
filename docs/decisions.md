@@ -2,6 +2,33 @@
 
 Use this file to record stable project decisions.
 
+## 2026-07-17 - 重构为「人类驱动」开发闭环：移除 AI 自动写码 / 自我进化
+
+### Context
+
+原架构把 AIDev 设计成「自我进化闭环」：OpenCode（宇宙 A）读崩溃/构建失败回流 → 自动改码 → 触发重建。
+这与「终端在无 AI Agent 时也必须完整可用、OpenCode 仅作为人类驱动的写代码工具」的原则冲突，
+且 `BuildBridgeService.preflightCheck` 会静默改写用户 `app/build.gradle.kts`、`aidev-build`（宇宙 A 本地 `./gradlew`）
+与统一入口 `aidev-build-request`（宇宙 B 编译）双入口并存易混淆。
+
+### Decision
+
+- **移除 AI 自动写码闭环**：删除 `BuildRequestTracker` / `DeployRequestTracker` / `CrashReportBridgeService`、
+  `OpenCodeMonitorService`、`LoopTrace`；删除 `SELF_EVOLUTION_*` 偏好与 `consumeLegacyCrashes`。
+- **构建统一到 `aidev-build-request`**：删除 `aidev-build`（宇宙 A 本地 `./gradlew`）；构建失败仅把完整日志落到
+  `logs/<project>/last-build-failure.log` 供人类排查，不再写 `self-evolution/build-failure` 回流、不再自动改写工程文件。
+- **建项目统一到 `create-compose-project`**：对齐宿主版本（AGP 9.0.1 / Kotlin 2.0.21 / Gradle 9.1.0 / compileSdk·targetSdk 36）；
+  `aidev-create-android-project` 退化为其兼容封装。
+- **OpenCode 仅保留人类触发能力**：`OpenCodeEngine` 只提供会话中止（通知「中止」按钮），不挂任何自动能力。
+- **UI 按钮即终端快捷方式**：「编译」按钮在终端会话写入 `aidev-build-request --project …`，过程对人类可见。
+
+### Consequences
+
+- 终端在 OpenCode 未安装/离线时仍完整可用；人类 100% 掌控改码与构建。
+- `aidev-build-request` 成为唯一构建入口，心智模型统一；`self-evolution-loop.md` 标记退役。
+- 回归风险低：均为删除/收敛，核心桥接（Build/Deploy/Notify/Install 四桥）与 PRoot 集成未动；
+  `compileDebugKotlin` / `testDebugUnitTest` / `app/src/test/sh/run.sh` / `harness_check.sh` 全绿。
+
 ## 2026-07-14 - 桥接通信升级：TCP loopback Socket 主用 + 文件轮询兜底
 
 ### Context
