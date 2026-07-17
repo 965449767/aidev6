@@ -71,7 +71,12 @@ fun CommandHelpContent(
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        commands = CommandCatalog.scanInstalledCommands(context)
+        commands = try {
+            CommandCatalog.scanInstalledCommands(context)
+        } catch (e: Exception) {
+            android.util.Log.w("CommandHelp", "scan failed, use full registry", e)
+            CommandCatalog.allRegistryCommands()
+        }
         loaded = true
     }
 
