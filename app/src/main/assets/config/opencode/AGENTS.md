@@ -11,14 +11,14 @@
 ## 铁律（违反 = 编译失败）
 
 1. **项目必须建在 `/workspace/` 下**（例如 `/workspace/MyApp`）。建在别处（如 `~/`、`/root/`）宇宙B 完全看不见，无法编译。
-2. **新建项目一律用命令**：`aidev-create-android-project <应用名> <包名>`（默认建到 `/workspace/<应用名>`）。不要手写 gradle 脚手架。
+2. **新建项目一律用命令**：`aidev-create-android-project <应用名> <包名>` 或 `create-compose-project`（两者等价，统一由 `create-compose-project` 产出脚手架）。不要手写 gradle 脚手架。
 3. **不要在模块级 `app/build.gradle.kts` 里写 `repositories { }` 块**。仓库统一在 `settings.gradle.kts`（用阿里云镜像），开了 `FAIL_ON_PROJECT_REPOS`，模块级仓库会硬报错。
 4. **不要改版本号**。下列版本是宇宙B 唯一支持且已验证可编译的组合，照抄：
 
    | 组件 | 固定版本 |
    |---|---|
    | Gradle | `9.1.0` |
-   | AGP (com.android.application) | `8.7.3` |
+   | AGP (com.android.application) | `9.0.1` |
    | Kotlin (org.jetbrains.kotlin.android) | `2.0.21` |
    | compileSdk / targetSdk | `36` |
    | minSdk | `26` |

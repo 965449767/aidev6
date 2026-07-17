@@ -57,7 +57,7 @@ if [ -z "$APK_PATH" ]; then
 fi
 
 if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-    echo "错误: 找不到 APK 文件。请指定路径或先构建: aidev-build && aidev-install"
+    echo "错误: 找不到 APK 文件。请指定路径或先构建: aidev-build-request && aidev-install"
     exit 1
 fi
 

@@ -17,7 +17,7 @@ description: 诊断 Android 构建错误，给出中文解决方案
   - `SDK` — SDK 或 build-tools 未找到
   - `daemon` — Daemon 相关通用问题
 
-也可以从 `aidev-build` 通过管道传入完整错误输出:
-  `aidev-build --full 2>&1 | aidev-error-why`
+也可以从 `aidev-build-request` 通过管道传入完整错误输出:
+  `aidev-build-request-request --full 2>&1 | aidev-error-why`
 
 当构建失败时，用户会询问原因，优先调用此命令诊断。

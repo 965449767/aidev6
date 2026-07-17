@@ -302,7 +302,7 @@
           "tags": ["内置命令", "网络", "构建优化"],
           "usage": "  aidev-proxy start                    # 启动代理（端口 18080）\n  aidev-proxy status                   # 查看代理状态和缓存大小\n  aidev-proxy stop                     # 停止代理\n  aidev-proxy restart                  # 重启代理",
           "permissions": "无特殊权限要求。",
-          "notes": "代理启动后 Gradle 自动通过 127.0.0.1:18080 下载依赖，重复下载走本地缓存加速。缓存目录在 {AIDEV_HOME}/proxy-cache/（最大 500MB）。同一次会话中 start 后可直接 aidev-build，无需额外配置。"
+          "notes": "代理启动后 Gradle 自动通过 127.0.0.1:18080 下载依赖，重复下载走本地缓存加速。缓存目录在 {AIDEV_HOME}/proxy-cache/（最大 500MB）。同一次会话中 start 后可直接 aidev-build-request 提交构建，无需额外配置。"
         },
         {
           "title": "存储清理",
@@ -421,24 +421,24 @@
           "permissions": "无特殊权限要求。需要 aapt2 输出完整信息（Gradle 构建后自动缓存）。",
           "notes": "优先使用 aapt2 解析（从 Gradle 缓存或 Android SDK 中查找），未找到时以基础模式运行（显示文件大小和包名）。aapt2 在 Gradle 构建一次后就会缓存在 ~/.gradle/caches/ 中。"
         },
-        {
-          "title": "智能构建",
-          "cmd": "aidev-build [--full|--test|--compile] [--clean]",
-          "desc": "智能 Android 构建包装：自动选择最轻验证方式、处理 AAPT2 死锁、诊断构建错误",
-          "tags": ["内置命令", "Android 开发", "构建工具"],
-          "usage": "  aidev-build                                     # 自动选择最轻方式\n  aidev-build --full                              # 全量编译 (assembleDebug)\n  aidev-build --test                              # 编译 + 单元测试\n  aidev-build --compile                           # 仅 Kotlin 编译\n  aidev-build --clean                             # clean 后增量编译\n  aidev-build --full --clean                      # 清理后全量编译",
-          "permissions": "无特殊权限要求。需要在 Ubuntu 容器内执行（需要 JDK 和 Gradle）。",
-          "notes": "Gradle init script 已处理 AAPT2 守护进程禁用（wrap-native.gradle）。检测代理可用性，代理不可达时自动禁用。构建失败时自动诊断常见错误（AAPT2、Gradle 配置等）。auto 模式检测 git 改动范围（含 unstaged）选择最轻构建方式。构建日志写入 /tmp/aidev-build-<PID>.log，成功自动删除。"
-        },
-        {
-          "title": "新建 Android 项目",
-          "cmd": "aidev-create-android-project <应用名> <包名> [输出目录]",
-          "desc": "从模板创建 Android 项目，自动匹配当前环境的 AGP/Kotlin/Gradle 版本",
-          "tags": ["内置命令", "Android 开发", "脚手架"],
-          "usage": "  aidev-create-android-project MyApp com.example.myapp                        # 创建到 /root/Workspace/Android/MyApp\n  aidev-create-android-project MyApp com.example.myapp /root/projects               # 指定输出目录",
-          "permissions": "无特殊权限要求。需在 Ubuntu 容器内执行。",
-          "notes": "生成 Compose + Material3 项目，包含: build.gradle.kts (AGP 9.0.1 + Kotlin 2.0.21)、Compose BOM 2024.10、ComponentActivity + setContent。无 XML 布局。自动下载 Gradle Wrapper 并初始化 Git。创建后可直接 aidev-build --full 编译。"
-        },
+         {
+           "title": "智能构建",
+           "cmd": "aidev-build-request --project <路径> [--full|--test|--compile] [--install/--no-install] [--launch/--no-launch]",
+           "desc": "统一构建入口：把项目提交给宇宙B（离线编译器）编译成 APK 并安装，处理 AAPT2、诊断构建错误",
+           "tags": ["内置命令", "Android 开发", "构建工具"],
+           "usage": "  aidev-build-request --project /workspace/MyApp                  # 全量编译并安装\n  aidev-build-request --project /workspace/MyApp --test            # 编译 + 单元测试\n  aidev-build-request --project /workspace/MyApp --compile         # 仅 Kotlin 编译检查\n  aidev-build-request --project /workspace/MyApp --full --no-install # 全量编译不安装",
+           "permissions": "无特殊权限要求。通过 BuildBridge 提交到宇宙B 编译器。",
+           "notes": "项目必须位于 /workspace/ 下宇宙B 才能编译。构建失败时把完整日志落到 /sdcard/AIDev/logs/<项目>/last-build-failure.log，可用 aidev-error-why 诊断。构建日志导出到 /sdcard/AIDev/last-build.log。"
+         },
+         {
+           "title": "新建 Android 项目",
+           "cmd": "aidev-create-android-project <应用名> <包名> [输出目录]",
+           "desc": "从模板创建 Android 项目（统一委托 create-compose-project，版本与宿主一致）",
+           "tags": ["内置命令", "Android 开发", "脚手架"],
+           "usage": "  aidev-create-android-project MyApp com.example.myapp                        # 创建到 ~/projects/MyApp\n  aidev-create-android-project MyApp com.example.myapp /workspace               # 指定输出目录（建议 /workspace 便于宇宙B 编译）",
+           "permissions": "无特殊权限要求。需在 Ubuntu 容器内执行。",
+           "notes": "生成 Compose + Material3 项目，包含: build.gradle.kts (AGP 9.0.1 + Kotlin 2.0.21)、Compose BOM 2024.12.01、ComponentActivity + setContent。无 XML 布局。自动下载 Gradle Wrapper 并初始化 Git。创建后可用 aidev-build-request --project /workspace/<应用名> 编译。"
+         },
         {
           "title": "生成组件代码",
           "cmd": "aidev-gen <子命令> <名称> [选项]",
@@ -451,11 +451,11 @@
         {
           "title": "错误诊断",
           "cmd": "aidev-error-why [关键词]",
-          "desc": "搜索常见构建/运行时错误并显示中文解决方案，aidev-build 失败时自动调用",
-          "tags": ["内置命令", "调试", "诊断"],
-          "usage": "  aidev-error-why AAPT2                               # 搜索 AAPT2 相关错误\n  aidev-error-why --lang en AAPT2                       # 英文输出\n  aidev-error-why proxy                                 # 搜索代理相关错误\n  cat build.log | aidev-error-why                        # 从编译日志中自动匹配\n  aidev-build --full 2>&1 | aidev-error-why              # 构建失败后诊断\n  aidev-error-why --all                                  # 查看所有支持的错误模式",
-          "permissions": "无特殊权限要求",
-          "notes": "支持的模式: AAPT2 死锁/崩溃、Kotlin 编译错误、Gradle Daemon/配置问题、依赖冲突、资源未找到、NDK/ABI、Java 版本、代理、OOM、SDK 路径。aidev-build 构建失败时自动运行此命令。"
+           "desc": "搜索常见构建/运行时错误并显示中文解决方案，aidev-build-request 失败时自动调用",
+           "tags": ["内置命令", "调试", "诊断"],
+           "usage": "  aidev-error-why AAPT2                               # 搜索 AAPT2 相关错误\n  aidev-error-why --lang en AAPT2                       # 英文输出\n  aidev-error-why proxy                                 # 搜索代理相关错误\n  cat build.log | aidev-error-why                        # 从编译日志中自动匹配\n  aidev-build-request --project /workspace/MyApp 2>&1 | aidev-error-why  # 构建失败后诊断\n  aidev-error-why --all                                  # 查看所有支持的错误模式",
+           "permissions": "无特殊权限要求",
+           "notes": "支持的模式: AAPT2 死锁/崩溃、Kotlin 编译错误、Gradle Daemon/配置问题、依赖冲突、资源未找到、NDK/ABI、Java 版本、代理、OOM、SDK 路径。aidev-build-request 构建失败时自动运行此命令。"
         },
         {
           "title": "代码搜索索引",

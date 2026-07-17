@@ -119,7 +119,7 @@ class CompletionEngine(
         TerminalCompletion("setup-dev-env", "setup-dev-env", "CMD"),
         TerminalCompletion("opencode-check", "opencode-check", "CMD"),
         TerminalCompletion("setup-opencode", "setup-opencode", "CMD"),
-        TerminalCompletion("aidev-build", "aidev-build", "CMD"),
+        TerminalCompletion("aidev-build-request", "aidev-build-request", "CMD"),
         TerminalCompletion("aidev-apk-info", "aidev-apk-info", "CMD"),
         TerminalCompletion("aidev-create-android-project", "aidev-create-android-project", "CMD"),
         TerminalCompletion("aidev-gen", "aidev-gen", "CMD"),

@@ -2,7 +2,7 @@
 # aidev-error-why: 搜索常见构建错误并显示解决方案
 # 用法: aidev-error-why [--lang en] [--all] [<关键词>]
 #       cat build.log | aidev-error-why
-#       aidev-build --full 2>&1 | aidev-error-why
+#       aidev-build-request-request --full 2>&1 | aidev-error-why
 
 set -e
 
@@ -24,11 +24,11 @@ if [ -z "$INPUT" ] && [ -z "$KEYWORD" ] && [ "$MATCH_ALL" = false ]; then
     if [ "$LANG_EN" = true ]; then
         echo "Usage: aidev-error-why [--lang en] [--all] [<keyword>]"
         echo "  cat build.log | aidev-error-why"
-        echo "  aidev-build --full 2>&1 | aidev-error-why"
+        echo "  aidev-build-request-request --full 2>&1 | aidev-error-why"
     else
         echo "用法: aidev-error-why [--lang en] [--all] [<关键词>]"
         echo "  cat build.log | aidev-error-why"
-        echo "  aidev-build --full 2>&1 | aidev-error-why"
+        echo "  aidev-build-request-request --full 2>&1 | aidev-error-why"
     fi
     exit 1
 fi
@@ -76,14 +76,14 @@ AAPT2_ZH="AAPT2 守护进程在 QEMU 用户态下无法正常启动。
   2. 确保 gradle.properties 中有:
      android.aapt2DaemonMode=false
      android.aapt2FromMavenOverride=<path-to-aapt2>
-  3. 重新运行 aidev-build --full"
+  3. 重新运行 aidev-build-request-request --full"
 AAPT2_EN="AAPT2 daemon cannot start under QEMU user mode.
 Fix:
   1. Run /usr/local/bin/wrap-android-native.sh
   2. Ensure gradle.properties has:
      android.aapt2DaemonMode=false
      android.aapt2FromMavenOverride=<path-to-aapt2>
-  3. Re-run aidev-build --full"
+  3. Re-run aidev-build-request-request --full"
 
 check "AAPT2 Daemon" \
     "AAPT2.*(daemon|Daemon|crash|signal|fatal|shutdown)" \
@@ -96,13 +96,13 @@ check "Kotlin 编译错误" \
   1. 查看上方 'e:' 开头的行
   2. 每个错误的格式: 文件路径:行号 错误描述
   3. 常见原因: 类型不匹配、未导包、空安全问题
-  4. 修复后重新运行 aidev-build" \
+  4. 修复后重新运行 aidev-build-request" \
     "Kotlin compilation errors found.
 Fix:
   1. Check lines starting with 'e:' above
   2. Format: file:line error description
   3. Common causes: type mismatch, missing import, null safety
-  4. Fix and re-run aidev-build"
+  4. Fix and re-run aidev-build-request"
 
 check "Gradle Daemon 问题" \
     "Gradle.*daemon|daemon.*disconnected|could not be reached" \
@@ -110,12 +110,12 @@ check "Gradle Daemon 问题" \
 解决方案:
   1. ./gradlew --stop
   2. 移除 .gradle/ 目录: rm -rf .gradle/
-  3. 重新运行 aidev-build --clean" \
+  3. 重新运行 aidev-build-request --clean" \
     "Gradle daemon connection failed.
 Fix:
   1. ./gradlew --stop
   2. Remove .gradle/: rm -rf .gradle/
-  3. Re-run aidev-build --clean"
+  3. Re-run aidev-build-request --clean"
 
 check "Gradle 配置错误" \
     "(Gradle.*DSL|could not run|unknown property|unsupported Gradle)" \
@@ -186,12 +186,12 @@ check "代理连接失败" \
     "(proxy.*(error|refused|timeout|denied)|Connection refused|Could not resolve|UnknownHost)" \
     "网络连接失败，可能是代理问题。
 解决方案:
-  1. aidev-build 已自动检测代理可用性
+  1. aidev-build-request 已自动检测代理可用性
   2. 如果代理不可达，会自动禁用代理参数
   3. 如需手动指定代理，修改 ~/.gradle/gradle.properties" \
     "Network connection failure, possibly proxy-related.
 Fix:
-  1. aidev-build auto-detects proxy availability
+  1. aidev-build-request auto-detects proxy availability
   2. Automatically disables proxy if unreachable
   3. To manually configure, edit ~/.gradle/gradle.properties"
 

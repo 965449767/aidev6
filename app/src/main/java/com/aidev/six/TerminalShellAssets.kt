@@ -132,7 +132,7 @@ object TerminalShellAssets {
         val agentScripts = listOf(
             "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "opencode-check.sh",
             "setup-opencode.sh", "install-aitool.sh", "aidev-logcat.sh", "aidev-shizuku.sh",
-            "aidev-apk-info.sh", "aidev-build.sh", "aidev-build-request.sh",
+            "aidev-apk-info.sh", "aidev-build-request.sh",
             "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh",
             "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
             "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh",
@@ -184,7 +184,7 @@ object TerminalShellAssets {
     private fun deployOpenCodeCommands(activity: Activity, rootfs: File) {
         val cmdsDir = File(rootfs, "root/.config/opencode/commands").apply { mkdirs() }
         listOf(
-            "aidev-build", "aidev-build-request", "aidev-verify-run", "aidev-deploy", "aidev-apk-info", "aidev-create-android-project",
+            "aidev-build-request", "aidev-verify-run", "aidev-deploy", "aidev-apk-info", "aidev-create-android-project",
             "aidev-gen", "aidev-error-why", "aidev-logcat", "aidev-index"
         ).forEach { name ->
             runCatching {
@@ -287,7 +287,6 @@ object TerminalShellAssets {
             aidev-shizuku() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-shizuku" "${'$'}@"; }
             aidev-logcat() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-logcat "${'$'}@"; }
             aidev-apk-info() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-apk-info "${'$'}@"; }
-            aidev-build() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-build "${'$'}@"; }
             aidev-build-request() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-build-request" "${'$'}@"; }
             aidev-create-android-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-create-android-project "${'$'}@"; }
             aidev-gen() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-gen "${'$'}@"; }

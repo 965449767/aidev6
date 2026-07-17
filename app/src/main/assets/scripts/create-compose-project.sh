@@ -16,12 +16,12 @@
 set -eu
 
 # ─── 版本锁定 — 与 AGENTS.md 保持同步 ─────────────────
-AGP_VERSION="8.7.0"
-KOTLIN_VERSION="2.0.20"
+AGP_VERSION="9.0.1"
+KOTLIN_VERSION="2.0.21"
 COMPOSE_BOM="2024.12.01"
-GRADLE_VERSION="8.9"
-COMPILE_SDK="35"
-TARGET_SDK="35"
+GRADLE_VERSION="9.1.0"
+COMPILE_SDK="36"
+TARGET_SDK="36"
 MIN_SDK="26"
 
 # ─── 默认值 ──────────────────────────────────────────────
