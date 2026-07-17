@@ -51,11 +51,6 @@
             android:foregroundServiceType="dataSync" />
 
         <service
-            android:name=".OpenCodeMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <service
             android:name=".QuickTerminalTileService"
             android:exported="true"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">

@@ -31,11 +31,11 @@ import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * [AIEngine] 的 OpenCode 实现。
+ * [AIEngine] 的 OpenCode 实现：提供对 OpenCode 会话的人工控制能力
+ * （查询会话状态、中止指定会话），供通知「中止」按钮等人类操作调用。
  *
- * 把原 [com.aidev.six.OpenCodeMonitorService] 中的 HTTP/SSE/通知逻辑搬迁至此，
- * 使监控 Service 退化为薄壳。行为保持：SSE 协议解析、MonitorState 状态机、
- * 通知文案/中止按钮、轮询节奏均与重构前一致。
+ * 注意：本类不参与任何自动代码编辑或闭环。OpenCode 仅作为人类驱动的写代码工具，
+ * 宿主被动提供中止等人机交互入口。
  *
  * baseUrl 解析：优先读取 PRoot 写入的端口文件 `${aidevHome}/.aidev-opencode-port`
  * （OpenCode 落在非 4096 端口时由 aidev-opencode 脚本写出），回退 [Constants.OPENCODE_BASE_URL]。
