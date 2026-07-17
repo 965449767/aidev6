@@ -79,6 +79,15 @@ interface AIEngine {
 - 事件流对齐现有 OpenCode SSE 事件协议（`server.connected` / `session.status` / `session.idle` / heartbeat）。
 - 实现子任务须走 EXECUTION.md：≤5 文件、核心模块（含 Self Evolution）改动需批准、行为锁（不改现有闭环行为）。
 
+### 实现状态（2026-07-17）
+
+`AIEngine` 抽象**已落地**：
+- 新增 `monitor/AIEngine.kt`（接口）+ `monitor/OpenCodeEngine.kt`（OpenCode 实现，搬迁原 `OpenCodeMonitorService` 全部 HTTP/SSE/通知逻辑）。
+- `OpenCodeMonitorService` 退化为薄壳，仅管前台通知与协程生命周期；`OpenCodeActionReceiver` 中止请求 delegate 给 `OpenCodeEngine.abortSession`。
+- `baseUrl` 解析：优先读 `${aidevHome}/.aidev-opencode-port`（OpenCode 落非 4096 端口时由 aidev-opencode 脚本写出），回退 `Constants.OPENCODE_BASE_URL`（4096）——顺带修复原「写死 4096、端口回落时静默失效」的潜在 bug。
+- 行为锁：SSE 协议解析、MonitorState 状态机、通知文案/中止按钮、轮询节奏均与重构前一致；未触碰自我进化文件契约、未动 `SELF_EVOLUTION_*` 模型列表。
+- 编译 `compileDebugKotlin` 通过、单元测试与 shell 测试无新增失败。
+
 ## 不在本期（严守评审「非现在」+ 治理红线）
 
 - 不立即迁移/重分包现有代码。
