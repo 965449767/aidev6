@@ -460,6 +460,18 @@ Nothing beyond.
 
 ---
 
+# APPROVED ARCHITECTURE DIRECTION
+
+人类于 2026-07-17 批准目标架构方向（外部评审建议，经代码事实核对后采纳）：
+
+- 按业务领域（Domain）内聚演进：UI / IDE / AI / Runtime / Bridge / Build / Automation / Core（蓝图见 `docs/target-architecture.md`）。
+- 护栏：未来新增代码按 Domain 归属，不立即大改既有结构；禁止新增顶层全局 `*Service`；Bridge 保持 Transport/Protocol 分离；闭环走显式 FSM；AI Provider 经 `AIEngine` 抽象接入（OpenCode 为首个实现）。
+- 评审 6 条「大问题」中仅 1 条（OpenCode 硬编码、无 Provider 抽象）被代码证实成立，已纳入目标架构；其余多为误判，详见 `docs/ARCHITECTURE_REVIEW.md`。
+
+此批准赋予 AI 在后续**具体功能子任务**中按上述护栏落地的执行权；但每次仍为独立架构变更，须走下方 ARCHITECTURE CHANGE REQUEST 流程（≤5 文件、核心模块批准、行为锁），不一次性大改。
+
+---
+
 # ARCHITECTURE CHANGE REQUEST
 
 If AI believes architecture should change.

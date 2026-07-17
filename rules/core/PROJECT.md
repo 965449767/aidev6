@@ -225,6 +225,34 @@ Every module must answer.
 
 ---
 
+# DOMAIN OWNERSHIP（目标架构护栏）
+
+> 人类于 2026-07-17 批准目标架构方向：按业务领域（Domain）内聚，演进蓝图见 `docs/target-architecture.md`，评估核对见 `docs/ARCHITECTURE_REVIEW.md`。
+> 当前代码已部分贴合（含 `domain/` 包）。**护栏原则：未来新增代码按 Domain 归属，不立即大改既有结构。**
+
+## 目标 Domain 与归属
+
+| Domain | 应拥有的组件 | 禁止 |
+|---|---|---|
+| `UI` | Compose 页面 / 主题 / 组件 | 任何 shell / 业务调用（必须经 ViewModel） |
+| `IDE` | Project / Editor / Terminal 会话管理 | 直接执行构建 / 安装 |
+| `AI` | 编码 Agent 抽象（AIEngine）/ Session / Context | 写死单一 Provider |
+| `Runtime` | PRoot / Shell Layer / Bootstrap（rootfs / 资产 / 就绪判定） | 向 UI 暴露内部状态 |
+| `Bridge` | Transport（Socket / File）+ Protocol（Build / Notify / Crash / Install）分层 | Transport 与 Protocol 混写 |
+| `Build` | Compiler 驱动 / Installer / Deploy | 持有 UI 引用 |
+| `Automation` | 自我进化闭环 / 崩溃回流 / 闭环 FSM | 散落 callback 协调 |
+| `Core` | 统一事件模型 / Config / Storage | 业务规则 |
+
+## 硬护栏
+
+- 新增类必须归入对应 Domain 包；**禁止新增顶层全局 `*Service` 组件**导致跨 Domain 蔓延（评审问题一）。
+- Bridge 保持 Transport / Protocol 分离，二者不得混写（评审问题二）。
+- 闭环状态演进须走显式状态枚举 / FSM，不得散落 callback（评审问题四）。
+- AI Provider 经 `AIEngine` 抽象接入，OpenCode 为首个实现；新增 Provider 不触碰 `Constants.kt` 硬编码以外的既有闭环（评审唯一证实缺口，契约见 `docs/target-architecture.md`）。
+- 每个落地子任务遵守 `rules/workflow/EXECUTION.md`（≤5 文件、核心模块批准、行为锁），不一次性大改。
+
+---
+
 # DATA FLOW
 
 UI

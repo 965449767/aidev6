@@ -304,3 +304,22 @@ Phase F 目标：把「自我进化闭环」（`宇宙A 写码` → `宇宙B 编
 - 宇宙 A 与 App 解耦协作，**只用共享工作区文件契约**（`home/workspace/.aidev-loop/crash-<id>.json` + `req-<id>.json`），不引入 IPC/网络。
 - 「自治开关」放在 App 内：开启后崩溃自动触发下一轮构建（`requestRebuild`），但改码仍由宇宙 A 完成；防失控靠 `fix_applied` 收敛 + `MAX_AUTO_ITERATIONS=10` 上限。
 - 未在 App 内做「无限自动循环」的更激进形态：是否全自动由宇宙 A 侧（OpenCode / `aidev-self-evolution` 脚本）决定，App 只负责把契约文件摆好并响应自治开关。
+
+---
+
+## 2026-07-17 - 批准目标架构方向（Domain 化 + AIEngine 抽象）
+
+### Context
+
+外部架构评审（`/storage/emulated/0/建议.md`）指出 6 条架构层风险（Service 蔓延 / Bridge 成总线 / Bootstrap 过重 / 闭环无状态机 / 无事件总线 / OpenCode 硬编码）。经代码事实核对（`docs/ARCHITECTURE_REVIEW.md`），其中 5 条与现状不符（Bridge 已三层分离、已有状态枚举、已有 `TerminalCommandBus` + SSE 流、真正 `Service` 仅 3 个），**仅「OpenCode 硬编码、无 Provider 抽象」成立**。
+
+### Decision
+
+- 人类批准目标架构方向：按业务领域（Domain）内聚演进 —— `UI / IDE / AI / Runtime / Bridge / Build / Automation / Core`（蓝图见 `docs/target-architecture.md`）。
+- 护栏：未来新增代码按 Domain 归属，**不立即大改既有结构**；禁止新增顶层全局 `*Service`；Bridge 保持 Transport/Protocol 分离；闭环走显式 FSM；AI Provider 经 `AIEngine` 抽象接入，OpenCode 为首个实现（契约已定，实现留作后续单独获批子任务，本期不改 `Constants.kt` 硬编码）。
+- 评审主张「现在不重构」，故本期只建护栏（文档），具体迁移待具体功能任务顺势执行，每个子任务单独走 EXECUTION.md（≤5 文件、核心模块批准、行为锁）。
+
+### Consequences
+
+- 新增/修订文档：`docs/target-architecture.md`（蓝图 + AIEngine 契约）、`docs/ARCHITECTURE_REVIEW.md`（断言 vs 事实）、`rules/core/PROJECT.md`（DOMAIN OWNERSHIP 护栏）、`rules/core/ARCHITECTURE.md`（APPROVED ARCHITECTURE DIRECTION）。
+- 无代码改动，无回归风险；纯文档护栏，授予后续子任务按护栏落地的执行权。
