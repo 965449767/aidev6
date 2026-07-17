@@ -114,6 +114,7 @@ import com.aidev.six.ShizukuLogcat
 import java.io.File
 import org.json.JSONObject
 import com.aidev.six.ui.components.AppChip
+import com.aidev.six.ui.pages.CommandHelpSheet
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -1110,6 +1111,7 @@ private fun TerminalMoreSheet(
     var showResetDialog by remember { mutableStateOf(false) }
     var showBgDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showCommandHelp by remember { mutableStateOf(false) }
     var activeDialog by remember { mutableStateOf<SettingsDialog?>(null) }
     val showDialog: (SettingsDialog) -> Unit = { activeDialog = it }
     var hapticChecked by remember { mutableStateOf(prefs.hapticTap) }
@@ -1155,6 +1157,7 @@ private fun TerminalMoreSheet(
             HorizontalDivider()
 
             SectionHeader("系统")
+            SectionItem("命令帮助", "查看 AIDev 内置命令与用法") { showCommandHelp = true }
             systemMenu(activity, prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
 
             HorizontalDivider()
@@ -1206,6 +1209,9 @@ private fun TerminalMoreSheet(
     }
     if (showExportDialog) {
         ExportProjectDialog(activity, page) { showExportDialog = false }
+    }
+    if (showCommandHelp) {
+        CommandHelpSheet(activity) { showCommandHelp = false }
     }
 }
 
@@ -1317,6 +1323,22 @@ private fun SectionItem(text: String, onClick: () -> Unit = {}) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun SectionItem(text: String, desc: String, onClick: () -> Unit = {}) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
