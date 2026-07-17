@@ -114,7 +114,7 @@ import com.aidev.six.ShizukuLogcat
 import java.io.File
 import org.json.JSONObject
 import com.aidev.six.ui.components.AppChip
-import com.aidev.six.ui.pages.CommandHelpSheet
+import com.aidev.six.ui.pages.CommandHelpContent
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -143,7 +143,6 @@ fun TerminalPanel(
     var sliderFontSp by remember { mutableFloatStateOf(page.currentFontSp(activity)) }
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
     var showMoreSheet by remember { mutableStateOf(false) }
-    var showCommandHelp by remember { mutableStateOf(false) }
     var showThemeOverlay by remember { mutableStateOf(false) }
     var showPerfHud by remember { mutableStateOf(false) }
     var perfSample by remember { mutableStateOf<PerfSample?>(null) }
@@ -266,7 +265,6 @@ fun TerminalPanel(
             activity = activity,
             page = page,
             onDismiss = { showMoreSheet = false },
-            onCommandHelp = { showMoreSheet = false; showCommandHelp = true },
         )
     }
 }
@@ -1106,7 +1104,6 @@ private fun TerminalMoreSheet(
     activity: Activity,
     page: EmbeddedTerminalPage,
     onDismiss: () -> Unit,
-    onCommandHelp: () -> Unit,
 ) {
     val prefs = remember { PreferencesManager(activity) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1114,6 +1111,7 @@ private fun TerminalMoreSheet(
     var showResetDialog by remember { mutableStateOf(false) }
     var showBgDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showCommandHelp by remember { mutableStateOf(false) }
     var activeDialog by remember { mutableStateOf<SettingsDialog?>(null) }
     val showDialog: (SettingsDialog) -> Unit = { activeDialog = it }
     var hapticChecked by remember { mutableStateOf(prefs.hapticTap) }
@@ -1130,6 +1128,10 @@ private fun TerminalMoreSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        if (showCommandHelp) {
+            CommandHelpContent(activity = activity, onBack = { showCommandHelp = false })
+            return@ModalBottomSheet
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1159,7 +1161,7 @@ private fun TerminalMoreSheet(
             HorizontalDivider()
 
             SectionHeader("系统")
-            SectionItem("命令帮助", "查看 AIDev 内置命令与用法") { onCommandHelp() }
+            SectionItem("命令帮助", "查看 AIDev 内置命令与用法") { showCommandHelp = true }
             systemMenu(activity, prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
 
             HorizontalDivider()
