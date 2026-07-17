@@ -179,33 +179,6 @@
           "notes": "会尝试重新安装缺失的组件。修复后建议重启 Ubuntu 容器。"
         },
         {
-          "title": "检查 OpenCode 环境",
-          "cmd": "opencode-check",
-          "desc": "验证 OpenCode 安装状态 + AIDev Android 开发工具注册",
-          "tags": ["内置命令", "AI 工具", "环境配置"],
-          "usage": "  opencode-check                        # 检查 OpenCode 和 AIDev 命令注册状态",
-          "permissions": "无需网络。需在 Ubuntu 容器内执行。",
-          "notes": "opencode 不再内置到 APK 中，用户需自行安装：opencode upgrade。7 个 aidev-* 命令 .md 文件已预部署到 ~/.config/opencode/commands/，安装 opencode 后自动注册。本脚本仅为环境验证工具，不执行安装。"
-        },
-        {
-          "title": "安装 OpenCode",
-          "cmd": "setup-opencode",
-          "desc": "安装 OpenCode 和注册 AIDev 自定义命令到 system prompt",
-          "tags": ["内置命令", "AI 工具", "环境配置"],
-          "usage": "  setup-opencode                        # 安装/更新 OpenCode 并注册 AIDev 命令\n  setup-opencode upgrade                  # 升级 OpenCode 到最新版",
-          "permissions": "需要网络连接。需在 Ubuntu 容器内执行。",
-          "notes": "会执行 opencode upgrade 安装最新版 OpenCode，然后将 aidev-* 命令注册到 system prompt。安装完成后可用 opencode-check 验证状态。opencode-install 是本命令的别名，行为一致。setup-opencode 现在是 opencode-check 的符号链接。"
-        },
-        {
-          "title": "OpenCode 通知包装",
-          "cmd": "aidev-opencode [--port N]",
-          "desc": "包装 opencode 命令，添加每轮对话完成通知和退出通知",
-          "tags": ["内置命令", "AI 工具", "通知"],
-          "usage": "  aidev-opencode                        # 启动 opencode 并添加通知\n  aidev-opencode --port 4096              # 指定服务端口\n  aidev-opencode -- <opencode参数>        # 传递额外参数给 opencode",
-          "permissions": "需 POST_NOTIFICATIONS 权限（sysnotify）。需在 Ubuntu 容器内执行。",
-          "notes": "功能：1) 每轮对话完成时发 Android 通知（通过 SSE session.status 监听） 2) 运行超过 5/15/30 分钟时发存活提醒 3) 退出时发完成/异常通知。需要 curl（由 deployTools 部署）。openode 内部服务固定端口 4096，可通过 --port 覆盖。"
-        },
-        {
           "title": "环境诊断",
           "cmd": "aidev-doctor",
           "desc": "全面诊断 AIDev 运行环境：PRoot 状态、Ubuntu 配置、资源占用",
@@ -233,55 +206,10 @@
           "notes": "在项目目录下执行效果最佳。会自动检测项目类型。"
         },
         {
-          "title": "AI 上下文",
-          "cmd": "aidev-agent-context",
-          "desc": "将当前项目和任务上下文信息打包输出供 AI 使用",
-          "tags": ["内置命令", "AI 工具"],
-          "usage": "  aidev-agent-context                   # 输出上下文到终端",
-          "permissions": "无特殊权限要求",
-          "notes": "输出的内容量较大，建议用管道保存到文件。包含项目结构、最近 Git 变更、当前任务状态等。"
-        },
-        {
-          "title": "AI 上下文导出",
-          "cmd": "aidev-agent-context-file",
-          "desc": "将上下文信息导出到 aidev-agent-context.txt 文件",
-          "tags": ["内置命令", "AI 工具"],
-          "usage": "  aidev-agent-context-file              # 导出到 aidev-agent-context.txt",
-          "permissions": "无特殊权限要求",
-          "notes": "输出文件在当前工作目录。适合一次性拷贝给 AI 助手。"
-        },
-        {
-          "title": "AI 任务摘要",
-          "cmd": "aidev-agent-summary",
-          "desc": "查看最近一次后台任务日志摘要：命令、报错、文件变更",
-          "tags": ["内置命令", "AI 工具", "信息查询"],
-          "usage": "  aidev-agent-summary                   # 查看最新任务摘要",
-          "permissions": "无特殊权限要求",
-          "notes": "仅当有任务日志文件时可用。显示最近一次任务的执行摘要。"
-        },
-        {
-          "title": "AI 任务日志",
-          "cmd": "aidev-agent-log",
-          "desc": "列出所有 AI 代理的后台任务日志文件",
-          "tags": ["内置命令", "AI 工具"],
-          "usage": "  aidev-agent-log                       # 列出所有任务日志文件",
-          "permissions": "无特殊权限要求",
-          "notes": "日志文件位于 ~/.aidev/agent-logs/ 目录。"
-        },
-        {
-          "title": "实时跟踪日志",
-          "cmd": "aidev-agent-tail",
-          "desc": "实时跟踪最新任务日志的输出（类似 tail -f）",
-          "tags": ["内置命令", "AI 工具"],
-          "usage": "  aidev-agent-tail                      # 持续跟踪日志输出\n  Ctrl+C                                # 停止跟踪",
-          "permissions": "无特殊权限要求",
-          "notes": "会持续输出直到按 Ctrl+C 终止。如果没有任何输出，表示没有活跃的后台任务。"
-        },
-        {
           "title": "启动后台任务",
           "cmd": "task-run",
           "desc": "在后台启动一个任务并管理其生命周期",
-          "tags": ["内置命令", "任务管理", "AI 工具"],
+          "tags": ["内置命令", "任务管理", "开发调试"],
           "usage": "  task-run <command>                     # 在后台运行命令\n  task-run 'npm run build'               # 示例：后台构建",
           "permissions": "无特殊权限要求",
           "notes": "后台任务与终端生命周期无关，即使关闭终端也会继续运行。用 task-list 查看状态。"

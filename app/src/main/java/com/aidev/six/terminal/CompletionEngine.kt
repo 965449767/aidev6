@@ -133,7 +133,6 @@ class CompletionEngine(
         TerminalCompletion("aidev-logcat --lines 500", "aidev-logcat --lines 500", "CMD"),
         TerminalCompletion("aidev-shizuku", "aidev-shizuku", "CMD"),
         TerminalCompletion("aidev-shizuku status", "aidev-shizuku status", "CMD"),
-        TerminalCompletion("install-aitool", "install-aitool", "CMD"),
         TerminalCompletion("check-dev-env", "check-dev-env", "CMD"),
         TerminalCompletion("repair-dev-env", "repair-dev-env", "CMD"),
         TerminalCompletion("aidev-backup", "aidev-backup ", "CMD"),
