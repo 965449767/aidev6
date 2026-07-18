@@ -6,7 +6,9 @@
 #   - 成功：打印「构建成功」+ APK 路径（退出码 0）
 #   - 失败：打印消息 + 完整构建日志（/sdcard/AIDev/logs/<project>/build.log，退出码 1）
 #   - 超时：未在限定时间内收到结果（退出码 2）
-set -u
+#   - 跳过：该项目已有构建在进行中（退出码 3，非失败，应跟踪而非重试）
+set -e
+. "$(dirname "$0")/lib/json-utils.sh"
 
 # 桥目录必须与宿主 BuildBridge 写入位置一致：宿主用 aidevHome=ctx.filesDir/home，
 # 在 Ubuntu 宇宙 A 中挂载为 /host-home。结果/请求都落在 /host-home/.aidev-build-bridge。
@@ -20,7 +22,7 @@ fi
 BRIDGE="$AIDEV_HOME/.aidev-build-bridge"
 mkdir -p "$BRIDGE"
 
-PROJECT="MyAndroidProject"
+PROJECT=""
 AUTO_INSTALL="true"
 AUTO_LAUNCH="true"
 LAUNCH_PKG=""
@@ -32,14 +34,19 @@ while [ $# -gt 0 ]; do
     --no-launch) AUTO_LAUNCH="false"; shift ;;
     --launch-package) LAUNCH_PKG="$2"; shift 2 ;;
     -h|--help)
-      echo "Usage: aidev-build-request [--project <name>] [--no-install] [--no-launch] [--launch-package <pkg>]"
+      echo "Usage: aidev-build-request --project <name|/workspace/path> [--no-install] [--no-launch] [--launch-package <pkg>]"
       exit 0 ;;
     *) PROJECT="$1"; shift ;;
   esac
 done
 
+if [ -z "$PROJECT" ]; then
+  echo "错误: 必须通过 --project 指定项目（名称或 /workspace/<name> 路径）。" >&2
+  echo "用法: aidev-build-request --project <name> [--no-install] [--no-launch] [--launch-package <pkg>]" >&2
+  exit 2
+fi
+
 ID="$(date +%s%N)"
-json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g'; }
 PROJ_ESC=$(printf '%s' "$PROJECT" | json_escape)
 LP_ESC=$(printf '%s' "$LAUNCH_PKG" | json_escape)
 
@@ -91,7 +98,8 @@ fi
 # ── 极简 JSON 取值（不依赖 jq）──
 get_field() {
   # $1=file $2=key  → 取 "key": "value"
-  grep -o "\"$2\"[ ]*:[ ]*\"[^\"]*\"" "$1" 2>/dev/null | head -1 | sed "s/\"$2\"[ ]*:[ ]*\"//; s/\"$//"
+  # 兼容 JSON 转义斜杠 \/ 与 \"，取出后做反向转义，避免路径含 \/workspace\/... 这类非法路径。
+  grep -o "\"$2\"[ ]*:[ ]*\"[^\"]*\"" "$1" 2>/dev/null | head -1 | sed "s/\"$2\"[ ]*:[ ]*\"//; s/\"$//" | sed 's#\\/"#/#g; s#\\"#"#g; s#\\\\#\\#g'
 }
 SUCCESS=$(grep -o '"success"[ ]*:[ ]*\(true\|false\)' "$RESULT" 2>/dev/null | sed 's/.*://; s/[ ]//g')
 MESSAGE=$(get_field "$RESULT" message)
@@ -108,18 +116,54 @@ if [ "$SUCCESS" = "true" ]; then
   fi
   exit 0
 else
+  # 特例：该项目已有构建在进行中（宿主 ProjectTaskLock 占用）。这不是编译失败，
+  # 常见于上一次请求客户端超时中断、但宇宙B 仍在后台编译时重复提交。此时应引导
+  # 用户跟踪进行中的构建，而不是当作失败盲目重试（见闭环报告 2026-07-18 问题1）。
+  case "$MESSAGE" in
+    *已有任务进行中*|*任务进行中*)
+      PROJ_NORM=$(printf '%s' "$PROJ" | sed 's#^/workspace/##; s#^/##; s#.*/##')
+      [ -z "$PROJ_NORM" ] && PROJ_NORM="$PROJ"
+      echo "═══ 构建跳过（已有构建进行中）═══"
+      echo "消息: $MESSAGE"
+      echo ""
+      echo "提示: 该项目已有一次构建在宇宙B 后台运行（可能来自上次超时中断的请求）。"
+      echo "      请勿重复提交——用 'aidev-build-log $PROJ_NORM' 跟踪其进度与结果，"
+      echo "      待其结束后再按需重新构建。"
+      exit 3
+      ;;
+  esac
   echo "═══ 构建失败 ═══"
   [ -n "$MESSAGE" ] && echo "消息: $MESSAGE"
   LOGPATH=$(get_field "$RESULT" log_path)
-  if [ -z "$LOGPATH" ] || [ "$LOGPATH" = "null" ]; then
-    LOGPATH="/sdcard/AIDev/logs/$PROJ/build.log"
-  fi
+  # 规范化项目名：result 的 project 字段可能是 /workspace/xxx 这类路径，
+  # 用作日志子目录会产生非法/转义路径（见调试报告 Issue #1/#2）。统一取 basename。
+  PROJ_NORM=$(printf '%s' "$PROJ" | sed 's#^/workspace/##; s#^/##; s#.*/##')
+  [ -z "$PROJ_NORM" ] && PROJ_NORM="$PROJ"
+  # 多路径兜底：宿主写入位置历史上有过差异（/sdcard/AIDev/logs/<name> 与
+  # /workspace/<name>），逐一尝试，任一可读即打印，避免"日志不可用"误报。
+  CANDIDATES=""
+  [ -n "$LOGPATH" ] && [ "$LOGPATH" != "null" ] && CANDIDATES="$CANDIDATES
+$LOGPATH"
+  CANDIDATES="$CANDIDATES
+/sdcard/AIDev/logs/$PROJ_NORM/build.log
+/workspace/$PROJ_NORM/build.log"
+  RESOLVED=""
+  IFS="
+"
+  for cand in $CANDIDATES; do
+    cand=$(printf '%s' "$cand" | tr -d ' \t')
+    [ -z "$cand" ] && continue
+    if [ -f "$cand" ]; then RESOLVED="$cand"; break; fi
+  done
+  unset IFS
   echo ""
-  echo "═══ 完整构建日志 ($LOGPATH) ═══"
-  if [ -f "$LOGPATH" ]; then
-    cat "$LOGPATH"
+  if [ -n "$RESOLVED" ]; then
+    echo "═══ 完整构建日志 ($RESOLVED) ═══"
+    cat "$RESOLVED"
   else
-    echo "(日志文件不可用: $LOGPATH)"
+    echo "═══ 构建日志未找到 ═══"
+    echo "(已尝试: $(printf '%s' "$CANDIDATES" | tr '\n' ' ' | sed 's/^ //; s/ *$//'))"
+    echo "提示: 用 'aidev-build-log $PROJ_NORM' 随时重新拉取；或检查宿主是否已重装并重启终端。"
   fi
   exit 1
 fi

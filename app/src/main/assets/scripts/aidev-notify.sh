@@ -5,7 +5,8 @@
 #   aidev-notify "消息内容"
 #   aidev-notify -t "标题" "消息内容"
 #   aidev-notify -p high "消息内容"          # priority: low|default|high|max
-set -u
+set -e
+. "$(dirname "$0")/lib/json-utils.sh"
 
 TITLE="AIDev Terminal"
 PRIORITY=""
@@ -26,8 +27,6 @@ if [ -z "$MSG" ]; then
   echo "用法: aidev-notify [-t 标题] [-p 优先级] \"消息内容\""
   exit 2
 fi
-
-json_escape() { sed 's/\\/\\\\/g; s/"/\\"/g'; }
 TITLE_ESC=$(printf '%s' "$TITLE" | json_escape)
 MSG_ESC=$(printf '%s' "$MSG" | json_escape)
 PRIORITY_ESC=$(printf '%s' "$PRIORITY" | json_escape)

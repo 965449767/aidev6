@@ -1,5 +1,8 @@
 package com.aidev.six.ui.pages
 
+import com.aidev.six.ui.components.AppActionRow
+import com.aidev.six.ui.components.AppSectionHeader
+import com.aidev.six.ui.components.AppToggleRow
 import com.aidev.six.ui.theme.Radius
 import com.aidev.six.ui.theme.Spacing
 
@@ -114,7 +117,10 @@ import com.aidev.six.ShizukuLogcat
 import java.io.File
 import org.json.JSONObject
 import com.aidev.six.ui.components.AppChip
+import com.aidev.six.ui.components.TabChip
 import com.aidev.six.ui.pages.CommandHelpContent
+import com.aidev.six.ui.theme.TabColorPickerDialog
+import com.aidev.six.ui.theme.themePresetList
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -125,7 +131,12 @@ fun TerminalPanel(
 ) {
     val activity = LocalContext.current as Activity
     val coreView = page.coreContainerView
-    if (coreView == null) return
+    if (coreView == null) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("初始化中...", style = MaterialTheme.typography.bodyMedium)
+        }
+        return
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         page.onSelected(activity)
@@ -143,6 +154,7 @@ fun TerminalPanel(
     var sliderFontSp by remember { mutableFloatStateOf(page.currentFontSp(activity)) }
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
     var showMoreSheet by remember { mutableStateOf(false) }
+    var showCommandHelp by remember { mutableStateOf(false) }
     var showThemeOverlay by remember { mutableStateOf(false) }
     var showPerfHud by remember { mutableStateOf(false) }
     var perfSample by remember { mutableStateOf<PerfSample?>(null) }
@@ -213,6 +225,7 @@ fun TerminalPanel(
                         showFontSlider = false
                     },
                     currentThemeKey = currentThemeKey,
+                    onHelp = { showCommandHelp = true },
                     onThemeDragStart = { themeDragAccumulator = 0f; showThemeOverlay = true },
                     onThemeDrag = { deltaPx ->
                         themeDragAccumulator += deltaPx * 0.03f
@@ -263,8 +276,24 @@ fun TerminalPanel(
     if (showMoreSheet) {
         TerminalMoreSheet(
             activity = activity,
-            page = page,
             onDismiss = { showMoreSheet = false },
+        )
+    }
+
+    if (showCommandHelp) {
+        AlertDialog(
+            onDismissRequest = { showCommandHelp = false },
+            modifier = Modifier.fillMaxSize(0.95f),
+            title = null,
+            text = {
+                CommandHelpContent(activity = activity)
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCommandHelp = false }) {
+                    Text("\u5173\u95ED")
+                }
+            },
         )
     }
 }
@@ -457,7 +486,7 @@ private fun TerminalTabBar(page: EmbeddedTerminalPage, modifier: Modifier = Modi
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable(onClick = onClick)
-                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                    .padding(vertical = Spacing.s12, horizontal = Spacing.s4),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column {
@@ -486,208 +515,8 @@ private fun TerminalTabBar(page: EmbeddedTerminalPage, modifier: Modifier = Modi
     }
 }
 
-@Composable
-private fun TabChip(
-    title: String,
-    aiSession: Boolean,
-    active: Boolean,
-    locked: Boolean,
-    color: String = "",
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onSwipeClose: () -> Unit,
-    onToggleLock: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val activity = LocalContext.current as Activity
-    val thresholdPx = with(LocalDensity.current) { 18.dp.toPx() }
-    var swipeOffset by remember { mutableFloatStateOf(0f) }
-    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { pendingAction }.collect { action ->
-            if (action != null) {
-                action()
-                pendingAction = null
-            }
-        }
-    }
 
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
-            .pointerInput(thresholdPx) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    swipeOffset = 0f
-                    var totalDy = 0f
-                    var longPressFired = false
-                    val longPressMs = viewConfiguration.longPressTimeoutMillis.toLong()
-
-                    val firstEvent = withTimeoutOrNull(longPressMs) {
-                        awaitPointerEvent()
-                    }
-
-                    if (firstEvent == null) {
-                        longPressFired = true
-                        activity.window?.decorView?.performHapticFeedback(
-                            android.view.HapticFeedbackConstants.LONG_PRESS
-                        )
-                        pendingAction = { onLongClick() }
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                        }
-                    } else {
-                        var event = firstEvent!!
-                        while (true) {
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                            val dy = change.positionChange().y
-                            if (dy != 0f) {
-                                change.consume()
-                                totalDy += dy
-                                swipeOffset = totalDy
-                            }
-                            event = awaitPointerEvent()
-                        }
-                    }
-
-                    swipeOffset = 0f
-                    when {
-                        totalDy >= thresholdPx -> {
-                            if (locked) {
-                                Toast.makeText(activity, "\u5DF2\u9501\u5B9A\uFF0C\u4E0A\u6ED1\u89E3\u9501", Toast.LENGTH_SHORT).show()
-                            } else {
-                                pendingAction = { onSwipeClose() }
-                            }
-                        }
-                        totalDy <= -thresholdPx -> {
-                            pendingAction = { onToggleLock() }
-                        }
-                        !longPressFired -> pendingAction = { onClick() }
-                    }
-                }
-            }
-            .offset { IntOffset(0, (swipeOffset * 0.3f).roundToInt()) }
-            .graphicsLayer { alpha = 1f - (kotlin.math.abs(swipeOffset) / thresholdPx).coerceIn(0f, 0.25f) }
-            .then(
-                if (active) {
-                    val c = MaterialTheme.colorScheme.primary
-                    Modifier.drawBehind {
-                        drawLine(c, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 2.dp.toPx())
-                    }
-                } else Modifier
-            )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = if (aiSession) "AI-$title" else title,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-            color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (locked) {
-            Spacer(Modifier.width(3.dp))
-            Text(
-                text = "\uD83D\uDD12",
-            style = MaterialTheme.typography.labelMedium,
-            )
-        }
-        if (color.isNotEmpty()) {
-            Spacer(Modifier.width(3.dp))
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(sessionColor(color))
-            )
-        }
-    }
-}
-
-@Composable
-private fun TerminalStatusBar(
-    page: EmbeddedTerminalPage,
-    fontSpClipped: Float,
-    currentThemeKey: String = "classic-dark",
-    modifier: Modifier = Modifier,
-    onFontSizeDragStart: () -> Unit = {},
-    onFontSizeDrag: (Float) -> Unit = {},
-    onFontSizeDragEnd: () -> Unit = {},
-    onThemeDragStart: () -> Unit = {},
-    onThemeDrag: (Float) -> Unit = {},
-    onThemeDragEnd: () -> Unit = {},
-) {
-    val activity = LocalContext.current as Activity
-    val btnWidth = 42.dp
-    val themeColor = themeColor(currentThemeKey)
-    val themeAbbr = themeAbbreviation(currentThemeKey)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(24.dp)
-            .background(MaterialTheme.colorScheme.background)
-            .padding(start = 16.dp, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "${fontSpClipped.toInt()}sp",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier = Modifier
-                .width(btnWidth)
-                .pointerInput(Unit) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = { onFontSizeDragStart() },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            onFontSizeDrag(dragAmount.x)
-                        },
-                        onDragEnd = { onFontSizeDragEnd() },
-                        onDragCancel = { onFontSizeDragEnd() },
-                    )
-                },
-        )
-        Text(
-            text = themeAbbr,
-            style = MaterialTheme.typography.labelSmall,
-            color = themeColor,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier = Modifier
-                .width(btnWidth)
-                .pointerInput(Unit) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = { onThemeDragStart() },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            onThemeDrag(dragAmount.x)
-                        },
-                        onDragEnd = { onThemeDragEnd() },
-                        onDragCancel = { onThemeDragEnd() },
-                    )
-                },
-        )
-        Text(
-            text = "T",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (page.tuiActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.width(btnWidth).clickable { page.toggleTuiMode(activity) },
-        )
-    }
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -706,7 +535,7 @@ internal fun TerminalCompletionBar(page: EmbeddedTerminalPage, modifier: Modifie
             modifier = Modifier
                 .weight(1f)
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 6.dp, vertical = 3.dp),
+                .padding(horizontal = Spacing.s8, vertical = Spacing.s4),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
@@ -1062,598 +891,4 @@ private fun KeyboardKey(
             maxLines = 1,
         )
     }
-}
-
-@Composable
-private fun FontSizeOverlay(fontSp: Float) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "${fontSp.roundToInt()}sp",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                    RoundedCornerShape(20.dp),
-                )
-                .padding(horizontal = 48.dp, vertical = 32.dp),
-        )
-    }
-}
-
-private val themePresetList = listOf(
-    "classic-dark" to "One Dark",
-    "classic-light" to "One Light",
-    "solarized-dark" to "Solarized Dark",
-    "dracula" to "Dracula",
-    "nord" to "Nord",
-    "tokyo-night" to "Tokyo Night",
-    "catppuccin" to "Catppuccin Mocha",
-    "gruvbox" to "Gruvbox Dark",
-    "monokai" to "Monokai",
-    "everforest" to "Everforest Dark",
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TerminalMoreSheet(
-    activity: Activity,
-    page: EmbeddedTerminalPage,
-    onDismiss: () -> Unit,
-) {
-    val prefs = remember { PreferencesManager(activity) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showSwipeDialog by remember { mutableStateOf(false) }
-    var showResetDialog by remember { mutableStateOf(false) }
-    var showBgDialog by remember { mutableStateOf(false) }
-    var showExportDialog by remember { mutableStateOf(false) }
-    var showCommandHelp by remember { mutableStateOf(false) }
-    var activeDialog by remember { mutableStateOf<SettingsDialog?>(null) }
-    val showDialog: (SettingsDialog) -> Unit = { activeDialog = it }
-    var hapticChecked by remember { mutableStateOf(prefs.hapticTap) }
-
-    val currentBgOverride = prefs.bgOverride
-    val bgPreviewColor = if (currentBgOverride != -1) {
-        String.format("#%06X", currentBgOverride and 0xFFFFFF)
-    } else {
-        "默认"
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) {
-        if (showCommandHelp) {
-            CommandHelpContent(activity = activity, onBack = { showCommandHelp = false })
-            return@ModalBottomSheet
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp),
-        ) {
-            SectionHeader("外观")
-            appearanceMenu(prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
-
-            HorizontalDivider()
-
-            SectionHeader("输入")
-            SectionToggleItem("触觉反馈", "按键时振动反馈", hapticChecked) {
-                hapticChecked = it; prefs.hapticTap = it
-            }
-            SectionItem("滑动灵敏度") { showSwipeDialog = true }
-            SectionItem("重置按键布局") { showResetDialog = true }
-            SectionItem("别名管理") { page.keyboardManager.showAliasManager() }
-
-            HorizontalDivider()
-
-            SectionHeader("显示")
-            SectionItem("背景色 · $bgPreviewColor") { showBgDialog = true }
-            MenuEntryRow(MenuEntry("背景模式", "纯色/渐变/自定义图片") { activeDialog = SettingsDialog.BackgroundMode(prefs.bgMode) })
-
-            HorizontalDivider()
-
-            SectionHeader("系统")
-            SectionItem("命令帮助", "查看 AIDev 内置命令与用法") { showCommandHelp = true }
-            systemMenu(activity, prefs, {}, showDialog).items.forEach { MenuEntryRow(it) }
-
-            HorizontalDivider()
-
-            SectionHeader("路径")
-            PathRow("备份目录", "备份文件和恢复数据的存储路径", PathConfig.backupDir(activity).absolutePath) {
-                activeDialog = SettingsDialog.PathEdit("备份目录", PathConfig.backupDir(activity).absolutePath) { prefs.backupDir = it }
-            }
-            PathRow("项目目录", "Ubuntu 内新建项目的默认位置（相对 rootfs）", PathConfig.projectsDir(activity).absolutePath) {
-                activeDialog = SettingsDialog.PathEdit("项目目录（相对 rootfs）", prefs.projectsDirRel.ifBlank { "root/projects" }) { prefs.projectsDirRel = it }
-            }
-            PathRow("外部 AIDev 目录", "Android 侧项目数据存放路径", PathConfig.externalAidevDir(activity).absolutePath) {
-                activeDialog = SettingsDialog.PathEdit("外部 AIDev 目录", PathConfig.externalAidevDir(activity).absolutePath) { prefs.externalAidevDir = it }
-            }
-            ReadonlyPathRow("AIDev Home", "核心数据目录，含 Ubuntu 环境和全部配置（只读）", PathConfig.aidevHome(activity).absolutePath)
-            ReadonlyPathRow("Ubuntu Rootfs", "Ubuntu 根文件系统（只读）", PathConfig.rootfs(activity).absolutePath)
-            ReadonlyPathRow("任务日志目录", "后台任务日志和元数据的存储位置（只读）", PathConfig.tasksDir(activity).absolutePath)
-
-            HorizontalDivider()
-
-            SectionHeader("项目")
-            SectionItem("导出项目源码") { showExportDialog = true }
-        }
-    }
-
-    activeDialog?.let { SettingsDialogHost(it) { activeDialog = null } }
-
-    if (showSwipeDialog) {
-        SwipeSensitivityDialog { showSwipeDialog = false }
-    }
-    if (showResetDialog) {
-        ResetKeyboardDialog(activity) { showResetDialog = false }
-    }
-    if (showBgDialog) {
-        BackgroundColorDialog(
-            initialOverride = prefs.bgOverride,
-            onApply = { color ->
-                prefs.bgOverride = color
-                page.sessionManager.applyThemeToAll(prefs.terminalTheme)
-                showBgDialog = false
-            },
-            onReset = {
-                prefs.bgOverride = -1
-                page.sessionManager.applyThemeToAll(prefs.terminalTheme)
-                showBgDialog = false
-            },
-            onDismiss = { showBgDialog = false },
-        )
-    }
-    if (showExportDialog) {
-        ExportProjectDialog(activity, page) { showExportDialog = false }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ExportProjectDialog(
-    activity: Activity,
-    page: EmbeddedTerminalPage,
-    onDismiss: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val projectDir = page.completionEngine.currentProjectDir() ?: PathConfig.workspaceDir(activity)
-    var includeGit by remember { mutableStateOf(false) }
-    var plainText by remember { mutableStateOf(false) }
-    var exporting by remember { mutableStateOf(false) }
-    var exportMsg by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = { if (!exporting) onDismiss() },
-        title = { Text("导出项目源码") },
-        text = {
-            Column {
-                Text("项目目录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    projectDir.absolutePath,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(Spacing.s8))
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { includeGit = !includeGit }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(checked = includeGit, onCheckedChange = { includeGit = it })
-                    Spacer(Modifier.width(Spacing.s8))
-                    Text("包含 .git", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { plainText = !plainText }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(checked = plainText, onCheckedChange = { plainText = it })
-                    Spacer(Modifier.width(Spacing.s8))
-                    Text("纯文本格式 (.txt)", style = MaterialTheme.typography.bodyMedium)
-                }
-                exportMsg?.let {
-                    Spacer(Modifier.height(Spacing.s8))
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    exporting = true
-                    exportMsg = "导出中…"
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            val outName = "${projectDir.name}-source.${if (plainText) "txt" else "md"}"
-                            val outFile = File(PathConfig.externalAidevDir(activity), outName)
-                            ProjectExporter.exportToFile(
-                                projectDir,
-                                outFile,
-                                ProjectExporter.Options(includeGit = includeGit, plainText = plainText),
-                            )
-                            withContext(Dispatchers.Main) {
-                                exportMsg = "已导出：${outFile.absolutePath}"
-                                android.widget.Toast.makeText(activity, "已导出源码：${outFile.name}", android.widget.Toast.LENGTH_SHORT).show()
-                                onDismiss()
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) {
-                                exportMsg = "导出失败：${e.message}"
-                            }
-                        } finally {
-                            withContext(Dispatchers.Main) { exporting = false }
-                        }
-                    }
-                },
-                enabled = !exporting,
-            ) { Text(if (exporting) "导出中…" else "导出") }
-        },
-        dismissButton = {
-            TextButton(onClick = { if (!exporting) onDismiss() }) { Text("取消") }
-        },
-    )
-}
-
-@Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp),
-    )
-}
-
-@Composable
-private fun SectionItem(text: String, onClick: () -> Unit = {}) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
-private fun SectionItem(text: String, desc: String, onClick: () -> Unit = {}) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun SectionToggleItem(title: String, desc: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggle(!checked) }
-            .padding(vertical = 10.dp, horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Spacer(Modifier.width(Spacing.s12))
-        Switch(checked = checked, onCheckedChange = onToggle)
-    }
-}
-
-@Composable
-private fun ClickableSectionHeader(text: String, expanded: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp, horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = if (expanded) "▾" else "▸",
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(Spacing.s16),
-        )
-        Spacer(Modifier.width(Spacing.s4))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
-
-@Composable
-private fun ThemeOverlay(themeDisplayName: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = themeDisplayName,
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                    RoundedCornerShape(20.dp),
-                )
-                .padding(horizontal = 48.dp, vertical = 32.dp),
-        )
-    }
-}
-
-private fun themeColor(key: String): Color = when (key) {
-    "classic-dark" -> Color(0xFF61AFEF)
-    "classic-light" -> Color(0xFF407FF4)
-    "solarized-dark" -> Color(0xFFCB4B16)
-    "dracula" -> Color(0xFFBD93F9)
-    "nord" -> Color(0xFF5E81AC)
-    "tokyo-night" -> Color(0xFF7AA2F7)
-    "catppuccin" -> Color(0xFFF5C2E7)
-    "gruvbox" -> Color(0xFFD79921)
-    "monokai" -> Color(0xFFA6E22E)
-    "everforest" -> Color(0xFFA7C080)
-    else -> Color.Gray
-}
-
-private fun themeAbbreviation(key: String): String = when (key) {
-    "classic-dark" -> "One"
-    "classic-light" -> "Lt"
-    "solarized-dark" -> "Sol"
-    "dracula" -> "Dra"
-    "nord" -> "Nrd"
-    "tokyo-night" -> "Tok"
-    "catppuccin" -> "Cat"
-    "gruvbox" -> "Grb"
-    "monokai" -> "Mon"
-    "everforest" -> "Evr"
-    else -> "??"
-}
-
-private fun sessionColor(key: String): Color = when (key) {
-    "red" -> Color(0xFFEF4444)
-    "orange" -> Color(0xFFF97316)
-    "yellow" -> Color(0xFFEAB308)
-    "green" -> Color(0xFF22C55E)
-    "cyan" -> Color(0xFF06B6D4)
-    "blue" -> Color(0xFF3B82F6)
-    "purple" -> Color(0xFFA855F7)
-    "pink" -> Color(0xFFEC4899)
-    "gray" -> Color(0xFF6B7280)
-    else -> Color.Transparent
-}
-
-private val sessionColorOptions = listOf(
-    "" to "\u65E0",
-    "red" to "\u7EA2",
-    "orange" to "\u6A59",
-    "yellow" to "\u9EC4",
-    "green" to "\u7EFF",
-    "cyan" to "\u9752",
-    "blue" to "\u84DD",
-    "purple" to "\u7D2B",
-    "pink" to "\u7C89",
-    "gray" to "\u7070",
-)
-
-@Composable
-private fun TabColorPickerDialog(
-    currentColor: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("\u9009\u62E9\u4F1A\u8BDD\u989C\u8272") },
-        text = {
-            Column {
-                sessionColorOptions.forEach { (key, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(key) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .clip(CircleShape)
-                                .background(sessionColor(key)),
-                        )
-                        Spacer(Modifier.width(Spacing.s8))
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                        if (key == currentColor) {
-                            Spacer(Modifier.weight(1f))
-                            Text("\u2713", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("\u53D6\u6D88") } },
-    )
-}
-
-@Composable
-private fun SwipeSensitivityDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val uiPrefs = context.getSharedPreferences("aidev_ui", android.content.Context.MODE_PRIVATE)
-    val current = uiPrefs.getFloat("swipe_sensitivity", 1.0f)
-    val items = listOf("low" to "低敏感", "medium" to "中敏感", "high" to "高敏感")
-    val floatMap = mapOf("low" to 1.5f, "medium" to 1.0f, "high" to 0.5f)
-    val initialKey = floatMap.entries.firstOrNull { it.value == current }?.key ?: "medium"
-    var selectedValue by remember { mutableStateOf(initialKey) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("滑动灵敏度") },
-        text = {
-            com.aidev.six.ui.components.AppRadioDialogContent(
-                items = items,
-                selectedValue = selectedValue,
-                onSelect = { selectedValue = it },
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                uiPrefs.edit().putFloat("swipe_sensitivity", floatMap[selectedValue] ?: 1.0f).apply()
-                onDismiss()
-            }) { Text("确定") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
-}
-
-@Composable
-private fun ResetKeyboardDialog(activity: Activity, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("确认重置") },
-        text = { Text("将恢复键盘按键顺序到默认布局，自定义按键覆盖不会丢失。", color = MaterialTheme.colorScheme.onSurface) },
-        confirmButton = {
-            TextButton(onClick = {
-                activity.getSharedPreferences("aidev_ui", Activity.MODE_PRIVATE)
-                    .edit().remove("terminal_key_order").apply()
-                onDismiss()
-            }) { Text("重置") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
-}
-
-private data class HuePreset(val label: String, val r: Int, val g: Int, val b: Int)
-
-private val huePresets = listOf(
-    HuePreset("灰", 0x88, 0x88, 0x88),
-    HuePreset("蓝", 0x1A, 0x1B, 0x3E),
-    HuePreset("紫", 0x3A, 0x1B, 0x4E),
-    HuePreset("绿", 0x1A, 0x3E, 0x1B),
-    HuePreset("暖", 0x3E, 0x27, 0x1A),
-)
-
-@Composable
-private fun BackgroundColorDialog(
-    initialOverride: Int,
-    onApply: (Int) -> Unit,
-    onReset: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val hasOverride = initialOverride != -1
-    val initR = if (hasOverride) (initialOverride shr 16) and 0xFF else 0x88
-    val initG = if (hasOverride) (initialOverride shr 8) and 0xFF else 0x88
-    val initB = if (hasOverride) initialOverride and 0xFF else 0x88
-    val initHue = huePresets.indices.minByOrNull { i ->
-        val p = huePresets[i]; val dr = initR - p.r; val dg = initG - p.g; val db = initB - p.b
-        dr * dr + dg * dg + db * db
-    } ?: 0
-    val maxComponent = maxOf(initR, initG, initB, 1)
-    val initBrightness = ((initR.toFloat() / maxComponent * 255f).roundToInt()).coerceIn(30, 255)
-
-    var selectedHue by remember { mutableIntStateOf(initHue) }
-    var brightness by remember { mutableIntStateOf(initBrightness) }
-
-    val preset = huePresets[selectedHue]
-    val r = (preset.r * brightness / 255).coerceIn(0, 255)
-    val g = (preset.g * brightness / 255).coerceIn(0, 255)
-    val b = (preset.b * brightness / 255).coerceIn(0, 255)
-    val previewColor = Color(r / 255f, g / 255f, b / 255f)
-    val resultInt = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("调整背景色") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(previewColor, RoundedCornerShape(Radius.button))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(Radius.button)),
-                )
-                Spacer(Modifier.height(Spacing.s12))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    huePresets.forEachIndexed { i, hue ->
-                        val chipColor = if (i == selectedHue) {
-                            Color(hue.r / 255f, hue.g / 255f, hue.b / 255f)
-                        } else {
-                            Color(hue.r / 255f * 0.5f, hue.g / 255f * 0.5f, hue.b / 255f * 0.5f)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(32.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(chipColor)
-                                .border(
-                                    if (i == selectedHue) 2.dp else 0.dp,
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(6.dp),
-                                )
-                                .clickable { selectedHue = i },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(hue.label, style = MaterialTheme.typography.labelSmall, color = Color.White)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(Spacing.s12))
-                Text("亮度", style = MaterialTheme.typography.bodySmall)
-                Slider(
-                    value = brightness.toFloat(),
-                    onValueChange = { brightness = it.roundToInt().coerceIn(30, 255) },
-                    valueRange = 30f..255f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = previewColor,
-                        activeTrackColor = previewColor,
-                    ),
-                )
-                Text("${brightness * 100 / 255}%", style = MaterialTheme.typography.labelSmall)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onApply(resultInt) }) { Text("确定") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onReset) { Text("重置", color = MaterialTheme.colorScheme.error) }
-                Spacer(Modifier.width(Spacing.s8))
-                TextButton(onClick = onDismiss) { Text("取消") }
-            }
-        },
-    )
 }

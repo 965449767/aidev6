@@ -35,65 +35,58 @@ class BuildBridgeServiceTest {
         tempDir.deleteRecursively()
     }
 
-    private fun call(name: String, vararg args: Any?): Any? {
-        val types = args.map { (it?.javaClass ?: Any::class.java) }.toTypedArray()
-        val m = BuildBridgeService::class.java.getDeclaredMethod(name, *types)
-        m.isAccessible = true
-        return m.invoke(BuildBridgeService, *args)
-    }
-
     @Test
     fun resolveProjectDir_workspacePrefix() {
         val ws = File("/data/home/workspace")
-        val r = call("resolveProjectDir", ws, "/workspace/MyApp") as File
+        val r = BuildBridgeService.resolveProjectDir(ws, "/workspace/MyApp")
         assertEquals(File(ws, "MyApp").absolutePath, r.absolutePath)
     }
 
     @Test
     fun resolveProjectDir_absolutePath() {
         val ws = File("/data/home/workspace")
-        val r = call("resolveProjectDir", ws, "/abs/some/App") as File
+        val r = BuildBridgeService.resolveProjectDir(ws, "/abs/some/App")
         assertEquals("/abs/some/App", r.absolutePath)
     }
 
     @Test
     fun resolveProjectDir_relativeName() {
         val ws = File("/data/home/workspace")
-        val r = call("resolveProjectDir", ws, "MyApp") as File
+        val r = BuildBridgeService.resolveProjectDir(ws, "MyApp")
         assertEquals(File(ws, "MyApp").absolutePath, r.absolutePath)
     }
 
     @Test
     fun derivePackage_normal() {
-        assertEquals("com.aidev.app.myandroidproject", call("derivePackage", "MyAndroidProject") as String)
+        assertEquals("com.aidev.app.myandroidproject", BuildProjectScaffolder.derivePackage("MyAndroidProject"))
     }
 
     @Test
     fun derivePackage_leadingDigitPrefixed() {
-        assertEquals("com.aidev.app.a123app", call("derivePackage", "123app") as String)
+        assertEquals("com.aidev.app.a123app", BuildProjectScaffolder.derivePackage("123app"))
     }
 
     @Test
     fun derivePackage_emptyFallsBackToApp() {
-        assertEquals("com.aidev.app.app", call("derivePackage", "") as String)
+        assertEquals("com.aidev.app.app", BuildProjectScaffolder.derivePackage(""))
     }
 
     @Test
     fun finish_writesResultJsonWithArtifacts() {
-        val field = BuildBridgeService::class.java.getDeclaredField("requestDir")
-        field.isAccessible = true
-        field.set(BuildBridgeService, tempDir)
-
         val reqFile = File(tempDir, "req-build-9.json").apply { writeText("{}") }
-        val finishMethod = BuildBridgeService::class.java.getDeclaredMethod(
-            "finish", Context::class.java, String::class.java, Boolean::class.java, String::class.java,
-            CharSequence::class.java, File::class.java, String::class.java, String::class.java,
-            String::class.java, String::class.java
-        )
-        finishMethod.isAccessible = true
-        finishMethod.invoke(
-            BuildBridgeService, mock(Context::class.java), "build-9", true, "构建成功: /x/app-debug.apk",
-            StringBuffer("ok"), reqFile, "/x/app-debug.apk", "/x/build.log", "com.x.app", "MyApp"
+
+        buildFinish(
+            ctx = mock(Context::class.java),
+            id = "build-9",
+            success = true,
+            message = "构建成功: /x/app-debug.apk",
+            log = StringBuffer("ok"),
+            reqFile = reqFile,
+            requestDir = tempDir,
+            apkPath = "/x/app-debug.apk",
+            logPath = "/x/build.log",
+            pkg = "com.x.app",
+            project = "MyApp"
         )
 
         val result = File(tempDir, "result-build-9.json")
@@ -105,7 +98,6 @@ class BuildBridgeServiceTest {
         assertEquals("/x/build.log", json.getString("log_path"))
         assertEquals("com.x.app", json.getString("pkg"))
         assertEquals("MyApp", json.getString("project"))
-        // 请求文件应被消费删除
         assertEquals(false, reqFile.exists())
     }
 }

@@ -58,7 +58,7 @@ object TerminalShellAssets {
 
         // rootfs 辅助脚本每次检查（rootfs 可能被重装），失败不致命
         if (rootfs.isDirectory) {
-            runCatching { UbuntuBootstrapScripts.copyAssetScripts(activity, rootfs) }
+            runCatching { UbuntuBootstrapScripts.copyAssetScripts(activity, rootfs, home) }
                 .onFailure { Log.e("TerminalShellAssets", "copyAssetScripts failed (non-fatal)", it) }
         }
 
@@ -126,7 +126,7 @@ object TerminalShellAssets {
         val agentScripts = listOf(
             "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh",
             "aidev-logcat.sh", "aidev-shizuku.sh",
-            "aidev-apk-info.sh", "aidev-build-request.sh",
+            "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh",
             "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh",
             "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
             "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh",
@@ -136,6 +136,7 @@ object TerminalShellAssets {
             val dstName = script.removeSuffix(".sh")
             val dst = File(bin, dstName)
             try {
+                runCatching { dst.setWritable(true) }
                 activity.assets.open("scripts/$script").use { input ->
                     dst.outputStream().use { output -> input.copyTo(output) }
                 }
@@ -145,6 +146,20 @@ object TerminalShellAssets {
                 android.util.Log.w("TerminalShellAssets", "无法从 assets 复制脚本 $script: ${e.message}")
             }
         }
+        // 公共 lib 目录：被 aidev-build-request / aidev-notify / aidev-anr / aidev-tombstone 等 source，
+        // 必须与脚本同目录（/usr/local/bin/lib），否则这些命令会在 set -e 下崩溃（见脚本审计）。
+        val libDir = File(bin, "lib").apply { mkdirs() }
+        runCatching {
+            val libEntries = activity.assets.list("scripts/lib") ?: emptyArray()
+            for (entry in libEntries) {
+                val dst = File(libDir, entry)
+                activity.assets.open("scripts/lib/$entry").use { input ->
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+                dst.setExecutable(true, false)
+                dst.setReadable(true, false)
+            }
+        }.onFailure { e -> android.util.Log.w("TerminalShellAssets", "无法从 assets 复制 lib 目录: ${e.message}") }
         val prootBin = File(bin, ".privot").apply { mkdirs() }
         UbuntuBootstrapScripts.agentPrivotScripts().forEach { (name, content) ->
             val out = File(prootBin, name)
@@ -181,11 +196,15 @@ object TerminalShellAssets {
         rc.writeText(
             """
             # AIDev canonical shell rc. 自动生成，请不要在这里保存个人配置。
+            # source 期间关闭历史记录，避免下方大量函数定义/alias 被写入历史（否则方向键会翻出函数体）。
+            set +o history 2>/dev/null || true
             AIDEV_VERSION="$v"
             # 宿主(宇宙H) AIDEV_HOME 为 App 私有绝对路径；在 proot 内(宇宙A/B)宿主 home 绑定于 /host-home。
             # 本 rc 会被 rootfs 的 .bashrc 通过 `. /host-home/.aidevrc` 复用，故须按位置解析，避免命令指向不存在的宿主路径。
             if [ -d /host-home ]; then AIDEV_HOME="/host-home"; else AIDEV_HOME="${home.absolutePath}"; fi
             AIDEV_BIN="${'$'}AIDEV_HOME/dev-env/bin"
+            # 用户覆盖层：自定义命令放此处优先于出厂脚本，且不被 copyAssetScripts 覆盖（见 docs/error-journal 2026-07-17）。
+            AIDEV_OVERRIDES="${'$'}AIDEV_HOME/overrides/bin"
             AIDEV_ROOTFS="${'$'}AIDEV_HOME/ubuntu-rootfs"
             AIDEV_COMPILER_ROOTFS="${'$'}AIDEV_HOME/compiler_rootfs"
             AIDEV_WORKSPACE="${'$'}AIDEV_HOME/workspace"
@@ -201,11 +220,11 @@ object TerminalShellAssets {
             LD_LIBRARY_PATH="${'$'}AIDEV_PROOT_EXTRA_LIBS:${'$'}AIDEV_NATIVE${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
             ANDROID_SDK_ROOT="${'$'}AIDEV_HOME/android-sdk"
             GRADLE_USER_HOME="${'$'}AIDEV_HOME/gradle-cache"
-            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
+            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_OVERRIDES AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
             export ANDROID_SDK_ROOT GRADLE_USER_HOME
             export LANG=C.UTF-8
             export LC_ALL=C.UTF-8
-            export PATH="/usr/local/bin:${'$'}AIDEV_BIN:${'$'}ANDROID_SDK_ROOT/cmdline-tools/latest/bin:/system/bin:/system/xbin:${'$'}PATH"
+            export PATH="${'$'}{AIDEV_OVERRIDES}:/usr/local/bin:${'$'}AIDEV_BIN:${'$'}ANDROID_SDK_ROOT/cmdline-tools/latest/bin:/system/bin:/system/xbin:${'$'}PATH"
             AIDEV_REALM_COLOR="$(printf '\033[0m')"
             case "${'$'}{AIDEV_REALM:-H}" in
               A) AIDEV_REALM_COLOR="$(printf '\033[32m')" ;;
@@ -258,6 +277,28 @@ object TerminalShellAssets {
             aidev-tombstone() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-tombstone "${'$'}@"; }
             aidev-crash-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-crash-why "${'$'}@"; }
             aidev-dumpsys() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-dumpsys "${'$'}@"; }
+            # 交互历史 / 行编辑：必须在所有函数定义之后开启，否则上方函数体被写入历史，
+            # 方向键会翻出函数定义文本。source 开头已 set +o history 关闭记录，此处恢复。
+            case "$-" in
+              *i*)
+                export HISTFILE="${'$'}{HOME:-/data/data/com.aidev.six/files/home}/.aidev_sh_history"
+                export HISTSIZE=2000 HISTFILESIZE=2000
+                # 清理历史文件中的函数定义/转义残片（旧版本把 rc 函数体写进了历史，需一次性净化）。
+                # 注意：不得用 grep —— 宿主 /system/bin/grep 可能是坏架构二进制
+                # （cannot execute: required file not found），每次 source 本 rc 都会报错。
+                _aidev_purge=0
+                if [ -f "${'$'}{HISTFILE:-}" ]; then
+                  while IFS= read -r _aidev_line; do
+                    case "${'$'}_aidev_line" in
+                      *'() {'*|*'aidev[A]'*) _aidev_purge=1; break ;;
+                    esac
+                  done < "${'$'}{HISTFILE}"
+                fi
+                [ "${'$'}_aidev_purge" = 1 ] && : > "${'$'}{HISTFILE}" 2>/dev/null || true
+                set -o emacs 2>/dev/null || true
+                set -o history 2>/dev/null || true
+                ;;
+            esac
             """.trimIndent() + "\n"
         )
     }
@@ -279,6 +320,11 @@ object TerminalShellAssets {
             if [ -f "${ready.absolutePath}" ] && [ -f "${core.absolutePath}" ]; then
               /system/bin/sh "${core.absolutePath}" aidev-auto-bootstrap
             fi
+            # 交互历史 / 行编辑：env 由 exec 继承；rc 亦经 ENV 加载并在末尾开启 history。
+            # 此处保持 history 关闭，避免 entry 固定脚本行进历史（rc 顶部已 set +o history）。
+            set +o history 2>/dev/null || true
+            export HISTFILE="${'$'}{HOME:-/data/data/com.aidev.six/files/home}/.aidev_sh_history"
+            export HISTSIZE=2000 HISTFILESIZE=2000
             exec sh -i
             """.trimIndent() + "\n"
         )

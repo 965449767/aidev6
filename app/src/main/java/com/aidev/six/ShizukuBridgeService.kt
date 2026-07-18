@@ -106,18 +106,53 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
     /**
      * 前缀白名单：仅允许以这些前缀开头的命令（P0-2 收紧）。
      * 覆盖安全设备内省/控制动词；危险动词（reboot/rm/mv/dd/mount/chmod 等）一律不在列表内。
+     * 新增 ls（只读列举 /data/anr、/data/tombstones 等，供 aidev-anr/aidev-tombstone）。
      */
     private val ALLOWED_COMMAND_PREFIXES = listOf(
         "pm ", "input ", "svc ", "dumpsys ", "cmd ", "cp ", "am ", "monkey ",
-        "settings ", "wm ", "getprop", "setprop", "logcat", "date ", "reset "
+        "settings ", "wm ", "getprop", "setprop", "logcat", "date ", "reset ", "ls "
     )
 
+    /** 只读动词后允许接的安全管道下游（仅用于截断/过滤，不执行任意程序）。 */
+    private val SAFE_PIPE_READERS = setOf(
+        "head", "tail", "grep", "awk", "sed", "wc", "tr", "sort", "cut", "cat", "strings"
+    )
+
+    /**
+     * 校验管道拆分后的每一段：首段须匹配前缀白名单；后续段只允许安全只读读取器，
+     * 且不得再出现任何注入元字符。这样 dumpsys ... | head -40 可放行，
+     * 而 am start ... ; rm -rf / 之类仍被拒。
+     */
+    private fun isPipelineAllowed(command: String): Boolean {
+        val segments = command.split('|')
+        if (segments.isEmpty()) return false
+        // 第一段：必须是白名单前缀动词
+        val head = segments.first().trim()
+        val headOk = ALLOWED_COMMAND_PREFIXES.any { p ->
+            val base = p.trimEnd()
+            head == base || head.startsWith(p)
+        }
+        if (!headOk) return false
+        // 后续段：仅允许安全读取器，且整段不得含其余注入元字符
+        val remainingMetachars = charArrayOf(';', '&', '$', '`', '(', ')', '<', '>', '\n', '\\')
+        for (i in 1 until segments.size) {
+            val seg = segments[i].trim()
+            if (seg.isEmpty()) return false
+            val reader = seg.split(Regex("\\s+")).first()
+            if (reader !in SAFE_PIPE_READERS) return false
+            if (seg.any { it in remainingMetachars }) return false
+        }
+        return true
+    }
+
     /** 注入类 shell 元字符：无论前缀是否合法，出现即拒绝（防 am start ... ; rm -rf / 等注入）。 */
-    private val FORBIDDEN_SHELL_METACHARS = charArrayOf(';', '|', '&', '$', '`', '(', ')', '<', '>', '\n', '\\')
+    private val FORBIDDEN_SHELL_METACHARS = charArrayOf(';', '&', '$', '`', '(', ')', '<', '>', '\n', '\\')
 
     internal fun isCommandAllowed(command: String): Boolean {
         val trimmed = command.trim()
         if (trimmed.isEmpty()) return false
+        // 含管道时按安全管道规则校验（允许 dumpsys|head 等只读内省）
+        if ('|' in trimmed) return isPipelineAllowed(trimmed)
         val matchesPrefix = ALLOWED_COMMAND_PREFIXES.any { p ->
             val base = p.trimEnd()
             trimmed == base || trimmed.startsWith(p)

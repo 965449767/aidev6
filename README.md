@@ -17,7 +17,7 @@ cp keystore.properties.example keystore.properties
 ./gradlew downloadCurlMusl
 
 # 3. 构建
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-daemon
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug
 ```
 
 - Debug APK → `app/build/outputs/apk/debug/app-debug.apk`，自动复制到 `/sdcard/AIDev/`（`/sdcard` 即 `/storage/emulated/0`）。
@@ -27,9 +27,9 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 ## 测试
 
 ```bash
-./gradlew :app:compileDebugKotlin --no-daemon   # Kotlin 编译检查
-./gradlew :app:testDebugUnitTest --no-daemon     # 158 单测（JUnit4 + Mockito；3 个预存失败，与改动无关）
-./gradlew :app:assembleDebug --no-daemon         # 全量构建
+./gradlew :app:compileDebugKotlin   # Kotlin 编译检查
+./gradlew :app:testDebugUnitTest     # 158+ 单测（JUnit4 + Mockito）
+./gradlew :app:assembleDebug         # 全量构建
 bash app/src/test/sh/run.sh                      # 65 shell 测试（含 create-compose-project 等），全过
 bash scripts/harness_check.sh                    # Harness / 文档校验
 ```

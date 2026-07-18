@@ -12,7 +12,7 @@
 #       filesDir/home/gradle-cache。认准这个目录预热，宇宙 B 才能离线构建。本脚本会【自动探测】该目录并同步。
 # 注意: 本工具只在「联网时」有意义；离线运行会明确报告无法获取。
 
-set -u
+set -e
 
 AIDEV_GRADLE="/root/projects/aidev6/gradlew"
 

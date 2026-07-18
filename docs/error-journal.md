@@ -2,6 +2,329 @@
 
 Use this file to record repeated failures, non-obvious bugs, and lessons learned.
 
+## 2026-07-18 - enter_ubuntu 报 `/system/bin/grep: cannot execute: required file not found`
+
+**Symptom**：执行 `enter_ubuntu`(进入宇宙A)后,打印「已进入宇宙 A(OpenCode)」并紧跟
+`bash: /system/bin/grep: cannot execute: required file not found`。进入仍成功,但提示难看且
+`ensure_android_groups` 的 group 补齐逻辑失效。
+
+**Root Cause**：`enter_ubuntu` 在**宿主侧(宇宙H,非 PRoot)**依次执行 `has_ubuntu` →
+`ensure_android_groups` → `ensure_ubuntu_helpers`,再 `exec` PRoot 进宇宙A。`ensure_android_groups`
+(`UbuntuBootstrapScripts.kt`)用 `grep -q "^[^:]*:[^:]*:$gid:"` 检查 rootfs 的 `/etc/group`,而宿主
+PATH 含 `/system/bin`,`/system/bin/grep` 是 **x86_64 架构二进制**(aarch64 宿主上
+`required file not found`)。报错来自宿主 bash 执行该坏 grep。
+
+**Fix**：`ensure_android_groups` 改为**纯 POSIX shell** 逐行读取 `/etc/group` 判断 gid 是否已存在,
+完全不依赖外部 `grep`(规避宿主坏架构 grep 的同类问题)。宿主侧其他 `enter_ubuntu` 调用链
+(`has_ubuntu`/`install_ubuntu`/`ensure_ubuntu_helpers`)经核查无 grep 依赖。
+
+**⚠️ 第一轮查错位置偏差**：改完 `ensure_android_groups` 后用户复现报错仍在。真正触发点是
+**`.aidevrc` 尾部的历史净化逻辑**(`TerminalShellAssets.kt` 旧 `grep -qE '\(\) \{|aidev\[A\]'`)
+在**宿主交互 shell 启动**(经 `ENV` source)及进宇宙A(`/bin/bash -l` 再 source 一次)时执行,
+每次都调宿主坏 `/system/bin/grep` → 报错。与 `enter_ubuntu` 函数体无关。
+
+**Fix(v2, 真正修复)**：`.aidevrc` 历史净化改为**纯 shell 逐行扫描 HISTFILE**(检测 `*'() {'*` /
+`*'aidev[A]'*`),彻底不调用外部 grep。配合 `ensure_android_groups` 纯 shell 化,
+宿主侧启动路径已无任何 grep 依赖。
+
+**交付教训**：修复"报错"类问题必须定位**真正触发点**(看报错出现的精确时机/调用栈),而非
+只修第一个可疑的同类调用。`enter_ubuntu` 打印后的报错其实来自紧随其后的 `exec proot ... /bin/bash -l`
+启动宇宙A 时 source `.aidevrc` 的 grep,而非 `enter_ubuntu` 函数体本身的 `ensure_android_groups`。
+
+**Prevention**：在宿主侧(宇宙H)执行的 aidev 脚本函数,**不得依赖 `/system/bin/grep|awk|sed`**
+等可能为坏架构二进制的外部命令;需用文本处理时优先纯 shell 循环,或先 `command -v` 探测可用实现。
+
+
+### Related Files
+- `app/src/main/java/com/aidev/six/UbuntuBootstrapScripts.kt`（ensure_android_groups 纯 shell 化）
+
+## 2026-07-18 - 终端方向键历史回显乱码（`aidev[A]` 的 `[A]`）
+
+**Symptom**：AIDev 终端按上下方向键调历史命令时，提示符出现 `aidev[A]:`（`[A]` 是上方向键
+转义序列 `ESC[A` 被原样回显），且正在输入的命令行与历史行交叉"格式变乱"；logcat 输出
+（如 `RecentsTaskLoader: reloadTasksData...`）混进命令行。
+
+**Root Cause**：终端 PTY 启动链 `/system/bin/sh` → `.aidev_shell_entry` → `exec sh -i`
+（`TerminalShellAssets.kt:299`）。该 `sh` 是 Android mksh，但生成体**未启用行编辑/历史**
+（`set -o emacs` / `set -o history` / `HISTFILE` 缺失），导致方向键转义序列不被行编辑器接管、
+被原样打印。logcat 混入是 `aidev-logcat --follow` 持续刷屏到 PTY 与输入冲突（PTY 单流固有
+问题，非 bug）。
+
+**Fix（v1，不完整）**：
+1. `.aidevrc` 生成体：`set -o emacs` + `set -o history` + `HISTFILE` 等。
+2. `.aidev_shell_entry`：`exec sh -i` 前同样配置。
+3. 文档引导 `--follow` 用项目页隔离 logcat。
+
+**回归（v2，函数定义污染历史）**：v1 把 `set -o history` 放在 rc **函数定义段之前**，导致 mksh
+交互启动默认 history 开启、source rc 时把**全部函数体**（`aidev-crash-why() { ... }` 等）写入历史，
+方向键翻出函数定义文本，且旧文件 `~/.aidev_sh_history` 被污染。
+
+**Fix（v2，正确）**：
+1. rc **顶部** `set +o history`（source 期间关闭记录，函数/alias 不进历史）。
+2. rc **末尾**（所有函数定义之后）才 `export HISTFILE` + `set -o emacs` + `set -o history`。
+3. 末尾启用前检测并净化被污染的 HISTFILE（含 `() {` / `aidev[A]` 行则清空重建），一次性去除旧污染。
+4. `.aidev_shell_entry` 改为 `set +o history`（与 rc 顶部一致），仅 export HISTFILE。
+
+**Prevention**：mksh 交互 shell source rc 时默认记录历史，凡生成含大量函数定义的 rc，必须
+`set +o history` 包裹定义段、`set -o history` 留到末尾，且历史文件需防函数体污染。
+
+### Related Files
+- `app/src/main/java/com/aidev/six/TerminalShellAssets.kt`（.aidevrc 顶部+末尾历史配置、entry set +o history）
+- `docs/non-android-guide.md`（§五 终端使用注意）
+
+
+### Related Files
+- `app/src/main/java/com/aidev/six/TerminalShellAssets.kt`（.aidevrc + .aidev_shell_entry 历史配置）
+- `docs/non-android-guide.md`（§五 终端使用注意）
+
+## 2026-07-18 - 闭环回归报告残留点：dispatch 漏参 / dash shift 崩溃 / 构建锁误判
+
+第三份"纯净回归版"闭环报告确认三项脚手架缺陷已全修、开箱即用闭环达成。顺带核查报告
+列的非阻断改进点，发现并修复以下问题：
+
+### 1. aidev-shizuku 在真机 dash 下无参直接崩溃（真 bug，最严重）
+
+**Symptom**：`aidev-shizuku`（无参）或期望显示帮助时，真机 PRoot（/bin/sh=dash）下无任何
+输出、rc=2，帮助分支永远到不了。
+
+**Root Cause**：`SUBCOMMAND="${1:-}"; shift 2>/dev/null || true`。`shift` 是 shell **特殊内建
+命令**，无参时失败，在 `set -e` 下 dash 会直接终止脚本，且 `2>/dev/null || true` **无法**兜住
+（bash 能兜住，故 bash 测试与本机测试都漏掉）。修复：`if [ "$#" -gt 0 ]; then shift; fi`。
+
+**Prevention**：涉及 `shift`/`set`/`eval` 等特殊内建命令时，别依赖 `|| true` 兜错；shell 测试
+的 no-args/help 用例必须用 **dash 实跑**（helpers 里已有 dash 优先约定），bash 会掩盖此类坑。
+
+### 2. aidev-ubuntu-core dispatch 再次漏传 "$@"（apk-info / verify-run）
+
+**Symptom**：`aidev-apk-info <apk>`、`aidev-verify-run <target>` 在宇宙A 收不到参数。
+
+**Root Cause**：`UbuntuBootstrapScripts.kt` 的 dispatch 中这两条漏了 `"${'$'}@"`（与 2026-07-17
+同类回归）。且 `ubuntu_core_dispatch_test.sh` 的 ARG_CMDS 未覆盖 apk-info，还把 verify-run
+错列进 NOARG_CMDS，故护栏没拦住。修复：补 `"${'$'}@"`，并把两者移入 ARG_CMDS。
+
+### 3. aidev-deploy 位置参数被静默丢弃
+
+`aidev-deploy /path.apk`（位置参数）此前落到 `*) shift` 被丢弃 → 误报 `missing --apk`。
+改为首个位置参数视为 APK 路径，兼容 `--apk` 显式写法。
+
+### 4. 构建锁跳过被客户端误判为失败（报告问题1）
+
+宇宙A 客户端超时中断、宇宙B 仍后台编译时重复提交，宿主 ProjectTaskLock 正确持有锁并
+让后续请求"跳过"，但 `aidev-build-request` 把该 result（success=false）当普通编译失败打印，
+误导用户重试。**锁行为本身正确**（编译结束即释放），问题在客户端提示。修复：识别
+"已有任务进行中"消息，改印"构建跳过（已有构建进行中）"+ 引导用 `aidev-build-log` 跟踪，
+退出码 3（区别于失败 1 / 超时 2）。
+
+### 附：安装弹窗澄清
+
+报告中 `aidev-deploy` 返回 installed=false 是宇宙A 无设备直连、无法二次校验所致（设计分工）；
+实际经宿主 + Shizuku 能装成功。用户确认：安装时的弹窗是 **Shizuku 自身的授权确认弹窗**，
+确认后 APK 经 Shizuku（`pm install -r -d --user 0`）真实安装成功——安装链路健全，无需改动。
+
+### Related Files
+
+- `app/src/main/assets/scripts/aidev-shizuku.sh`（shift 保护）
+- `app/src/main/java/com/aidev/six/UbuntuBootstrapScripts.kt:553-555`（补 "$@"）
+- `app/src/test/sh/ubuntu_core_dispatch_test.sh`（ARG_CMDS 补 apk-info/verify-run）
+- `app/src/main/assets/scripts/aidev-deploy.sh`（位置参数）
+- `app/src/main/assets/scripts/aidev-build-request.sh`（锁跳过提示 + 退出码 3）
+- `app/src/test/sh/aidev-build-request_test.sh`（对齐"强制 --project"契约）
+
+## 2026-07-18 - 评估报告指出优化项落地（JDK 悬空路径 / deploy 回传 / 环境边界）
+
+结合《AIDev 开发环境评估与补充建议》报告，处理本仓库可落地的优化点。
+
+### 1. PRoot 启动 env 注入悬空 JDK 路径（真 bug，已修）
+
+**Symptom**：真机 PRoot 会话里 `which java` → MISSING；报告 §3.1 结论成立。
+**Root Cause**：`UbuntuBootstrapScripts.kt:368`（旧）`proot_common_env` 把 PATH 写死
+`/usr/lib/jvm/java-17-openjdk-arm64/bin`，但该目录在 rootfs **不存在**；真实 JDK 在
+`/opt/jdk-17.0.19+10` 且未进 PATH。第363行 bind 用 `[ -e ... ]` 探测，但 PATH 不随探测变化。
+**Fix**：新增 `aidev_resolve_jdk`（探测 `/opt/jdk-17*` → `/usr/lib/jvm/*`），PATH 与 bind 均用
+真实 JDK；`.bashrc` 模板补 JDK 兜底（缺失时自动补 JAVA_HOME/PATH）。
+**Prevention**：凡引用 JDK 路径一律动态探测，禁止写死目录；PATH 段与 bind 段必须同源。
+
+### 2. aidev-deploy 安装结果"黑洞"（not verified）
+
+**Symptom**：宿主 Shizuku 确认弹窗后真装成功，但 `aidev-deploy` 永远 `install not verified`。
+**Root Cause**：deploy 第二步用 `aidev-shizuku exec "pm list packages"` 做二次校验，而该命令
+经桥在 A 侧常拿不到输出（设备不可见）。`aidev-install` 经 `aidev-shizuku install` 的退出码
+已是宿主侧 Shizuku 安装真相（桥会回传 pm install 结果），deploy 却没信它。
+**Fix**：`aidev-deploy.sh` 以 `aidev-install` 退出码为 installed 真相；`pm list packages` 降级为
+可选软校验，失败仅告警不致命。无需改 Kotlin 桥（`aidev-shizuku install` 已正确回传）。
+**Prevention**：A 侧自验设备状态的命令不可作为安装成败的致命判据；信任桥侧命令的真实返回码。
+
+### 3. 报告其余项归属判定（明确不做 / 文档化）
+
+- **make/cmake/file/Go（P1-3/4/5）**：属 rootfs 预置层，受"不要 apt 装到系统根"铁律约束，
+  由宿主打包阶段处理，本仓库不 `apt-get install`。
+- **x86_64 NDK 加载器/qemu（P1-6/7）**：rootfs 环境层，不在本仓库；文档明确 A 侧不支持 NDK 原生编译。
+- **aidev-apk-info Socket 转发（P0-2）**：脚本已有 unzip+strings 降级模式，转发改动大收益低，不做。
+- **/workspace 预置 aidevX 的 target/ 带 immutable 属性删不掉（P2-12）**：经代码核查
+  `chattr +i`/`immutable` **不在本仓库**（`setReadOnly` 仅用于脚本只读位，非 workspace）。
+  该属性是宿主 rootfs 打包阶段所设，**本 git 仓库不可直接改**。建议：① 宿主打包阶段去掉
+  `target/` 的 `+i`；② `aidev-clean` 增加 `chattr -i` 提权尝试；③ 文档说明该目录不可删。
+  若后续 `lsattr` 实测定位到本仓库某脚本误设，再修。
+
+### 4. 文档补齐
+
+新增 `docs/non-android-guide.md`：《非安卓开发指南》——各语言运行时边界 + 宿主侧工具清单
+（aapt2 完整解析 / NDK 原生编译 / anr 抓取 / deploy 结果) + JDK 路径坑说明。
+
+### Related Files
+
+- `app/src/main/java/com/aidev/six/UbuntuBootstrapScripts.kt`（aidev_resolve_jdk + .bashrc 兜底）
+- `app/src/main/assets/scripts/aidev-deploy.sh`（installed 以 aidev-install 退出码为真相）
+- `docs/non-android-guide.md`（新增）
+- `docs/error-journal.md`（本条目）
+
+
+## 2026-07-18 - 脚手架项目全部编译失败：AGP 9 built-in Kotlin 与 kotlin.android 撞名
+
+### Symptom
+
+`create-compose-project`（及其兼容别名 `aidev-create-android-project`）生成的**任何**新项目
+在宇宙B 编译都失败：
+
+```
+An exception occurred applying plugin request [id: 'org.jetbrains.kotlin.android']
+> Failed to apply plugin 'org.jetbrains.kotlin.android'.
+   > Cannot add extension with name 'kotlin', as there is an extension already registered with that name.
+BUILD FAILED
+```
+
+`ToolChainTest` / `ChainTest` / `DebugTest` 等均如此。工具链测试报告一度将根因误判为
+"三插件（kotlin.android + kotlin.plugin.compose）天生冲突、脚手架系统性缺陷"。
+
+### Root Cause
+
+**误判澄清**：三插件组合（`com.android.application` + `kotlin.android` +
+`kotlin.plugin.compose`）是 Kotlin 2.0 官方标准写法，`kotlin.plugin.compose` 只注册
+compose 编译器扩展，**不**注册 `kotlin` extension，与 `kotlin.android` 不冲突。宿主
+aidev6 自身正是这套写法且能正常出 APK，直接证伪"三插件冲突"说。
+
+**真正根因**：AGP 9.0 默认开启 built-in Kotlin，会**自动注册 `kotlin` extension**；此时再
+apply `org.jetbrains.kotlin.android` 就撞名报错（Google Issue Tracker 438711106 / 官方
+「迁移到内置 Kotlin」文档）。宿主 aidev6 能编译，是因为 `gradle.properties` 里有
+`android.builtInKotlin=false`（+ `android.newDsl=false`）关掉了内置 Kotlin；而
+`create-compose-project.sh` 生成的 `gradle.properties` **漏了这两行**，导致脚手架项目
+built-in Kotlin 默认开启 → 撞名 → 100% 编译失败。
+
+### Fix
+
+- `create-compose-project.sh` 的 gradle.properties 生成块补入 `android.builtInKotlin=false`
+  与 `android.newDsl=false`，与宿主保持一致（保留标准三插件写法，不删 kotlin.android）。
+- `create-compose-project_test.sh` 新增产物级断言：实跑生成一个项目，校验其
+  `gradle.properties` 含 `android.builtInKotlin=false`，堵住"只测参数、不测产物能否编译"的漏洞。
+
+### Prevention
+
+- **对照基准排查法**：脚手架产物出问题时，先与宿主 aidev6 自身的对应配置文件逐行对照
+  （尤其 `gradle.properties` 的 AGP 开关），差异往往就是根因。
+- 报错信息 `Cannot add extension with name 'kotlin'` 在 AGP 9 语境下几乎必为
+  built-in Kotlin 撞名，**不是**插件本身冲突；两条正规出路：① 关 built-in Kotlin
+  （本项目选此，改动最小）；② 删 `kotlin.android` 拥抱内置 Kotlin。
+- 脚手架测试必须至少有一条"实跑生成 + 校验关键产物"的用例，纯参数校验测不出编译级缺陷。
+- `aidev-create-android-project` 只是 `create-compose-project` 的 3 行兼容封装
+  （`exec create-compose-project`），并非第二套脚手架；改脚手架只需改 create-compose-project。
+
+### 追加缺陷（2026-07-18 二次闭环报告）：activity-compose 缺显式版本
+
+第二份闭环测试报告另发现脚手架生成的 `app/build.gradle.kts` 中
+`implementation("androidx.activity:activity-compose")` **无版本号**，构建报
+`Could not find androidx.activity:activity-compose:.`。
+
+根因：`androidx.activity:activity-compose` 属 **androidx.activity 组**，**不在
+Compose BOM（仅约束 androidx.compose.* 组）管理范围**，因此 BOM 不会为它提供版本，
+必须显式声明。宿主 aidev6 `app/build.gradle.kts:253` 正是显式写 `1.9.3`（再次印证
+"对照宿主基准"排查法）。已在脚手架加 `ACTIVITY_COMPOSE_VERSION="1.9.3"` 并引用，
+测试补断言 `activity-compose:1.9.3`。
+
+注：该报告主张的"移除 kotlin.android + 删 kotlinOptions"是另一条修复路（拥抱 built-in
+Kotlin）；本项目已选"关 built-in Kotlin 保留三插件"路，与宿主一致，故报告的问题 1、2
+在本项目修复路径下不复现，无需再改；仅问题 3（activity-compose 版本）需独立修复。
+
+### Related Files
+
+- `app/src/main/assets/scripts/create-compose-project.sh`（gradle.properties 生成块 + activity-compose 版本）
+- `app/src/main/assets/scripts/aidev-create-android-project.sh`（兼容别名，委托前者）
+- `app/src/test/sh/create-compose-project_test.sh`（新增产物级断言：builtInKotlin + activity-compose 版本）
+- 对照基准：`gradle.properties` 与 `app/build.gradle.kts:253`（宿主，含 builtInKotlin=false 与 activity-compose:1.9.3）
+
+### Bonus（顺带修复的护栏失真）
+
+排查中发现 `repo_guard_test.sh` 仍检查 `BuildBridgeService.kt` 的 JDK `aidev-repo decide`
+分支，但该逻辑先前已重构迁至 `BuildEnvironmentSetup.kt`，护栏因此失真变红。已把断言目标
+改指向 `BuildEnvironmentSetup.kt`，恢复护栏作用。教训：重构搬迁代码时，须同步更新
+指名道姓检查文件路径的静态护栏测试。
+
+## 2026-07-17 - aidev-ubuntu-core dispatch 漏传 "${@}" 导致命令参数全丢
+
+### Symptom
+
+`aidev-create-android-project MyApp com.example.myapp /workspace` 只打印用法，
+不创建项目。`aidev-apk-info <apk>`、`aidev-gen`、`aidev-logcat` 等带参命令同样
+收不到参数（脚本里 `$1`/`$2` 为空 → 判空分支触发）。
+
+### Root Cause
+
+`UbuntuBootstrapScripts.kt` 生成 `aidev-ubuntu-core` 时，case 分支里需要位置参数的命令
+（create-android-project / gen / error-why / index / android-sh / clean / backup /
+logcat / anr / tombstone / crash-why / dumpsys）调用 `run_ubuntu_command` 时**漏写
+`"${@}"`**，只有 `install`/`deploy`/`setup-dev-env` 等少数几个带了。`aidev-ubuntu-core`
+收到用户参数后没往下传，目标脚本自然看到空 `$1`。
+
+### Fix
+
+给所有带参 dispatch 补 `"${'$'}@"`；新增 `app/src/test/sh/ubuntu_core_dispatch_test.sh`
+静态断言 Kotlin 源里每个带参命令的 dispatch 行都以 `"${'$'}@" ;;` 结尾，防止回归。
+
+### Prevention
+
+- `aidev-ubuntu-core` 是 Kotlin 生成的，不在 assets/scripts，shell 测试需直接 grep
+  生成源（`UbuntuBootstrapScripts.kt`）才能拦住此类回归。
+- 新增任何带参命令时，必须在 case 分支同步 `"${@}"`。
+
+### Related Files
+
+- `app/src/main/java/com/aidev/six/UbuntuBootstrapScripts.kt:530-549` (run_ubuntu_command dispatch)
+- `app/src/test/sh/ubuntu_core_dispatch_test.sh`
+
+## 2026-07-17 - 宇宙A(PRoot)内 create-compose-project 缺 JDK/模板
+
+### Symptom
+
+进 `aidev[A]`(宇宙A/PRoot) 后跑 `aidev-create-android-project ...` 报：
+`java: not found` 且 `错误: 模板目录不存在: /root/.gradle/template-wrapper`。
+
+### Root Cause
+
+`create-compose-project.sh` 设计为在**宿主**(宇宙H)运行——依赖宿主 `/root` 的
+`$HOME/.gradle/template-wrapper` 和 `/usr/lib/jvm/java-17-openjdk-arm64`。
+但 PRoot(宇宙A) 的内视图是隔离的：`$HOME=/root` 指向 rootfs 自身的空 `/root`，
+`AIDEV_HOME=/host-home`（bind 的宿主 AIDEV_HOME，里面没有 `.gradle`），
+且 `proot_common_binds` 没挂宿主的 `/root/.gradle` 和 JDK，PATH 也没含 JDK bin。
+所以脚本在 PRoot 内既找不到 `java` 也找不到模板。
+
+### Fix
+
+`UbuntuBootstrapScripts.kt`:
+- `proot_common_binds` 增加 `-b /root/.gradle -b /usr/lib/jvm/java-17-openjdk-arm64`
+  （把宿主 Gradle 模板+缓存、JDK 挂进 PRoot）。
+- `proot_common_env` 的 PATH 前置 `/usr/lib/jvm/java-17-openjdk-arm64/bin`。
+这样 `$HOME/.gradle/template-wrapper` 与 Gradle 缓存在宇宙A 内直接可用，`java` 命中。
+
+### Prevention
+
+- 创建项目可在宿主(宇宙H)或宇宙A 跑；若走 PRoot，必须保证 JDK + Gradle 模板/缓存
+  已被 bind 进 PRoot 且 JDK 在 PATH。
+- 新增依赖宿主资源的脚本时，检查 PRoot binds 是否已暴露对应路径。
+
+### Related Files
+
+- `app/src/main/java/com/aidev/six/UbuntuBootstrapScripts.kt:341-347` (proot_common_binds/env)
+- `app/src/main/assets/scripts/create-compose-project.sh:34-35` (TEMPLATE_DIR/CACHE_PARENT_DIR)
+
 ## 2026-06-14 - Shell functions lost after `exec sh -i`
 
 ### Symptom
@@ -713,3 +1036,73 @@ LeakCanary 2.x 把 `leakcanary-android` 拆成**薄壳** AAR（mavenCentral 与 
 
 1. Android 上永远别用 FileObserver，用轮询。
 2. 异步赋值的字段，永远加 null→重试兜底，不要假设调用时已赋值。
+
+---
+
+## 2026-07-17 — `aidev-install` 静默安装三连崩：dash 兼容 + 通道错位 + 误删 local（已闭环）
+
+### 事实链（按用户实测顺序）
+
+1. `aidev-install app-debug.apk` 首错：`/usr/local/bin/aidev-install: 4: set: Illegal option -o pipefail`。
+   → 脚本 shebang `#!/bin/sh`(dash) 却用了 bash 专有 `set -euo pipefail`。脚本在解析期即被 dash 拒绝，根本没执行任何逻辑。
+2. 修掉 `set -o pipefail`/`set -euo pipefail`（全 assets/scripts 28 个脚本批量改 `set -e`）后，脚本能跑，但 `aidev-shizuku status` 报 `136: local: not in a function`。
+   → `status` 分支在 `case` 顶层（非函数）用了 `local out`；dash 不允许函数外用 `local`。顺带扫出 `aidev-install.sh` 另有 6 处函数外 `local`。
+3. 修完 local 后 `aidev-shizuku status` 显示「Shizuku 状态: 正常」，但 `aidev-install` 仍报「Shizuku 未响应/未授权」。
+   → **矛盾点**：`aidev-shizuku status` 走 **socket** 通道（`aidev-bridge send` → 127.0.0.1:14096，已验证 ONLINE），成功；而 `aidev-install` 的 `shizuku_heartbeat()` 只用**文件通道**（`hb_*` 请求文件等 `poll()` 回写），该环境文件通道不回写 → 探测失败。同源桥、两条通道、一成一败。
+4. 把 `shizuku_heartbeat` 改为优先 `aidev-shizuku status`（socket），文件通道降级兜底；并让 `aidev-shizuku status` 桥不通时 `exit 1`（原始终 `exit 0`，无法被 heartbeat 区分）。重部署 rootfs 后 `aidev-install` 走到 `→ 静默安装 (Shizuku)...` 但崩：`125: out: not found`。
+   → **第三步引入的回归**：早前批量「去掉函数外 local」的 sed 把 `install_silent` 里的 `local out rc` 误改成裸词 `out rc`，dash 当成执行 `out` 命令 → `out: not found`，且因 `set -e` 直接退出。此损坏一路带进 b241。
+5. 修 `install_silent` 第 125/136 行（`out=""`/`rc=0`/`reason=""`），构建 b242，重部署 rootfs，`aidev-install app-debug.apk` **安装成功**。
+
+### Root Cause（总）
+
+- PRoot 的 `/bin/sh` 是 **dash**，不认 `set -o pipefail`、不允许函数外 `local`；这些 bashism 在解析/执行期直接崩。
+- `aidev-install` 与 `aidev-shizuku` 探测走**不同通道**（文件 vs socket），在文件通道不通的环境里表现不一致，误导排查方向。
+- 修复过程中用 `sed` 批量去 `local` 时**未区分函数内/外**，把函数内合法 `local out rc` 误改成裸词 `out rc`，引入新崩点且沉默多轮。
+
+### Fix（assets/scripts，纯脚本层，无需改 Kotlin）
+
+- `aidev-install.sh` / `aidev-shizuku.sh` / `aidev-bridge.sh` 及全部 28 个脚本：`set -[a-zA-Z]*o pipefail` → `set -e`。
+- `aidev-install.sh`：6 处函数外 `local` 去掉；`shizuku_heartbeat()` 改为 socket 主用 + 文件兜底；`install_silent()` 的 `out rc`/`reason` 裸词改为 `out=""`/`rc=0`/`reason=""`。
+- `aidev-shizuku.sh`：`status` 分支 `local out`→`out=""`；桥不通时 `exit 1`（原 `exit 0`）。
+- 全部 `dash -n` 通过。部署靠 `UbuntuBootstrapScripts.copyAssetScripts`（每次 `ensureSession` 覆盖写 rootfs `/usr/local/bin`），重部署 rootfs 或重开终端即生效，无需改 Kotlin。
+- 验证：b242 `assembleDebug` 成功；真机 `aidev-install` 静默安装 95M APK 成功。
+
+### 关键教训（本条最贵）
+
+1. **脚本统一 dash 基线**：assets/scripts 全部 `#!/bin/sh` 且只用 POSIX 写法；`pipefail`/`[[`/`<<<`/`read -a`/`$RANDOM`/`函数外 local` 一律禁用。`dash -n` 必须作为脚本改动的强制校验门槛。
+2. **禁止用 `sed` 批量改 shell 语法**：本案 `sed 's/^ *local /.../'` 把函数内合法 `local` 误伤成裸词，且多轮才暴露。结构性修改（去 local、改 set）应直接用编辑工具精确改，或至少用 `dash -n` + 函数位置校验兜底。
+3. **同类命令必须走同一通道**：`aidev-install` 的探测与 `aidev-shizuku status` 本质同义，应复用同一实现（socket），不要自己另写一套文件心跳，否则出现「status 说正常 / install 说不通」的分裂现象。
+4. **退出码要区分成功/失败**：状态类命令（`aidev-shizuku status`）桥不通时必须 `exit 1`，否则调用方无法用 `if cmd; then` 判断。
+5. **先读代码定位矛盾点再动手**：用户给的「status 正常但 install 不通」是核心线索，直接指向通道不一致，而非继续在 Shizuku 授权上打转。
+6. **部署验证链**：`copyAssetScripts` 每次启动覆盖 rootfs 脚本；改完 assets 必须重部署 rootfs（或重开终端）才能看到效果，仅装 APK 不重启进程不会更新。
+
+---
+
+## 2026-07-17（续）— 出厂脚本防护模型落地：dash 测试基线 + 只读 + 用户覆盖层
+
+### 用户诉求与死锁
+用户指出：「出厂命令不允许修改」的前提是「出厂脚本百分百零 bug」，但现实是 `aidev-install` 修了多轮仍有 bug，其它脚本也藏雷。若出厂脚本只读且不可改，一旦带 bug 就成死锁（用户无自救通道）。
+
+### 关键工程约束
+PRoot 以 `-0`（root）启动（`ProotLauncher.kt:42`），终端内是 root。**root 下 `chmod 555`/`setReadOnly()` 挡不住 root 写入**，故「不可修改」无法靠文件系统权限硬实现，必须靠**约定 + 覆盖层优先 + 版本恢复**等效达成。
+
+### 测试基线错配（根因级）
+原 shell 测试用 `bash -n` 校验语法（`helpers.sh:57`），而真机 `/bin/sh` 是 dash。`bash -n` 对 `set -o pipefail`、函数外 `local`、裸词赋值**全部放行** → 本案三类 bug 在测试下全绿、真机全崩。测试在为错误 shell 背书。
+
+### Fix（本轮，跨 assets/scripts + 测试 + Kotlin 部署）
+1. **测试基线对齐 dash**（`app/src/test/sh/lib/helpers.sh`）：`assert_syntax_ok` 改用 `dash -n`（无 dash 退 `sh -n`）；新增 `assert_dash_compatible` 静态规则，awk 状态机（跳过引号/heredoc 内 `{}`）精确追踪函数深度，拦 **函数外 `local`** 与 **`pipefail`**（`dash -n` 抓不到这两类，因是选项/运行时错误非结构错误）。`syntax_test.sh` 全脚本调 `assert_dash_compatible`；`aidev-shizuku_test.sh` 改用 `dash` 实跑。
+   - **附带抓出真 bug**：`setup-dev-env.sh` 顶层 `if` 内 `local tmp_zip`/`local tmp_dir`（函数外 `local`，dash 下必崩）→ 已改为普通赋值。此前多轮扫描均漏，dash 基线首次命中。
+2. **用户覆盖层**（`TerminalShellAssets.kt` + `UbuntuBootstrapScripts.kt`）：`.aidevrc` 新增 `AIDEV_OVERRIDES="$AIDEV_HOME/overrides/bin"`，PATH 最前插入；`run_ubuntu_command` 对命令提取 basename，若 `$AIDEV_OVERRIDES/<base>` 存在且可执行则优先（一处覆盖全部 26 命令）。用户自定义命令放此目录即生效，且重开终端不被冲掉。
+3. **出厂脚本只读 + 版本门控**（`UbuntuBootstrapScripts.copyAssetScripts`）：加 `home` 参数；建 `home/overrides/bin`（可写）；用 `home/.script-deploy-code` 版本标记**仅版本升级时**刷新 rootfs 出厂脚本（平时不重写，避免冲掉约定）；复制后 `dst.setReadOnly()`（语义只读标记）。不触碰 overrides 目录。
+
+### 验证
+- `bash app/src/test/sh/run.sh`：syntax 58 passed 0 failed（顶层 local/pipefail 全拦）；`aidev-shizuku` 用 dash 实跑通过。（`repo_guard` 2 失败为历史无关项，未动。）
+- 全脚本 `dash -n` + 顶层 local 静态扫描：0 FAIL。
+- 预期真机冒烟：重部署后 `aidev-shizuku status` 正常；放 `overrides/bin/aidev-install` 打印 `OVERRIDE` → 终端敲 `aidev-install` 命中覆盖层；删除后回落出厂版。
+
+### 关键教训
+1. **测试基线必须 = 真机基线**：shell 语法校验用真机同款 shell（dash），否则测试在替错误 shell 背书。本案 `bash -n` 是根因级错配。
+2. **`-0` root 下「只读」非硬挡**：防篡改靠覆盖层优先 + 版本恢复，而非 chmod。文档与代码必须明示此约定。
+3. **静态规则要精不要宽**：裸词误赋值（`out rc`）与函数调用（`detect "a"`）静态无法区分，硬扫会误报阻断 CI；改由专项测试用 dash 实跑暴露。精准的「函数外 local / pipefail」规则零误报且高价值。
+4. **dash 基线顺带挖出旧雷**：`setup-dev-env.sh` 函数外 local 在多轮人工/批量扫描中漏网，dash 静态规则首次自动命中——证明基线对齐能持续提升存量脚本质量。
+5. **逃生通道与只读不矛盾**：出厂脚本只读（防智能体篡改安装/部署逻辑）+ 用户覆盖层（用户/智能体在可写区自救），是「防篡改 + 不死锁」的唯一折中。

@@ -46,4 +46,30 @@ class ShizukuBridgeDispatchTest {
         assertNotNull(resp)
         assertEquals("s2", resp?.id)
     }
+
+    @Test
+    fun safePipelineAllowed() {
+        // aidev-dumpsys 发送 "dumpsys meminfo 2>/dev/null | head -40"：
+        // 前缀为白名单动词 + 管道下游为安全读取器 head，应放行（不被安全策略拒绝）。
+        // 注意 '>' 重定向仍属注入元字符会被拒，这里用不带重定向的等价命令验证管道放行。
+        val resp = ShizukuBridgeService.dispatch(
+            BridgeFrame("shizuku", "s3", "TYPE=exec\nCOMMAND=dumpsys meminfo | head -40")
+        )
+        assertNotNull(resp)
+        assertEquals("s3", resp?.id)
+        assertTrue(
+            "安全管道 dumpsys | head 不应被安全策略拒绝",
+            resp?.payload?.startsWith("ERROR: 命令被安全策略拒绝") != true
+        )
+    }
+
+    @Test
+    fun unsafePipelineStillRejected() {
+        // 管道下游为非白名单程序（如 sh / rm）仍应被拒。
+        val resp = ShizukuBridgeService.dispatch(
+            BridgeFrame("shizuku", "s4", "TYPE=exec\nCOMMAND=dumpsys meminfo | sh")
+        )
+        assertNotNull(resp)
+        assertTrue(resp?.payload?.startsWith("ERROR: 命令被安全策略拒绝") == true)
+    }
 }

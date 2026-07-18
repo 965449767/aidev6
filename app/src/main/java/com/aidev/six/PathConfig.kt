@@ -47,11 +47,6 @@ object PathConfig {
         return if (p.isNotBlank()) File(p) else File("/sdcard/AIDev/backups/")
     }
 
-    fun projectsDir(ctx: Context): File {
-        val rel = PreferencesManager(ctx).projectsDirRel
-        return if (rel.isNotBlank()) File(rootfs(ctx), rel) else File(rootfs(ctx), "root/projects")
-    }
-
     fun externalAidevDir(ctx: Context): File {
         val p = PreferencesManager(ctx).externalAidevDir
         return if (p.isNotBlank()) File(p) else File("/sdcard/AIDev")

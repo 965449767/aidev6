@@ -70,11 +70,13 @@ abstract class BridgeService(private val tag: String) {
         val ctx = appCtx ?: return
         runCatching {
             if (PreferencesManager(ctx).bridgeSocketEnabled && bridgeName.isNotBlank()) {
+                val pm = PreferencesManager(ctx)
+                pm.syncTokenToAidevHome(PathConfig.aidevHome(ctx))
                 val srv = BridgeSocketServer(
                     TcpBridgeTransport(
                         host = "127.0.0.1",
                         port = Constants.BRIDGE_SOCKET_PORT,
-                        authToken = Constants.BRIDGE_SOCKET_TOKEN
+                        authToken = pm.bridgeToken
                     )
                 )
                 srv.start { frame -> BridgeRegistry.dispatch(frame) }

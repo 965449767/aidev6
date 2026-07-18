@@ -48,7 +48,7 @@ fun InfoCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                Icon(icon, contentDescription = "信息图标", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(Spacing.s12))
             }
             Column {
@@ -87,7 +87,7 @@ fun StatusCard(
         Column(Modifier.padding(Spacing.s16)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {
-                    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+                    Icon(icon, contentDescription = "状态指示", tint = accent, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(Spacing.s8))
                 }
                 Text(
@@ -125,7 +125,7 @@ fun ActionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                Icon(icon, contentDescription = "操作按钮", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(Spacing.s12))
             }
             Column {
@@ -166,7 +166,7 @@ fun MetricChip(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Icon(icon, contentDescription = "指标标签", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(Spacing.s8))
             }
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

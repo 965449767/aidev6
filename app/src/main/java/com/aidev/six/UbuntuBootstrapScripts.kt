@@ -11,24 +11,59 @@ object UbuntuBootstrapScripts {
      * 将 assets/scripts/ 中的脚本复制到 rootfs 的 /usr/local/bin/。
      * 必须在 Kotlin 层调用（不是 shell 层），因为需要访问 Android AssetManager。
      */
-    fun copyAssetScripts(activity: android.app.Activity, rootfs: java.io.File) {
+    fun copyAssetScripts(activity: android.app.Activity, rootfs: java.io.File, home: java.io.File) {
         if (!rootfs.isDirectory) return
+        // 用户覆盖层目录（可写，优先于出厂脚本，不被本函数覆盖）
+        val overridesDir = java.io.File(home, "overrides/bin").apply { mkdirs() }
+        // 版本门控：仅当版本标记不符时刷新出厂脚本，避免每次启动重写（保留出厂只读语义）
+        val marker = java.io.File(home, ".script-deploy-code")
+        val currentCode = runCatching {
+            @Suppress("DEPRECATION")
+            activity.packageManager.getPackageInfo(activity.packageName, 0).versionCode.toLong()
+        }.getOrDefault(0L)
+        val needsDeploy = !marker.exists() || marker.readText().trim() != currentCode.toString()
+        // 模板目录预置独立于版本门控：幂等补齐，确保已部署设备也能获得 template-wrapper
+        ensureTemplateWrapper(activity, rootfs)
+        if (!needsDeploy) {
+            android.util.Log.d("AIDev", "脚本已是最新 ($currentCode)，跳过复制")
+            return
+        }
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
             try {
+                // 先清除只读位，否则上一次 setReadOnly 会导致 outputStream 打开失败、写入被吞（脚本永不更新）
+                runCatching { dst.setWritable(true) }
                 activity.assets.open("scripts/$script").use { input ->
                     dst.outputStream().use { output -> input.copyTo(output) }
                 }
                 dst.setExecutable(true)
+                // 出厂脚本标注只读：约定不可在终端内篡改；root(-0) 下非硬挡，
+                // 防篡改由「用户覆盖层优先 + 版本升级恢复」共同保障（见 docs/error-journal 2026-07-17）。
+                runCatching { dst.setReadOnly() }
                 android.util.Log.d("AIDev", "已复制脚本: $dstName -> ${dst.absolutePath}")
             } catch (e: Exception) {
                 android.util.Log.w("AIDev", "无法复制脚本 $script: ${e.message}")
             }
         }
+        // 公共 lib 目录：被 aidev-build-request / aidev-notify / aidev-anr / aidev-tombstone 等 source，
+        // 必须与脚本同目录（/usr/local/bin/lib），否则这些命令会在 set -e 下崩溃（见脚本审计）。
+        val libDir = java.io.File(binDir, "lib").apply { mkdirs() }
+        runCatching {
+            val libEntries = activity.assets.list("scripts/lib") ?: emptyArray()
+            for (entry in libEntries) {
+                val dst = java.io.File(libDir, entry)
+                activity.assets.open("scripts/lib/$entry").use { input ->
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+                runCatching { dst.setReadOnly() }
+                android.util.Log.d("AIDev", "已复制 lib: $entry -> ${dst.absolutePath}")
+            }
+        }.onFailure { e -> android.util.Log.w("AIDev", "无法复制 lib 目录: ${e.message}") }
+        runCatching { marker.writeText("$currentCode\n") }
     }
 
     fun aidevUbuntuCommandScript(homePath: String, nativeDir: String, prootExtraLibsPath: String): String =
@@ -41,6 +76,7 @@ object UbuntuBootstrapScripts {
 
         AIDEV_HOME="${'$'}{AIDEV_HOME:-$homePath}"
         AIDEV_BIN="${'$'}{AIDEV_BIN:-${'$'}AIDEV_HOME/dev-env/bin}"
+        AIDEV_OVERRIDES="${'$'}{AIDEV_OVERRIDES:-${'$'}AIDEV_HOME/overrides/bin}"
         AIDEV_ROOTFS="${'$'}{AIDEV_ROOTFS:-${'$'}AIDEV_HOME/ubuntu-rootfs}"
         AIDEV_COMPILER_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS:-${'$'}AIDEV_HOME/compiler_rootfs}"
         AIDEV_WORKSPACE="${'$'}{AIDEV_WORKSPACE:-${'$'}AIDEV_HOME/workspace}"
@@ -201,7 +237,13 @@ AIDEV_APT_EOF
             case "${'$'}gid" in
               ''|*[!0-9]*) continue ;;
             esac
-            grep -q "^[^:]*:[^:]*:${'$'}gid:" "${'$'}group_file" 2>/dev/null && continue
+            # 纯 shell 检查，不依赖 grep：宿主 /system/bin/grep 可能为坏架构二进制
+            # （cannot execute: required file not found），避免 enter_ubuntu 时打印报错。
+            _found=0
+            while IFS=: read -r _g _p _gid _rest; do
+              [ "${'$'}_gid" = "${'$'}gid" ] && { _found=1; break; }
+            done < "${'$'}group_file"
+            [ "${'$'}_found" = 1 ] && continue
             echo "android_gid_${'$'}gid:x:${'$'}gid:" >> "${'$'}group_file"
           done
         }
@@ -316,16 +358,45 @@ case "${'$'}{PROMPT_COMMAND:-}" in
 esac
 aidev_write_pwd
 # AIDEV_PWD_HOOK_END
+
+# JDK 兜底：PRoot 启动 env 已注入真实 JDK 到 PATH，但若会话异常缺失，则探测预置 JDK 补回，
+# 避免本地 lint / aidev-apk-info / 签名等依赖 java 的能力不可用。
+if ! command -v java >/dev/null 2>&1; then
+  for _c in /opt/jdk-17* /opt/jdk-* /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/*; do
+    if [ -x "${'$'}{_c}/bin/java" ]; then
+      export JAVA_HOME="${'$'}_c"
+      export PATH="${'$'}_c/bin:${'$'}PATH"
+      break
+    fi
+  done
+  unset _c
+fi
 AIDEV_BASHRC_AGENT_EOF
+        }
+
+        # 定位真实 JDK：宿主预置在 /opt/jdk-17* ，兜底扫 /usr/lib/jvm；绝不写死悬空路径
+        aidev_resolve_jdk() {
+          _jdk=""
+          for _c in /opt/jdk-17* /opt/jdk-* /usr/lib/jvm/java-17-openjdk-arm64 /usr/lib/jvm/*; do
+            [ -x "${'$'}{_c}/bin/java" ] && { _jdk="${'$'}_c"; break; }
+          done
+          echo "${'$'}_jdk"
         }
 
         # 公共 proot 绑定参数（enter_ubuntu 和 run_ubuntu_command 共用）
         proot_common_binds() {
-          echo "-b /dev -b /proc -b /sys -b /system/lib64 -b /system/lib -b /system/bin -b /system/etc -b /system/framework -b /sdcard -b /storage -b ${'$'}AIDEV_HOME:/host-home -b ${'$'}AIDEV_WORKSPACE:/workspace"
+          _binds="-b /dev -b /proc -b /sys -b /system/lib64 -b /system/lib -b /system/bin -b /system/etc -b /system/framework -b /sdcard -b /storage -b ${'$'}AIDEV_HOME:/host-home -b ${'$'}AIDEV_WORKSPACE:/workspace"
+          # 仅当宿主路径存在时才绑定，避免 proot 启动时打印 "can't sanitize binding" 噪音警告
+          [ -e /root/.gradle ] && _binds="${'$'}_binds -b /root/.gradle"
+          _JDK=${'$'}(aidev_resolve_jdk)
+          [ -n "${'$'}_JDK" ] && [ -e "${'$'}_JDK" ] && _binds="${'$'}_binds -b ${'$'}_JDK"
+          echo "${'$'}_binds"
         }
 
         proot_common_env() {
-          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=${'$'}{1:-H} ANDROID_SDK_ROOT=/host-home/android-sdk GRADLE_USER_HOME=/host-home/gradle-cache PATH=/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
+          _JDK=${'$'}(aidev_resolve_jdk)
+          _JDK_BIN="${'$'}_JDK/bin:"
+          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=${'$'}{1:-H} ANDROID_SDK_ROOT=/host-home/android-sdk ${'$'}{_JDK:+JAVA_HOME=${'$'}_JDK }GRADLE_USER_HOME=/host-home/gradle-cache PATH=${'$'}_JDK_BIN/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
         }
 
         # 在编译器 rootfs 中通过 PRoot 运行一次性命令
@@ -362,9 +433,21 @@ AIDEV_BASHRC_AGENT_EOF
         }
 
         run_ubuntu_command() {
+          # 用户覆盖层优先：自定义命令放 AIDEV_OVERRIDES/bin 时优先于出厂脚本
+          _ru_all="${'$'}*"
+          _ru_cmd="${'$'}{_ru_all%% *}"
+          _ru_rest="${'$'}{_ru_all#* }"
+          case "${'$'}{_ru_cmd}" in
+            /*) _ru_base="$(basename "${'$'}{_ru_cmd}")" ;;
+            *)  _ru_base="${'$'}{_ru_cmd}" ;;
+          esac
+          if [ -n "${'$'}{AIDEV_OVERRIDES:-}" ] && [ -x "${'$'}{AIDEV_OVERRIDES}/${'$'}{_ru_base}" ]; then
+            _ru_cmd="${'$'}{AIDEV_OVERRIDES}/${'$'}{_ru_base}"
+          fi
+          _ru_line="${'$'}{_ru_cmd} ${'$'}{_ru_rest}"
           # 已在宇宙A 内：直接就地执行，避免嵌套 proot 及指向宿主绝对路径失败
           if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
-            exec /bin/sh -lc "${'$'}*"
+            exec /bin/sh -lc "${'$'}{_ru_line}" 2>/dev/null
           fi
           has_ubuntu || install_ubuntu --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_ROOTFS"
@@ -373,7 +456,7 @@ AIDEV_BASHRC_AGENT_EOF
           eval exec "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_ROOTFS" \
             $(proot_common_binds) \
             -w /root /usr/bin/env -i \
-            $(proot_common_env "A") /bin/sh -lc "${'$'}*"
+            $(proot_common_env "A") /bin/sh -lc "${'$'}{_ru_line}" 2>/dev/null
         }
 
         has_compiler() {
@@ -498,25 +581,25 @@ AIDEV_PWD_HOOK_EOF
           aidev-ensure-envs) ensure_all_rootfs ;;
           aidev-doctor) aidev_doctor_android ;;
           setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" "${'$'}@" ;;
-          aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" ;;
+          aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" "${'$'}@" ;;
           aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" "${'$'}@" ;;
-          aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" ;;
-          aidev-create-android-project) run_ubuntu_command "/usr/local/bin/aidev-create-android-project" ;;
-          aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" ;;
-          aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" ;;
-          aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" ;;
+          aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" "${'$'}@" ;;
+          aidev-create-android-project) run_ubuntu_command "/usr/local/bin/aidev-create-android-project" "${'$'}@" ;;
+          aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" "${'$'}@" ;;
+          aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" "${'$'}@" ;;
+          aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" "${'$'}@" ;;
           aidev-install) run_ubuntu_command "/usr/local/bin/aidev-install" "${'$'}@" ;;
-          android-sh) run_ubuntu_command "/usr/local/bin/android-sh" ;;
-          aidev-clean) run_ubuntu_command "/usr/local/bin/aidev-clean" ;;
+          android-sh) run_ubuntu_command "/usr/local/bin/android-sh" "${'$'}@" ;;
+          aidev-clean) run_ubuntu_command "/usr/local/bin/aidev-clean" "${'$'}@" ;;
           fix-bashrc) fix_bashrc ;;
           check-dev-env) run_ubuntu_command "/usr/local/bin/check-dev-env" ;;
           repair-dev-env) run_ubuntu_command "/usr/local/bin/repair-dev-env" ;;
-          aidev-backup) run_ubuntu_command "/usr/local/bin/aidev-backup" ;;
-          aidev-logcat) run_ubuntu_command "/usr/local/bin/aidev-logcat" ;;
-          aidev-anr) run_ubuntu_command "/usr/local/bin/aidev-anr" ;;
-          aidev-tombstone) run_ubuntu_command "/usr/local/bin/aidev-tombstone" ;;
-          aidev-crash-why) run_ubuntu_command "/usr/local/bin/aidev-crash-why" ;;
-          aidev-dumpsys) run_ubuntu_command "/usr/local/bin/aidev-dumpsys" ;;
+          aidev-backup) run_ubuntu_command "/usr/local/bin/aidev-backup" "${'$'}@" ;;
+          aidev-logcat) run_ubuntu_command "/usr/local/bin/aidev-logcat" "${'$'}@" ;;
+          aidev-anr) run_ubuntu_command "/usr/local/bin/aidev-anr" "${'$'}@" ;;
+          aidev-tombstone) run_ubuntu_command "/usr/local/bin/aidev-tombstone" "${'$'}@" ;;
+          aidev-crash-why) run_ubuntu_command "/usr/local/bin/aidev-crash-why" "${'$'}@" ;;
+          aidev-dumpsys) run_ubuntu_command "/usr/local/bin/aidev-dumpsys" "${'$'}@" ;;
           aidev-auto-bootstrap)
             if has_ubuntu; then
               ubuntu_logo "自动进入环境"
@@ -528,4 +611,32 @@ AIDEV_PWD_HOOK_EOF
           *) echo "未知命令：${'$'}cmd"; exit 2 ;;
         esac
         """.trimIndent() + "\n"
-}
+    }
+
+    /**
+     * 预置 create-compose-project 所需的模板目录（gradlew + gradle-wrapper.jar）。
+     * 独立于脚本版本门控：幂等补齐——仅当 gradlew 不存在时才复制，确保已部署设备也能获得。
+     * 宇宙A 内 ${'$'}HOME=/root，对应 rootfs 的 root/；脚本据此解析 TEMPLATE_DIR=/root/.gradle/template-wrapper。
+     */
+    private fun ensureTemplateWrapper(activity: android.app.Activity, rootfs: java.io.File) {
+        val templateRoot = java.io.File(rootfs, "root/.gradle/template-wrapper")
+        val gradlewDst = java.io.File(templateRoot, "gradlew")
+        if (gradlewDst.exists()) {
+            android.util.Log.d("AIDev", "模板目录已存在，跳过预置: ${templateRoot.absolutePath}")
+            return
+        }
+        runCatching {
+            templateRoot.mkdirs()
+            fun copyAssetRel(rel: String, dst: java.io.File, exec: Boolean = false) {
+                activity.assets.open("scripts/template-wrapper/$rel").use { input ->
+                    dst.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (exec) dst.setExecutable(true)
+            }
+            copyAssetRel("gradlew", gradlewDst, exec = true)
+            copyAssetRel("gradlew.bat", java.io.File(templateRoot, "gradlew.bat"))
+            val wrapperDir = java.io.File(templateRoot, "gradle/wrapper").apply { mkdirs() }
+            copyAssetRel("gradle/wrapper/gradle-wrapper.jar", java.io.File(wrapperDir, "gradle-wrapper.jar"))
+            android.util.Log.d("AIDev", "已预置模板目录: ${templateRoot.absolutePath}")
+        }.onFailure { e -> android.util.Log.w("AIDev", "无法预置模板目录: ${e.message}") }
+    }

@@ -67,11 +67,18 @@ echo "APK: $(basename "$APK_PATH") ($APK_SIZE)"
 case "$APK_PATH" in
     /sdcard/*|/storage/emulated/*) : ;;
     *)
-        TMP_APK=$(mktemp -p /sdcard aidev-install-XXXXXXXX.apk 2>/dev/null || echo "/sdcard/aidev-install-$$.apk")
+        TMP_APK=$(mktemp -p /sdcard aidev-install-XXXXXXXX.apk 2>/dev/null) || {
+            echo "错误: 无法在 /sdcard 创建临时文件"
+            exit 1
+        }
         echo "→ 复制到 $TMP_APK"
     if ! cp "$APK_PATH" "$TMP_APK" 2>/dev/null; then
         echo "  → PRoot 内复制失败，通过 Shizuku 桥接复制..."
-        aidev-shizuku exec "cp $APK_PATH $TMP_APK" || {
+        # shell 转义路径再传给 shizuku exec，防止空格/元字符注入
+    apk_esc tmp_apk_esc
+        apk_esc=$(printf '%s' "$APK_PATH" | sed "s/'/'\\\\''/g")
+        tmp_apk_esc=$(printf '%s' "$TMP_APK" | sed "s/'/'\\\\''/g")
+        aidev-shizuku exec "cp '$apk_esc' '$tmp_apk_esc'" || {
             echo "错误: 无法读取 APK 文件: $APK_PATH"
             exit 1
         }
@@ -87,14 +94,21 @@ cleanup() {
 trap cleanup EXIT
 
 shizuku_heartbeat() {
-    local hb_req="/host-home/.aidev-shizuku-bridge/request/hb_$$"
-    local hb_res="/host-home/.aidev-shizuku-bridge/result/hb_$$"
+    # 主探测走 socket 通道（与 aidev-shizuku status 同路径，已在终端验证可用）。
+    if command -v aidev-shizuku >/dev/null 2>&1; then
+        if aidev-shizuku status >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    # 兜底：文件通道心跳（部分环境 /host-home 与宿主 home 不完全一致时可能不通）。
+    hb_req="/host-home/.aidev-shizuku-bridge/request/hb_$$"
+    hb_res="/host-home/.aidev-shizuku-bridge/result/hb_$$"
     mkdir -p "$(dirname "$hb_req")" "$(dirname "$hb_res")"
     cat > "$hb_req" <<EOF
 TYPE=exec
 COMMAND=echo aidev-install-ok
 EOF
-    local waited=0
+    waited=0
     while [ ! -s "$hb_res" ] && [ "$waited" -lt 5 ]; do
         sleep 1; waited=$((waited + 1))
     done
@@ -108,7 +122,8 @@ EOF
 
 install_silent() {
     echo "→ 静默安装 (Shizuku)..."
-    local out rc
+    out=""
+    rc=0
     set +e
     out=$(aidev-shizuku install "$APK_PATH" 2>&1)
     rc=$?
@@ -119,7 +134,7 @@ install_silent() {
         exit 1
     fi
     if echo "$out" | grep -qiE "Failure|INSTALL_FAILED|error|Exception"; then
-        local reason
+        reason=""
         reason=$(echo "$out" | grep -iE "Failure|INSTALL_FAILED|error|Exception" | head -1)
         echo "错误: 安装被系统拒绝: $reason"
         exit 1

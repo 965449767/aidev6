@@ -7,7 +7,7 @@ An on-device AI dev environment for Android (Xiaomi 14 Pro / HyperOS / Android 1
 ## Build
 
 ```
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-daemon
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug
 ```
 
 - Gradle 9.1.0 / AGP 9.0.1 / Kotlin 2.0.21 / Java 17
@@ -15,6 +15,22 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 - Modern AGP setup with built-in Kotlin and new DSL-compatible configuration
 - Debug APK → `app/build/outputs/apk/debug/app-debug.apk`, auto-copied to `/sdcard/AIDev/`（`/sdcard` 即 `/storage/emulated/0`）
 - Build counter auto-increments in `app/build-counter.properties`
+
+## ⚠️ 部署链路验证纪律（强制，曾踩坑）
+
+> **历史教训（2026-07-17）**：改 `app/src/main/assets/scripts/*` 后，仅 `./gradlew :app:assembleDebug` 编译成功**不等于修复已落地真机**。脚本经 `UbuntuBootstrapScripts.copyAssetScripts` / `TerminalShellAssets` 部署到 rootfs 的 `/usr/local/bin`，且受**版本门控** + **只读位**双重影响：
+> - 出厂脚本复制成功后被 `setReadOnly()`，下次升级时 `outputStream()` 覆盖只读文件会抛 `Permission denied`，被 `catch` 静默吞掉 → 脚本未更新，但 `.script-deploy-code` marker 已记新版本 → `needsDeploy=false` → **永久跳过，旧脚本永远不刷新**（只读死锁）。
+> - 因此历史上 246–250 的脚本修复全被卡住，直到 251 修复只读覆盖 + bump 版本号才全量落地。
+
+**强制要求（每次改 assets/scripts 或部署相关 Kotlin 后必须做）：**
+
+1. **构建后抽查合并产物**，确认源码改动真的进了打包：
+   ```
+   grep -n '关键字' app/build/intermediates/assets/debug/mergeDebugAssets/scripts/<脚本名>.sh
+   ```
+2. **交付时明确告知用户**：脚本类修复需**重装 APK + 重启 AIDev 终端**才会重新部署（版本号变更触发）；不要默认"构建成功=已生效"。
+3. **改部署逻辑（copyAssetScripts / TerminalShellAssets / ensureTemplateWrapper）后**，除编译外，必须确认：复制前先 `setWritable(true)` 清除只读位，否则覆盖写入会静默失败。
+4. 已部署的老设备若卡在旧脚本：可手动 `rm -f /usr/local/bin/<脚本名>` 再重启终端强制重部署，或 bump 一次 build 号让 marker 不匹配触发全量重写。
 
 ## 交付规则（APK 安装）
 
@@ -26,9 +42,9 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-d
 ## Testing (run in order)
 
 ```
-./gradlew :app:compileDebugKotlin --no-daemon       # Kotlin compile check
-./gradlew :app:testDebugUnitTest --no-daemon        # 158 unit tests (JUnit 4 + Mockito)；已知 3 个预存失败（BuildDiagnosticsTest/BuildPreflightSourceTest/BuildRequestTrackerTest），与改动无关
-./gradlew :app:assembleDebug --no-daemon             # full build
+./gradlew :app:compileDebugKotlin       # Kotlin compile check
+./gradlew :app:testDebugUnitTest        # 158+ unit tests (JUnit 4 + Mockito)
+./gradlew :app:assembleDebug             # full build
 ```
 
 - Shell tests（正确入口）：`bash app/src/test/sh/run.sh`  # 65 shell 测试（含 create-compose-project 等），全过

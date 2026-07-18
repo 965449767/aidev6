@@ -6,6 +6,8 @@ set -e
 SHIZUKU="aidev-shizuku"
 TS_DIR="/data/tombstones"
 
+. "$(dirname "$0")/lib/shizuku-common.sh"
+
 usage() {
     echo "用法: aidev-tombstone [子命令]"
     echo "  list                列出 tombstone 文件"
@@ -14,12 +16,9 @@ usage() {
     echo "  clear               删除所有 tombstone"
 }
 
-shizuku_cat() { $SHIZUKU exec "cat '$1'" 2>/dev/null || true; }
-shizuku_ls()  { $SHIZUKU exec "ls -lt '$TS_DIR'" 2>/dev/null || true; }
-
 cmd_list() {
     local list
-    list=$(shizuku_ls)
+    list=$(shizuku_ls "$TS_DIR")
     if [ -z "$list" ]; then
         echo "无 tombstones (目录为空或不可访问)"
         return
@@ -32,7 +31,7 @@ cmd_list() {
 
 cmd_latest() {
     local latest
-    latest=$(shizuku_ls | grep -v '^$' | head -1 | awk '{for(i=NF;i>0;i--) if($i!=""){print $i; exit}}' 2>/dev/null)
+    latest=$(shizuku_ls "$TS_DIR" | grep -v '^$' | head -1 | awk '{for(i=NF;i>0;i--) if($i!=""){print $i; exit}}' 2>/dev/null)
     [ -z "$latest" ] && { echo "无 tombstones"; return 1; }
     echo "=== 最新的 tombstone: $latest ==="
     shizuku_cat "$TS_DIR/$latest"

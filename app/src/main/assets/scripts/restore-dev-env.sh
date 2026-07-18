@@ -6,7 +6,7 @@
 #           GRADLE_USER_HOME=/host-home/gradle-cache
 #           JDK 目标 = /usr/lib/jvm/java-17-openjdk-arm64
 # ═══════════════════════════════════════════════════════════
-set -u
+set -e
 
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_DEST="${SDK_DEST:-/host-home/android-sdk}"
@@ -110,7 +110,8 @@ restore_jdk() {
 
     # sdcard FAT32 不支持符号链接，JDK 内大量 symlink
     # 用 tar 打包 + 解包保留 symlink
-    local tmp_tar="/tmp/jdk-restore.tar"
+    local tmp_tar
+    tmp_tar=$(mktemp) || { echo "错误: 无法创建临时文件"; exit 1; }
     cd "$src"
     # 打包为 tar 再释放到目标目录，保留 symlink
     tar cf "$tmp_tar" .

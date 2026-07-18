@@ -18,16 +18,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.aidev.six.navigation.AppNavHost
 import com.aidev.six.navigation.GlobalBackPressHandler
-import com.aidev.six.navigation.DialogHost
-import com.aidev.six.navigation.LocalDialogManager
 import com.aidev.six.navigation.LocalImeBottomPx
-import com.aidev.six.navigation.rememberDialogManagerState
 import com.aidev.six.ui.theme.AIDevTheme
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
@@ -67,21 +63,12 @@ class ShellActivity : ComponentActivity() {
                 GlobalBackPressHandler(
                     activity = this@ShellActivity,
                 )
-                val dialogManager = rememberDialogManagerState()
                 CompositionLocalProvider(
-                    LocalDialogManager provides dialogManager,
                     LocalImeBottomPx provides _imeBottomPx.intValue,
                 ) {
-                    DialogHost(
-                        onExecuteCommand = { command ->
-                            TerminalCommandBus.post(command)
-                            switchTo(TAB_TERMINAL)
-                        },
-                    ) {
-                        AppNavHost(
-                            terminalPage = terminalPage,
-                        )
-                    }
+                    AppNavHost(
+                        terminalPage = terminalPage,
+                    )
                 }
             }
         }

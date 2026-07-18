@@ -98,25 +98,27 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            keystoreProps?.let {
-                storeFile = rootProject.file(it.getProperty("storeFile", "keystore/debug.keystore"))
-                storePassword = it.getProperty("storePassword", "aidev123")
-                keyAlias = it.getProperty("keyAlias", "aidev-debug")
-                keyPassword = it.getProperty("keyPassword", "aidev123")
+            keystoreProps?.let { props ->
+                storeFile = rootProject.file(
+                    props.getProperty("storeFile") ?: error("keystore.properties: storeFile required")
+                )
+                storePassword = props.getProperty("storePassword") ?: error("keystore.properties: storePassword required")
+                keyAlias = props.getProperty("keyAlias") ?: error("keystore.properties: keyAlias required")
+                keyPassword = props.getProperty("keyPassword") ?: error("keystore.properties: keyPassword required")
             }
         }
         create("release") {
             keystoreProps?.let { p ->
                 storeFile = rootProject.file(
                     p.getProperty("releaseStoreFile")
-                        ?: p.getProperty("storeFile", "keystore/debug.keystore")
+                        ?: p.getProperty("storeFile") ?: error("keystore.properties: releaseStoreFile or storeFile required")
                 )
                 storePassword = p.getProperty("releaseStorePassword")
-                    ?: p.getProperty("storePassword", "aidev123")
+                    ?: p.getProperty("storePassword") ?: error("keystore.properties: releaseStorePassword or storePassword required")
                 keyAlias = p.getProperty("releaseKeyAlias")
-                    ?: p.getProperty("keyAlias", "aidev-debug")
+                    ?: p.getProperty("keyAlias") ?: error("keystore.properties: releaseKeyAlias or keyAlias required")
                 keyPassword = p.getProperty("releaseKeyPassword")
-                    ?: p.getProperty("keyPassword", "aidev123")
+                    ?: p.getProperty("keyPassword") ?: error("keystore.properties: releaseKeyPassword or keyPassword required")
             }
         }
     }
@@ -275,14 +277,12 @@ dependencies {
 
 // Persist the build counter only after a successful assembleDebug so failed
 // builds don't consume a version number.
-afterEvaluate {
-    tasks.named("assembleDebug") {
-        doLast {
-            buildCounterFile.writer().use { w ->
-                Properties().apply { setProperty("buildCount", buildNumber.toString()) }
-                    .store(w, "Auto-incremented per assembleDebug")
-            }
-            logger.lifecycle("→ build counter -> $buildNumber  (versionName $generatedVersionName)")
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    doLast {
+        buildCounterFile.writer().use { w ->
+            Properties().apply { setProperty("buildCount", buildNumber.toString()) }
+                .store(w, "Auto-incremented per assembleDebug")
         }
+        logger.lifecycle("→ build counter -> $buildNumber  (versionName $generatedVersionName)")
     }
 }

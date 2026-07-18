@@ -8,7 +8,7 @@ PROJECT_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" >/dev/null 
 
 CCP="$PROJECT_ROOT/app/src/main/assets/scripts/create-compose-project.sh"
 PRECACHE="$PROJECT_ROOT/app/src/main/assets/scripts/aidev-precache.sh"
-BRIDGE="$PROJECT_ROOT/app/src/main/java/com/aidev/six/BuildBridgeService.kt"
+BRIDGE="$PROJECT_ROOT/app/src/main/java/com/aidev/six/BuildEnvironmentSetup.kt"
 
 # --- create-compose-project: Gradle 分发 ---
 assert_contains "$(cat "$CCP" 2>/dev/null)" "aidev-repo decide android-gradle" \
@@ -22,8 +22,8 @@ assert_contains "$(cat "$PRECACHE" 2>/dev/null)" "aidev-repo decide android-mave
 assert_contains "$(cat "$PRECACHE" 2>/dev/null)" "已禁止网络" \
     "aidev-precache 必须保留 STRICT 禁止网络分支"
 
-# --- BuildBridgeService.kt: JDK ---
+# --- BuildEnvironmentSetup.kt: JDK（重构后 JDK 决策由 BuildBridgeService 迁至此文件）---
 assert_contains "$(cat "$BRIDGE" 2>/dev/null)" "aidev-repo decide android-jdk17" \
-    "BuildBridgeService.kt 必须走 aidev-repo decide（JDK）"
+    "BuildEnvironmentSetup.kt 必须走 aidev-repo decide（JDK）"
 assert_contains "$(cat "$BRIDGE" 2>/dev/null)" "已禁止网络" \
-    "BuildBridgeService.kt 必须保留 STRICT 禁止网络分支"
+    "BuildEnvironmentSetup.kt 必须保留 STRICT 禁止网络分支"

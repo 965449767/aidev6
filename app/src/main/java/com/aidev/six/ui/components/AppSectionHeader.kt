@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import com.aidev.six.ui.theme.Spacing
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -20,7 +21,7 @@ fun AppSectionHeader(
 ) {
     Column(
         modifier = modifier
-            .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            .padding(start = Spacing.s16, top = Spacing.s16, end = Spacing.s16)
     ) {
         Text(
             title,

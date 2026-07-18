@@ -48,6 +48,14 @@ internal object CommandCatalog {
                 "      aidev-build-request --project /workspace/MyApp --no-launch",
         ),
         CommandInfo(
+            "aidev-build-log", "构建/部署",
+            "读取本地构建日志（宿主实时落盘 /sdcard/AIDev/logs/<项目>/build.log，宇宙 A 可直接读）。",
+            "aidev-build-log <project> [--tail N]\n" +
+                "  aidev-build-log latest|list          列出最近构建日志\n" +
+                "  例：aidev-build-log DebugTest\n" +
+                "      aidev-build-log DebugTest --tail 100",
+        ),
+        CommandInfo(
             "aidev-deploy", "构建/部署",
             "部署黑盒：把 APK 装到真机并（可选）启动，封装 Shizuku 安装/启动/权限。",
             "aidev-deploy --apk <apk路径> --pkg <包名> [--launch|--no-launch]",

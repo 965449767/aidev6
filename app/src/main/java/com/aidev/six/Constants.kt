@@ -35,7 +35,6 @@ object Constants {
         const val SYNC_TERMINAL_FILES = "sync_terminal_files"
         const val CURRENT_PROJECT_PATH = "current_project_path"
         const val BACKUP_DIR = "backup_dir"
-        const val PROJECTS_DIR_REL = "projects_dir_rel"
         const val EXTERNAL_AIDEV_DIR = "external_aidev_dir"
         const val PROJECT_ACTION_HISTORY = "project_action_history"
         const val RECENT_FILE_MORE = "recent_file_more"
@@ -67,15 +66,17 @@ object Constants {
         const val REPO_MODE = "repo_mode"
         // 桥接通信：true=Unix Domain Socket 主用（文件轮询兜底）；false=纯文件轮询（等价旧行为）
         const val BRIDGE_SOCKET_ENABLED = "bridge_socket_enabled"
+        const val BRIDGE_TOKEN = "bridge_token"
 
     }
 
     // 桥接通信：本机 TCP loopback 端口（仅 127.0.0.1 绑定，属局部 IPC）
     const val BRIDGE_SOCKET_PORT = 14096
 
-    // 桥接 Socket 静态共享密钥：仅作本机 IPC 源认证，防止其他本地 App 向宿主注入 build/deploy 请求帧。
-    // 非密码学机密（APK 内可读），但可把「谁能发桥请求」限定为持有该 token 的客户端（宿主自带的 aidev-bridge）。
-    // 若调整此处，须同步 assets/scripts/aidev-bridge.sh 中的 TOKEN。
+    // 桥接通信：动态共享密钥（首次启动随机生成，存 SharedPreferences + 写入文件供 shell 脚本读取）。
+    // 仅作本机 IPC 源认证，防止其他本地 App 向宿主注入 build/deploy 请求帧。
+    // 若调整此处，须同步 assets/scripts/aidev-bridge.sh 中的读取逻辑。
+    @Deprecated("Use PreferencesManager.bridgeToken instead", ReplaceWith("PreferencesManager(ctx).bridgeToken"))
     const val BRIDGE_SOCKET_TOKEN = "aidev-bridge-2026"
 
 }

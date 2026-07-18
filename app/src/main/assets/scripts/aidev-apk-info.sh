@@ -9,7 +9,15 @@ CLEANUP_DIRS=""
 cleanup() { for d in $CLEANUP_DIRS; do rm -rf "$d" 2>/dev/null || true; done; }
 trap cleanup EXIT
 
-if [ -z "$1" ]; then
+case "${1:-}" in
+    --help|-h)
+        echo "用法: aidev-apk-info <apk_path>"
+        echo ""
+        echo "  aidev-apk-info app/build/outputs/apk/debug/app-debug.apk"
+        exit 0 ;;
+esac
+
+if [ -z "${1:-}" ]; then
     echo "用法: aidev-apk-info <apk_path>"
     echo ""
     echo "示例:"
@@ -121,9 +129,8 @@ else
 
     # 从 AndroidManifest.xml 提取基本信息
     if command -v unzip >/dev/null 2>&1; then
-        TMPDIR=$(mktemp -d 2>/dev/null || echo "/tmp/apk-info-$$")
+        TMPDIR=$(mktemp -d) || { echo "错误: 无法创建临时目录"; exit 1; }
         CLEANUP_DIRS="$CLEANUP_DIRS $TMPDIR"
-        mkdir -p "$TMPDIR"
         if unzip -o "$APK" AndroidManifest.xml -d "$TMPDIR" >/dev/null 2>&1; then
             MANIFEST="$TMPDIR/AndroidManifest.xml"
             if [ -f "$MANIFEST" ]; then

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # aidev-index: 代码搜索索引 — 从 Android 项目构建可搜索索引
 # 用法: aidev-index [class|res|string|layout|function|refresh] <关键词>
 #       aidev-index                          # 刷新索引
@@ -31,9 +31,9 @@ build_index() {
     echo "扫描项目: $PROJECT_DIR"
     echo "索引文件: $INDEX_FILE"
 
-    local tmp="/tmp/aidev-index-$$"
+    local tmp
+    tmp=$(mktemp -d) || { echo "错误: 无法创建临时目录"; exit 1; }
     trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp" 2>/dev/null || true
 
     # — 类 / 对象 / 接口（排除 build/ 和 generated/） —
     find "$SRC_DIR/java" \( -name "build" -o -name "generated" -o -name ".gradle" \) -prune -o \( -name "*.kt" -o -name "*.java" \) -print 2>/dev/null | while read -r f; do
@@ -114,7 +114,7 @@ build_index() {
             first=false
             local full_name=""
             [ -n "$pkg" ] && full_name="${pkg}.${cls%% *}" || full_name="${cls%% *}"
-            echo -n "    {\"name\":\"$(json_escape "$full_name")\",\"file\":\"$(json_escape "$rel")\"}" >> "$tmp/index.json"
+            printf '    {"name":"%s","file":"%s"}' "$(json_escape "$full_name")" "$(json_escape "$rel")" >> "$tmp/index.json"
         done
     done < "$tmp/classes.txt"
     echo "" >> "$tmp/index.json"
@@ -126,7 +126,7 @@ build_index() {
     while IFS='|' read -r type name path; do
         $first || echo "," >> "$tmp/index.json"
         first=false
-        echo -n "    {\"type\":\"$(json_escape "$type")\",\"name\":\"$(json_escape "$name")\",\"file\":\"$(json_escape "${path#$SRC_DIR/res/}")\"}" >> "$tmp/index.json"
+        printf '    {"type":"%s","name":"%s","file":"%s"}' "$(json_escape "$type")" "$(json_escape "$name")" "$(json_escape "${path#$SRC_DIR/res/}")" >> "$tmp/index.json"
     cat "$tmp/layout.txt" "$tmp/strings.txt" "$tmp/resources.txt" 2>/dev/null > "$tmp/res_combined.txt"
     done < "$tmp/res_combined.txt"
     rm -f "$tmp/res_combined.txt"
@@ -139,7 +139,7 @@ build_index() {
     while IFS='|' read -r rel sig; do
         $first || echo "," >> "$tmp/index.json"
         first=false
-        echo -n "    {\"file\":\"$(json_escape "$rel")\",\"sig\":\"$(json_escape "$sig")\"}" >> "$tmp/index.json"
+        printf '    {"file":"%s","sig":"%s"}' "$(json_escape "$rel")" "$(json_escape "$sig")" >> "$tmp/index.json"
     done < "$tmp/functions.txt"
     echo "" >> "$tmp/index.json"
     echo '  ],' >> "$tmp/index.json"
@@ -150,13 +150,14 @@ build_index() {
     while IFS='|' read -r type name; do
         $first || echo "," >> "$tmp/index.json"
         first=false
-        echo -n "    {\"type\":\"$(json_escape "$type")\",\"name\":\"$(json_escape "$name")\"}" >> "$tmp/index.json"
+        printf '    {"type":"%s","name":"%s"}' "$(json_escape "$type")" "$(json_escape "$name")" >> "$tmp/index.json"
     done < "$tmp/components.txt"
     echo "" >> "$tmp/index.json"
     echo '  ]' >> "$tmp/index.json"
 
     echo "}" >> "$tmp/index.json"
-    local tmp_index="${INDEX_FILE}.tmp-$$"
+    local tmp_index
+    tmp_index=$(mktemp -p "$(dirname "$INDEX_FILE")" .aidev-index.XXXXXX) || { echo "错误: 无法创建临时索引文件"; exit 1; }
     cp "$tmp/index.json" "$tmp_index" && mv "$tmp_index" "$INDEX_FILE"
     rm -rf "$tmp" 2>/dev/null || true
 
@@ -234,7 +235,7 @@ case "$SUBCOMMAND" in
             echo "示例: aidev-index $SUBCOMMAND Main"
             exit 1
         fi
-        detect_project "."
+        (detect_project ".") >/dev/null 2>&1 || true
         search_index "$SUBCOMMAND" "$KEYWORD"
         ;;
     *)

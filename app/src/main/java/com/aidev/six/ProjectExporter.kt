@@ -1,5 +1,6 @@
 package com.aidev.six
 
+import java.io.BufferedWriter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -8,9 +9,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 把安卓项目源码合成为一份「AI 可读」文本文档（Markdown 或纯文本）：
+ * 把安卓项目源码合成为「AI 可读」文本文档（Markdown 或纯文本）：
  * 开头附目录树与统计，随后每个源文件以「相对路径 + 代码块」呈现。
  * 默认排除构建产物、IDE 缓存、二进制；.git 可选择包含。
+ *
+ * 流式写入：exportToFile 直接写入 BufferedWriter，
+ * 内存占用仅为单文件大小，不会因整体 StringBuilder 而 OOM。
  */
 object ProjectExporter {
 
@@ -20,7 +24,7 @@ object ProjectExporter {
         val maxFileBytes: Long = 512 * 1024,
     )
 
-    private val DIR_SKIP = setOf("build", "captures", "node_modules")
+    private val DIR_SKIP = setOf("build", "captures", "node_modules", "target", "vendor", "Pods", ".gradle", ".cxx")
     private val BINARY_EXT = setOf(
         "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "so", "aar", "jar",
         "zip", "tar", "gz", "tgz", "wav", "mp3", "mp4", "mkv", "ttf", "otf",
@@ -33,61 +37,82 @@ object ProjectExporter {
         opts: Options = Options(),
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ) = withContext(Dispatchers.IO) {
-        val doc = buildAiDoc(projectDir, opts, onProgress)
-        outFile.parentFile?.mkdirs()
-        outFile.writeText(doc)
-    }
-
-    suspend fun buildAiDoc(
-        projectDir: File,
-        opts: Options = Options(),
-        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
-    ): String = withContext(Dispatchers.IO) {
         require(projectDir.isDirectory) { "项目目录不存在：${projectDir.absolutePath}" }
         val sources = collectFiles(projectDir, opts)
         val total = sources.size
-        val sb = StringBuilder()
+        outFile.parentFile?.mkdirs()
+        outFile.bufferedWriter().use { writer ->
+            writeHeader(writer, projectDir, opts, total)
+            writer.newLine()
+            writeTreeSection(writer, projectDir, opts)
+            writer.newLine()
+            if (!opts.plainText) {
+                writer.write("## 源码")
+                writer.newLine()
+            }
+            var done = 0
+            for (f in sources) {
+                writeSourceFile(writer, f, projectDir, opts)
+                done++
+                onProgress(done, total)
+            }
+        }
+    }
+
+    private fun writeHeader(writer: BufferedWriter, projectDir: File, opts: Options, fileCount: Int) {
         val projName = projectDir.name
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         if (opts.plainText) {
-            sb.appendLine("PROJECT SOURCE: $projName")
-            sb.appendLine()
-            sb.appendLine("Generated: $stamp")
-            sb.appendLine("Source files: $total")
-            sb.appendLine("Path: ${projectDir.absolutePath}")
+            writer.write("PROJECT SOURCE: $projName")
+            writer.newLine()
+            writer.newLine()
+            writer.write("Generated: $stamp")
+            writer.newLine()
+            writer.write("Source files: $fileCount")
+            writer.newLine()
+            writer.write("Path: ${projectDir.absolutePath}")
         } else {
-            sb.appendLine("# 项目源码导出：$projName")
-            sb.appendLine()
-            sb.appendLine("> 生成时间：$stamp")
-            sb.appendLine("> 源码文件数：$total")
-            sb.appendLine("> 项目路径：${projectDir.absolutePath}")
+            writer.write("# 项目源码导出：$projName")
+            writer.newLine()
+            writer.newLine()
+            writer.write("> 生成时间：$stamp")
+            writer.newLine()
+            writer.write("> 源码文件数：$fileCount")
+            writer.newLine()
+            writer.write("> 项目路径：${projectDir.absolutePath}")
         }
-        sb.appendLine()
-        sb.appendLine(if (opts.plainText) "DIRECTORY TREE:" else "## 目录结构")
-        sb.appendLine("```")
-        appendTree(sb, projectDir, opts)
-        sb.appendLine("```")
-        sb.appendLine()
-        if (!opts.plainText) sb.appendLine("## 源码")
-        var done = 0
-        for (f in sources) {
-            val rel = f.relativeTo(projectDir).path.replace('\\', '/')
-            if (opts.plainText) {
-                sb.appendLine("===== FILE: $rel =====")
-                sb.appendLine(safeRead(f))
-                sb.appendLine()
-            } else {
-                val lang = langOf(f.name)
-                sb.appendLine("### $rel")
-                sb.appendLine("```$lang")
-                sb.appendLine(safeRead(f))
-                sb.appendLine("```")
-                sb.appendLine()
-            }
-            done++
-            onProgress(done, total)
+    }
+
+    private fun writeTreeSection(writer: BufferedWriter, projectDir: File, opts: Options) {
+        writer.write(if (opts.plainText) "DIRECTORY TREE:" else "## 目录结构")
+        writer.newLine()
+        writer.write("```")
+        writer.newLine()
+        writeTree(writer, projectDir, opts)
+        writer.write("```")
+        writer.newLine()
+    }
+
+    private fun writeSourceFile(writer: BufferedWriter, file: File, projectDir: File, opts: Options) {
+        val rel = file.relativeTo(projectDir).path.replace('\\', '/')
+        if (opts.plainText) {
+            writer.write("===== FILE: $rel =====")
+            writer.newLine()
+            writer.write(safeRead(file))
+            writer.newLine()
+            writer.newLine()
+        } else {
+            val lang = langOf(file.name)
+            writer.write("### $rel")
+            writer.newLine()
+            writer.write("```$lang")
+            writer.newLine()
+            writer.write(safeRead(file))
+            writer.newLine()
+            writer.write("```")
+            writer.newLine()
+            writer.newLine()
         }
-        sb.toString()
     }
 
     private fun safeRead(f: File): String =
@@ -125,15 +150,17 @@ object ProjectExporter {
         return false
     }
 
-    private fun appendTree(sb: StringBuilder, dir: File, opts: Options, indent: String = "") {
+    private fun writeTree(writer: BufferedWriter, dir: File, opts: Options, indent: String = "") {
         dir.listFiles()?.sortedBy { it.name }?.forEach { f ->
             if (f.isDirectory) {
                 if (shouldSkipDir(f.name, opts.includeGit)) return@forEach
-                sb.appendLine("$indent${f.name}/")
-                appendTree(sb, f, opts, "$indent  ")
+                writer.write("$indent${f.name}/")
+                writer.newLine()
+                writeTree(writer, f, opts, "$indent  ")
             } else {
                 if (shouldSkipFile(f, opts.maxFileBytes)) return@forEach
-                sb.appendLine("$indent${f.name}")
+                writer.write("$indent${f.name}")
+                writer.newLine()
             }
         }
     }
@@ -154,7 +181,7 @@ object ProjectExporter {
         "css", "scss", "sass" -> "css"
         "html", "htm" -> "html"
         "js", "mjs", "cjs" -> "javascript"
-        "ts" -> "typescript"
+        "ts", "tsx", "mjs" -> "typescript"
         "py" -> "python"
         "c", "h" -> "c"
         "cpp", "cc", "cxx", "hpp", "hxx" -> "cpp"

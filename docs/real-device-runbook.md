@@ -10,7 +10,7 @@
   电脑侧出包（本环境已验证产物存在：`app/build/outputs/apk/debug/app-debug.apk`）：
   ```bash
   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
-  ./gradlew assembleDebug --no-daemon
+  ./gradlew assembleDebug
   ```
   > ⚠️ 产物校验**不要**直接用 `aidev-apk-info`：该工具有 3 个解析 bug（包名误显 `16`、Native ABI 空、Debuggable 误报「否」）。
   > 真值用 `aapt2 dump badging app-debug.apk` 确认：包名 `com.aidev.six.dev`、含 `lib/arm64-v8a/*.so`、`application-debuggable`。
@@ -36,15 +36,7 @@ aidev-build-request --project /workspace/<应用名>
 - 准备宇宙B → 编译 → 安装 → 拉起
 全绿（最后一条 SUCCEEDED）才说明宇宙B 编译链路正常。**这步不过，后面都没意义。**
 
-## 第 3 步：（可选）用 OpenCode 改码
-
-若需在真机环境写代码，自行启动 OpenCode（人类驱动）：
-```bash
-opencode serve --port 4096 &
-```
-OpenCode 仅作为写代码工具，宿主不自动调用它做任何事；如要中止某个 OpenCode 会话，用通知的「中止」按钮（经 `OpenCodeActionReceiver` → `OpenCodeEngine.abortSession`）。
-
-## 第 4 步：构建失败时人工排查
+## 第 3 步：构建失败时人工排查
 
 构建失败不会自动改码。完整日志落在手机 `logs/<项目>/last-build-failure.log`，可在终端用：
 ```bash

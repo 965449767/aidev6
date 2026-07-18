@@ -7,14 +7,23 @@
 #   aidev-bridge status                       检查宿主桥接 socket 是否在线
 #
 # <payload> 格式由调用方决定：shizuku 为 KEY=VALUE 文本，其余为 JSON 文本。
-set -u
+set -e
 
 PORT=14096
 HOST=127.0.0.1
 TIMEOUT=30
 
-# 桥接 Socket 静态共享密钥：须与宿主 Constants.BRIDGE_SOCKET_TOKEN 一致，否则服务端丢弃请求帧。
-TOKEN="aidev-bridge-2026"
+# 桥接 Socket 共享密钥：从宿主写入的 token 文件读取（动态生成），不再硬编码。
+# 文件位于 aidev home 根目录（/host-home/.bridge-token），由 PreferencesManager.syncTokenToAidevHome 写入。
+AIDEV_HOME="${AIDEV_HOME:-/host-home}"
+TOKEN_FILE="${AIDEV_HOME}/.bridge-token"
+if [ -f "$TOKEN_FILE" ]; then
+  TOKEN="$(cat "$TOKEN_FILE" 2>/dev/null | tr -d '[:space:]')"
+fi
+if [ -z "$TOKEN" ]; then
+  # 兼容：文件不存在时回退到旧硬编码值（升级过渡期）
+  TOKEN="aidev-bridge-2026"
+fi
 
 send_via_tcp() {
   python3 - "$BRIDGE" "$ID" "$PAYLOAD" "$PORT" "$TOKEN" <<'PY'

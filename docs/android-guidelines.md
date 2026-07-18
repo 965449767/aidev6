@@ -21,12 +21,11 @@ Do not expand ROM-specific work to Huawei, OPPO, vivo, or other vendors unless e
 - `ShellActivity` (ComponentActivity + `setContent`) launcher
 - Embedded terminal based on Termux terminal-view
 - Dual Ubuntu rootfs (agent + compiler) through bundled PRoot
-- OpenCode integration through CLI and native HTTP/SSE client
 
 ### Main Directories
 
 - `app/src/main/java/com/aidev/six/`: Shell UI, terminal pages, settings, servers, navigation
-- `app/src/main/java/com/aidev/six/opencode/`: OpenCode HTTP/SSE client and panel integration
+- `app/src/main/java/com/aidev/six/task/`: Plan engine and task management
 - `app/src/main/java/com/aidev/six/terminal/`: Session management, PRoot launcher, completion engine
 - `app/src/main/assets/scripts/`: Shell scripts (aidev-install, aidev-shizuku, etc.)
 - `app/src/main/jniLibs/arm64-v8a/`: Bundled native PRoot binaries

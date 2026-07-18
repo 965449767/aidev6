@@ -79,26 +79,26 @@ if [ "$WANT_ANDROID" = 1 ]; then
   if [ ! -f "$CMDLINE_TOOLS" ]; then
     echo "  下载 cmdline-tools..."
     mkdir -p "$SDK_DIR"
-    rm -f /tmp/cmdline-tools.zip
+    tmp_zip=$(mktemp) || { echo "错误: 无法创建临时文件"; exit 1; }
+    tmp_dir=$(mktemp -d) || { echo "错误: 无法创建临时目录"; exit 1; }
+    trap 'rm -f "$tmp_zip"; rm -rf "$tmp_dir"' EXIT
     # 多源尝试：腾讯云镜像（国内快）→ Google 官方兜底。-f 让 HTTP 错误直接失败，避免把 404 页面存成 zip
     CMDLINE_URLS="https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
     dl_ok=0
     for url in $CMDLINE_URLS; do
       echo "    尝试: $url"
-      if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "$url" -o /tmp/cmdline-tools.zip && \
-         unzip -tq /tmp/cmdline-tools.zip >/dev/null 2>&1; then
+      if curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 "$url" -o "$tmp_zip" && \
+         unzip -tq "$tmp_zip" >/dev/null 2>&1; then
         dl_ok=1; break
       fi
       echo "    此源失败，换下一个..."
-      rm -f /tmp/cmdline-tools.zip
+      rm -f "$tmp_zip"
     done
     if [ "$dl_ok" = 1 ]; then
-      rm -rf /tmp/cmdline-tools
-      unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools && \
+      unzip -q "$tmp_zip" -d "$tmp_dir" && \
       mkdir -p "$SDK_DIR/cmdline-tools" && \
       rm -rf "$SDK_DIR/cmdline-tools/latest" && \
-      mv /tmp/cmdline-tools/cmdline-tools "$SDK_DIR/cmdline-tools/latest" && \
-      rm -rf /tmp/cmdline-tools /tmp/cmdline-tools.zip && \
+      mv "$tmp_dir/cmdline-tools" "$SDK_DIR/cmdline-tools/latest" && \
       echo "  cmdline-tools 已安装" || echo "  cmdline-tools 解压安装失败"
     else
       echo "  cmdline-tools 下载失败（所有源均不可用，请检查网络后重试）"

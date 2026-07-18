@@ -19,12 +19,12 @@ detect_project() {
         echo "请在 Android 项目根目录运行"
         exit 1
     fi
-    PACKAGE=$(grep 'package=' "$manifest" | sed 's/.*package="\([^"]*\)".*/\1/')
-    [ -n "$PACKAGE" ] || {
+    PKG_NAME=$(grep 'package=' "$manifest" | sed 's/.*package="\([^"]*\)".*/\1/')
+    [ -n "$PKG_NAME" ] || {
         echo "错误: 无法从 AndroidManifest.xml 提取包名"
         exit 1
     }
-    SRC_DIR="$PROJECT_DIR/app/src/main/java/$(echo "$PACKAGE" | tr '.' '/')"
+    SRC_DIR="$PROJECT_DIR/app/src/main/java/$(echo "$PKG_NAME" | tr '.' '/')"
     RES_DIR="$PROJECT_DIR/app/src/main/res"
     mkdir -p "$SRC_DIR" "$RES_DIR/layout" "$RES_DIR/values" 2>/dev/null || true
 }
@@ -220,5 +220,5 @@ EOF
         ;;
 esac
 
-echo "  包名: $PACKAGE"
+echo "  包名: $PKG_NAME"
 echo "  项目: $PROJECT_DIR"

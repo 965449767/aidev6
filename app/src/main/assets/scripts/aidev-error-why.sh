@@ -2,7 +2,7 @@
 # aidev-error-why: 搜索常见构建错误并显示解决方案
 # 用法: aidev-error-why [--lang en] [--all] [<关键词>]
 #       cat build.log | aidev-error-why
-#       aidev-build-request-request --full 2>&1 | aidev-error-why
+#       aidev-build-request --full 2>&1 | aidev-error-why
 
 set -e
 
@@ -14,6 +14,11 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --all) MATCH_ALL=true; shift ;;
         --lang) shift; [ "${1:-}" = "en" ] && LANG_EN=true; shift ;;
+        --help|-h)
+            echo "用法: aidev-error-why [--lang en] [--all] [<关键词>]"
+            echo "  cat build.log | aidev-error-why"
+            echo "  aidev-build-request --full 2>&1 | aidev-error-why"
+            exit 0 ;;
         *) KEYWORD="$1"; shift ;;
     esac
 done
@@ -24,11 +29,11 @@ if [ -z "$INPUT" ] && [ -z "$KEYWORD" ] && [ "$MATCH_ALL" = false ]; then
     if [ "$LANG_EN" = true ]; then
         echo "Usage: aidev-error-why [--lang en] [--all] [<keyword>]"
         echo "  cat build.log | aidev-error-why"
-        echo "  aidev-build-request-request --full 2>&1 | aidev-error-why"
+        echo "  aidev-build-request --full 2>&1 | aidev-error-why"
     else
         echo "用法: aidev-error-why [--lang en] [--all] [<关键词>]"
         echo "  cat build.log | aidev-error-why"
-        echo "  aidev-build-request-request --full 2>&1 | aidev-error-why"
+        echo "  aidev-build-request --full 2>&1 | aidev-error-why"
     fi
     exit 1
 fi
@@ -66,7 +71,7 @@ check() {
 }
 
 if [ "$MATCH_ALL" = false ] && [ -z "$INPUT" ]; then
-    check "keyword" "$KEYWORD" "$(grep -i "$KEYWORD" "$0" | head -20)" ""
+    check "keyword" "$KEYWORD" "$(grep -i -- "$KEYWORD" "$0" | head -20)" ""
     exit 0
 fi
 
@@ -76,14 +81,14 @@ AAPT2_ZH="AAPT2 守护进程在 QEMU 用户态下无法正常启动。
   2. 确保 gradle.properties 中有:
      android.aapt2DaemonMode=false
      android.aapt2FromMavenOverride=<path-to-aapt2>
-  3. 重新运行 aidev-build-request-request --full"
+  3. 重新运行 aidev-build-request --full"
 AAPT2_EN="AAPT2 daemon cannot start under QEMU user mode.
 Fix:
   1. Run /usr/local/bin/wrap-android-native.sh
   2. Ensure gradle.properties has:
      android.aapt2DaemonMode=false
      android.aapt2FromMavenOverride=<path-to-aapt2>
-  3. Re-run aidev-build-request-request --full"
+  3. Re-run aidev-build-request --full"
 
 check "AAPT2 Daemon" \
     "AAPT2.*(daemon|Daemon|crash|signal|fatal|shutdown)" \

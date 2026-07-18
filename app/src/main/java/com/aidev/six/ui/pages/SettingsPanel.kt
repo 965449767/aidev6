@@ -355,9 +355,7 @@ private fun PathSettingsSheet(
             PathRow("备份目录", "备份文件和恢复数据的存储路径", com.aidev.six.PathConfig.backupDir(context).absolutePath) {
                 dialog = SettingsDialog.PathEdit("备份目录", com.aidev.six.PathConfig.backupDir(context).absolutePath) { prefs.backupDir = it }
             }
-            PathRow("项目目录", "Ubuntu 内新建项目的默认位置（相对 rootfs）", com.aidev.six.PathConfig.projectsDir(context).absolutePath) {
-                dialog = SettingsDialog.PathEdit("项目目录（相对 rootfs）", prefs.projectsDirRel.ifBlank { "root/projects" }) { prefs.projectsDirRel = it }
-            }
+            ReadonlyPathRow("工作区目录", "构建/部署/扫描/导入的真正工作区", com.aidev.six.PathConfig.workspaceDir(context).absolutePath)
             PathRow("外部 AIDev 目录", "Android 侧项目数据存放路径", com.aidev.six.PathConfig.externalAidevDir(context).absolutePath) {
                 dialog = SettingsDialog.PathEdit("外部 AIDev 目录", com.aidev.six.PathConfig.externalAidevDir(context).absolutePath) { prefs.externalAidevDir = it }
             }
@@ -379,7 +377,7 @@ internal fun PathRow(title: String, desc: String, path: String, modifier: Modifi
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(horizontal = Spacing.s16, vertical = 8.dp),
     ) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
         Text(desc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 1.dp))
@@ -397,7 +395,7 @@ internal fun ReadonlyPathRow(title: String, desc: String, path: String, modifier
                 val clip = android.content.ClipData.newPlainText("path", path)
                 (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)?.setPrimaryClip(clip)
             }
-            .padding(vertical = 8.dp),
+            .padding(horizontal = Spacing.s16, vertical = 8.dp),
     ) {
         Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
         Text(desc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 1.dp))

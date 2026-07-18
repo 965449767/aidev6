@@ -2,6 +2,7 @@ package com.aidev.six
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.io.File
 
 class PreferencesManager(context: Context) {
     private val appContext = context.applicationContext
@@ -77,9 +78,6 @@ class PreferencesManager(context: Context) {
         get() = prefs.getString(Constants.PrefKeys.BACKUP_DIR, "/sdcard/AIDev/backups/") ?: "/sdcard/AIDev/backups/"
         set(value) = write { putString(Constants.PrefKeys.BACKUP_DIR, value) }
 
-    var projectsDirRel: String
-        get() = prefs.getString(Constants.PrefKeys.PROJECTS_DIR_REL, "root/projects") ?: "root/projects"
-        set(value) = write { putString(Constants.PrefKeys.PROJECTS_DIR_REL, value) }
 
     var externalAidevDir: String
         get() = prefs.getString(Constants.PrefKeys.EXTERNAL_AIDEV_DIR, "/sdcard/AIDev") ?: "/sdcard/AIDev"
@@ -127,7 +125,7 @@ class PreferencesManager(context: Context) {
         set(value) = write { putBoolean(Constants.PrefKeys.AUTO_SHOW_KEYBOARD, value) }
 
     var keepaliveAuto: Boolean
-        get() = prefs.getBoolean(Constants.PrefKeys.KEEPALIVE_AUTO, false)
+        get() = prefs.getBoolean(Constants.PrefKeys.KEEPALIVE_AUTO, true)
         set(value) = write { putBoolean(Constants.PrefKeys.KEEPALIVE_AUTO, value) }
 
     var fileFavorites: Set<String>
@@ -181,6 +179,41 @@ class PreferencesManager(context: Context) {
     var lastTab: Int
         get() = prefs.getInt(Constants.PrefKeys.LAST_TAB, -1)
         set(value) = write { putInt(Constants.PrefKeys.LAST_TAB, value) }
+
+    /**
+     * 动态桥接 Token：首次读取时生成 UUID 并持久化，
+     * 同时写入 aidev_home/.bridge-token 文件供 shell 脚本读取。
+     */
+    val bridgeToken: String
+        get() {
+            var token = prefs.getString(Constants.PrefKeys.BRIDGE_TOKEN, null)
+            if (token.isNullOrBlank()) {
+                token = java.util.UUID.randomUUID().toString()
+                write { putString(Constants.PrefKeys.BRIDGE_TOKEN, token) }
+                syncTokenToFile(token)
+            }
+            return token
+        }
+
+    /** 把 token 写入文件，供 aidev-bridge.sh 等脚本读取。写入 aidev home（shell 可达）。 */
+    fun syncTokenToFile(token: String) {
+        runCatching {
+            val home = appContext.filesDir
+            val tokenFile = java.io.File(home, ".bridge-token")
+            tokenFile.parentFile?.mkdirs()
+            tokenFile.writeText(token)
+        }
+    }
+
+    /** 同步 token 到 aidev home 目录（供 PRoot 内 shell 脚本读取）。 */
+    fun syncTokenToAidevHome(aidevHome: File) {
+        runCatching {
+            val token = bridgeToken
+            val tokenFile = java.io.File(aidevHome, ".bridge-token")
+            tokenFile.parentFile?.mkdirs()
+            tokenFile.writeText(token)
+        }
+    }
 
     private fun write(block: SharedPreferences.Editor.() -> Unit) {
         val ed = pendingEdit

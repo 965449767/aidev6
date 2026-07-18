@@ -63,9 +63,9 @@ val AILightColorScheme = lightColorScheme(
     onError = Color(0xFFFFFFFF),
 )
 
-// 语义色别名（业务代码优先用这些，而非记 hex）
-val SuccessColor @Suppress("unused") get() = AIDarkColorScheme.secondary
-val WarningColor @Suppress("unused") get() = AIDarkColorScheme.tertiary
+// 语义色扩展（业务代码优先用 these，而非记 hex；自动适配暗/亮主题）
+val androidx.compose.material3.ColorScheme.successColor: Color get() = secondary
+val androidx.compose.material3.ColorScheme.warningColor: Color get() = tertiary
 
 // 间距阶梯：只取 4/8/12/16/24/32 dp
 object Spacing {
@@ -75,6 +75,7 @@ object Spacing {
     val s16 = 16.dp
     val s24 = 24.dp
     val s32 = 32.dp
+    val s48 = 48.dp
 }
 
 // 圆角：Button 12 / Card 16 / Dialog 28 dp

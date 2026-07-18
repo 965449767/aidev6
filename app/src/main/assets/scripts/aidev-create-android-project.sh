@@ -18,7 +18,7 @@ if [ -z "$APP_NAME" ] || [ -z "$PACKAGE" ]; then
     echo "  aidev-create-android-project MyApp com.example.myapp"
     echo "  aidev-create-android-project MyApp com.example.myapp /workspace"
     echo ""
-    echo "注意: 项目必须建在 /workspace 下，宇宙B 才能编译。默认已指向 ~/projects。"
+    echo "注意: 项目必须建在 /workspace 下，宇宙B 才能编译。默认已指向 /workspace。"
     exit 1
 fi
 
@@ -28,7 +28,7 @@ if ! echo "$PACKAGE" | grep -qE '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'; then
     exit 1
 fi
 
-OUTPUT_DIR="${3:-${HOME}/projects}"
+OUTPUT_DIR="${3:-/workspace}"
 
 # create-compose-project 已部署在 /usr/local/bin（UbuntuBootstrapScripts 同步）
 if command -v create-compose-project >/dev/null 2>&1; then

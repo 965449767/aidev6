@@ -23,7 +23,7 @@ mkdir -p "$REQUEST_DIR" "$RESULT_DIR"
 # 注意：ShizukuBridgeService.isCommandAllowed 仅放行单一「前缀白名单」命令且禁止
 # 任何 shell 元字符（; & | $ ` ( ) < > 等），故 cp 与 pm install 必须拆成两次独立请求。
 shizuku_exec() {
-  _CMD="$1"
+  _CMD=$(printf '%s' "$1" | tr '\n' ' ')
   _PAYLOAD="TYPE=exec
 COMMAND=$_CMD"
   _RESP=""
@@ -69,7 +69,9 @@ EOF
 }
 
 SUBCOMMAND="${1:-}"
-shift 2>/dev/null || true
+# dash 下无参时 `shift` 是特殊内建命令，失败会在 set -e 中终止脚本，且
+# `2>/dev/null || true` 无法兜住（rc=2，永远到不了帮助分支）。故先判有参再 shift。
+if [ "$#" -gt 0 ]; then shift; fi
 
 case "$SUBCOMMAND" in
   exec)
@@ -133,17 +135,18 @@ case "$SUBCOMMAND" in
     ;;
   status)
     echo "正在检测 Shizuku 桥接..."
-    local out
+    out=""
     # getprop 在白名单内且返回数字；echo 不在白名单会被安全护栏拒绝
     out=$(aidev-shizuku exec "getprop ro.build.version.sdk" 2>&1) || true
     if echo "$out" | grep -qE '[0-9]+'; then
       echo "Shizuku 状态: 正常 (桥接通道可用，可静默安装)"
+      exit 0
     else
       echo "Shizuku 状态: 未响应/未授权。"
       echo "  → 请确认: 1) Shizuku App 已启动; 2) AIDev (com.aidev.six.dev) 已在 Shizuku 已授权列表中。"
       echo "  → 桥接原始响应: $out"
+      exit 1
     fi
-    exit 0
     ;;
   *)
     echo "用法: aidev-shizuku <子命令> [参数]"
@@ -163,7 +166,8 @@ case "$SUBCOMMAND" in
     ;;
 esac
 
-# 构建 KEY=VALUE 载荷
+# 构建 KEY=VALUE 载荷（去除换行，防注入）
+CMD=$(printf '%s' "$CMD" | tr '\n' ' ')
 PAYLOAD="TYPE=exec
 COMMAND=$CMD"
 

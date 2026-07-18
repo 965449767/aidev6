@@ -36,17 +36,15 @@
 2. 首次进入会触发 ubuntu-base 24.04 下载解包（清华镜像，几十 MB，需联网）。
 3. 等终端可用（出现 shell 提示符）。此时 `home/ubuntu-rootfs/.aidev-rootfs-ready` 已生成。
 
-### 步骤 2 — 安装开发工具 + OpenCode（宇宙A）
-在终端执行（DevEnvironmentChecker 的"一键修复"也会发这些命令）：
+### 步骤 2 — 安装开发工具
+在终端执行：
 ```sh
 setup-dev-env          # 默认只装核心层：node/python3/git/npm + 基础工具（~350MB）
-install-aitool         # 装 opencode 到 rootfs 的 ~/.opencode/bin
-check-dev-env          # 复检，确认 OpenCode 等 OK
+check-dev-env          # 复检
 ```
-> `setup-dev-env` 现为**分层按需**（`-h` 查看）：默认核心层**不含** JDK/Android SDK/NDK/Rust。
+> `setup-dev-env` 为**分层按需**（`-h` 查看）：默认核心层**不含** JDK/Android SDK/NDK/Rust。
 > - `--build`：build-essential/cmake/ninja  ·  `--android`：SDK + headless JDK  ·  `--ndk`：NDK 27  ·  `--rust`：Rust 全家桶  ·  `--all`：全部
-> - 宇宙A（OpenCode 宿主）跑闭环只需**核心层**；Android SDK 供**宇宙B 编译**用，见步骤 3。
-> 若想手动验证：`ls $AIDEV_ROOTFS/root/.opencode/bin/opencode` 应存在。
+> Android SDK 供编译用，见步骤 3。
 
 ### 步骤 3 — Android SDK 就位（供宇宙B 编译，关键）
 `BuildBridgeService` 编译时硬编码 `ANDROID_SDK_ROOT=/host-home/android-sdk`，**无自动下载**，必须预置。

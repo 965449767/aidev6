@@ -157,30 +157,20 @@ Create a pure custom `AIDevBottomSheet` using `Dialog` + `LinearLayout` + `Scrol
 - `MenuItem` is now a nested class of `MenuBottomSheet`; call sites must use `MenuBottomSheet.MenuItem`.
 - `BackupRestorePage` was removed due to prior file corruption; backup/restore menu items temporarily toast "开发中" until the page is reimplemented.
 
-## 2026-06-22 - Opt out of Edge-to-Edge enforcement (temporary)
+## 2026-06-22 - Edge-to-Edge enforcement (historical; superseded 2026-07-17)
 
 ### Context
 
-`targetSdk = 36` (Android 16) 触发了系统 Edge-to-Edge 强制执行。`ShellActivity` 未适配 window insets，导致 APP bar 重叠系统状态栏。
+`targetSdk = 36` (Android 16) 触发了系统 Edge-to-Edge 强制执行。
 
-### Decision
+### Decision (superseded)
 
-短期：在 `AppTheme` 中添加 `android:windowOptOutEdgeToEdgeEnforcement = true`，让系统恢复旧版布局行为，`statusBarColor` 生效。
+最初使用 `windowOptOutEdgeToEdgeEnforcement` 做 opt-out。2026-07-14 经核查 Edge-to-Edge 已正确实现：
+- `ShellActivity.onCreate` 调用 `WindowCompat.setDecorFitsSystemWindows(window, false)`
+- Compose 层使用 `windowInsetsPadding(WindowInsets.systemBars)` + `imePadding()`
+- `ViewCompat.setOnApplyWindowInsetsListener` 处理 IME 高度变化
 
-### Consequences
-
-- 问题立即修复，不影响现有功能
-- 长期来看仍需正式迁移到 Edge-to-Edge，计划在 `0.14.x` 实施
-
-## 2026-06-22 - Planned Edge-to-Edge migration (future)
-
-### Context
-
-`windowOptOutEdgeToEdgeEnforcement` 是临时方案。Android 15+ 逐步淘汰旧式状态栏行为，未来 SDK 版本可能移除该标志。
-
-### Decision
-
-在 `0.14.x` 中实施正式迁移，步骤：引入 `androidx.activity:activity` 依赖 → 在 `ShellActivity` 中调用 `enableEdgeToEdge()` → 用 `ViewCompat.setOnApplyWindowInsetsListener` 处理 navHost insets → 移除 opt-out 标志。
+opt-out 标志已移除。此前的临时方案描述仅保留作为历史记录。
 
 ### Consequences
 

@@ -2,9 +2,7 @@
 -keep class com.aidev.six.AIDevApp { *; }
 -keep class com.aidev.six.ShellActivity { *; }
 -keep class com.aidev.six.KeepAliveService { *; }
--keep class com.aidev.six.OpenCodeMonitorService { *; }
 -keep class com.aidev.six.KeepAliveBootReceiver { *; }
--keep class com.aidev.six.OpenCodeActionReceiver { *; }
 -keep class com.aidev.six.SysCommandReceiver { *; }
 
 # Library reflection targets

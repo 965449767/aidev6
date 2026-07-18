@@ -13,7 +13,7 @@
 # 内部实现：委托 aidev-logcat --watch-crash（已走 Shizuku 桥）在窗口内监听，
 # 捕获 FATAL EXCEPTION / ANR / Native crash / Process died 即判 crashed=true。
 
-set -u
+set -e
 
 PKG=""
 WINDOW=8

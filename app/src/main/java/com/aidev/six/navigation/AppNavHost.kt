@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.aidev.six.EmbeddedTerminalPage
-import com.aidev.six.navigation.LocalImeBottomPx
 import com.aidev.six.ui.pages.TerminalPanel
 
 @Composable
@@ -20,7 +19,6 @@ fun AppNavHost(
 ) {
     val context = LocalContext.current
     val activity = context as android.app.Activity
-    val imeActive = LocalImeBottomPx.current > 0
 
     Column(
         modifier = Modifier

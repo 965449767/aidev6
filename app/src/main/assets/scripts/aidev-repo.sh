@@ -20,7 +20,7 @@
 #   aidev-repo root                           # 打印仓库根目录
 #   aidev-repo help
 
-set -u
+set -e
 
 REPO_ROOT="${AIDEV_REPO_ROOT:-/sdcard/.AIDevRepo}"
 
@@ -81,13 +81,13 @@ decide() {
         NETWORK)
             echo "network"; return 0 ;;
         STRICT)
-            local p
-            p=$(resolve "$seriesId" "$ver")
+            local p=""
+            p=$(resolve "$seriesId" "$ver") || true
             if [ -n "$p" ]; then echo "repo:$p"; return 0; fi
             echo "deny"; return 0 ;;
         *)
-            local p
-            p=$(resolve "$seriesId" "$ver")
+            local p=""
+            p=$(resolve "$seriesId" "$ver") || true
             if [ -n "$p" ]; then echo "repo:$p"; return 0; fi
             echo "network"; return 0 ;;
     esac

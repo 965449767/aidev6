@@ -17,7 +17,7 @@ bash scripts/harness_check.sh
 Run after Kotlin, Android resource, manifest, Gradle, or terminal behavior changes:
 
 ```bash
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug --no-daemon
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug
 ```
 
 If the build environment is missing, run:
@@ -44,6 +44,7 @@ cp app/build/outputs/apk/debug/app-debug.apk /sdcard/AIDev/app-debug.apk
 | Kotlin code | Android debug build |
 | Manifest/resources | Android debug build |
 | Ubuntu bootstrap scripts | Android debug build plus device smoke test |
+| assets/scripts/*.sh (AIDev 命令脚本) | `dash -n` 逐个语法校验（PRoot `/bin/sh` 是 dash，禁 `pipefail`/`[[`/`<<<`/`read -a`/`$RANDOM`/函数外 `local`）；改后用 `sed` 批量改 shell 语法属高危，须精确编辑 + `dash -n` 兜底 |
 | Navigation changes | Android debug build plus manual entry-path check |
 | HyperOS keep-alive behavior | Android debug build plus Xiaomi device smoke test |
 
@@ -65,6 +66,29 @@ install-ubuntu --clean
 ubuntu
 cat /etc/os-release
 ```
+
+### AIDev command scripts (assets/scripts/*.sh)
+
+改动后**必须**在 PRoot 实跑冒烟（dash 基线），至少：
+
+```sh
+aidev-bridge status          # 应显示 bridge socket: ONLINE
+aidev-shizuku status         # 应显示「Shizuku 状态: 正常」或明确的未授权原因（exit 码区分）
+aidev-install --status       # 若支持；否则 aidev-shizuku status 等价于探测
+```
+
+覆盖层验证（确认用户自救通道生效）：
+
+```sh
+echo '#!/bin/sh
+echo OVERRIDE-OK' > ~/overrides/bin/aidev-install
+chmod +x ~/overrides/bin/aidev-install
+aidev-install                   # 应输出 OVERRIDE-OK（命中覆盖层）
+rm ~/overrides/bin/aidev-install
+aidev-install                   # 回落出厂版
+```
+
+注意：PRoot 以 `-0`(root) 启动，`setReadOnly()` 非硬挡；防篡改由「覆盖层优先 + 版本升级恢复」保障，约定层不许直接改 `rootfs/usr/local/bin` 出厂脚本。
 
 ## If Validation Cannot Be Run
 

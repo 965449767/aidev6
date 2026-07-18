@@ -6,6 +6,7 @@ import androidx.compose.ui.unit.sp
 
 val AITypography = Typography(
     headlineLarge = TextStyle(fontSize = 32.sp),
+    titleLarge = TextStyle(fontSize = 20.sp),
     titleMedium = TextStyle(fontSize = 16.sp),
     titleSmall = TextStyle(fontSize = 14.sp),
     bodyLarge = TextStyle(fontSize = 15.sp),
