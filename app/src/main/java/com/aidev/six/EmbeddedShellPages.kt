@@ -21,7 +21,14 @@ import com.aidev.six.terminal.VirtualKeyboardManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class EmbeddedTerminalPage {
     private companion object {
@@ -89,8 +96,16 @@ class EmbeddedTerminalPage {
         renderScheduler?.flushNow() ?: terminalView?.onScreenUpdated()
     }
 
+    private val completionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var completionJob: Job? = null
+
     internal fun onCompletionsChanged() {
-        _completionSnapshot.value = completionEngine.completionSuggestions()
+        // 输入热路径防抖：合并 100ms 内的连续按键，避免每次按键全量重算补全。
+        completionJob?.cancel()
+        completionJob = completionScope.launch {
+            delay(100)
+            _completionSnapshot.value = completionEngine.completionSuggestions()
+        }
     }
 
     internal fun showCompletionMenu(activity: Activity, item: TerminalCompletion) {
@@ -175,6 +190,7 @@ class EmbeddedTerminalPage {
     fun onDestroy(activity: Activity) {
         disposeTerminal()
         sessionManager.cleanup()
+        completionScope.cancel()
         this.activity = null
     }
 

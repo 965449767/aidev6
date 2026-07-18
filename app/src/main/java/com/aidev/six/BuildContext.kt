@@ -36,9 +36,16 @@ internal class BuildContext(
     private val processingFile: File,
     private val requestDir: File?
 ) {
+    /** 由 append 按行增量提取，避免构建结束时全量正则扫描 bc.log.toString()（P-H6 优化）。 */
+    @Volatile var buildApkPath: String? = null
     fun append(line: String) {
         log.appendLine(line)
         if (log.length > 24000) log.delete(0, log.length - 16000)
+
+        // 按行增量提取 APK 路径（P-H6 优化），避免末尾全量正则扫描 bc.log.toString()。
+        val apkMatch = APK_PATH_REGEX.find(line)
+        if (apkMatch != null) buildApkPath = apkMatch.groupValues.getOrNull(1)
+
         if (gradleFilter.shouldKeep(line)) {
             logWriter.append(line)
         }
@@ -47,6 +54,10 @@ internal class BuildContext(
         if (now - prev >= 800) {
             publishBuild(TaskStatus.RUNNING, -1, 0L, BuildProgress.deriveUpTo(currentPhase))
         }
+    }
+
+    companion object {
+        private val APK_PATH_REGEX = Regex("AIDev:\\s*APK\\s*->\\s*(\\S+)")
     }
 
     fun publishBuild(status: TaskStatus, exitCode: Int, finishedAt: Long, steps: List<TaskStepResult>) {

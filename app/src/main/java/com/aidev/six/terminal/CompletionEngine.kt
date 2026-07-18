@@ -37,7 +37,7 @@ class CompletionEngine(
 
         val paths = pathCompletions(raw)
         val pinned = pinnedCompletions(act)
-        val allCmds = (staticCommands() + filesystemCommands()).distinctBy { it.insertText }
+        val allCmds = (STATIC_COMMANDS + filesystemCommands()).distinctBy { it.insertText }
         val source = (paths + pinned + allCmds).distinctBy { it.insertText }
 
         if (raw.isBlank()) return source.take(8)
@@ -110,7 +110,9 @@ class CompletionEngine(
     }
 
     // ── Phase 1: Full static command list ────────────────────────
-    private fun staticCommands(): List<TerminalCompletion> = listOf(
+    // 静态命令表与实例状态无关，缓存为 companion 常量，避免每次按键重建 ~110 条列表。
+    private companion object {
+        val STATIC_COMMANDS: List<TerminalCompletion> = listOf(
         // Core aidev commands (via aidev-ubuntu-core)
         TerminalCompletion("ubuntu", "ubuntu", "CMD"),
         TerminalCompletion("install-ubuntu", "install-ubuntu", "CMD"),
@@ -236,7 +238,8 @@ class CompletionEngine(
         TerminalCompletion("git clone", "git clone", "CMD"),
         TerminalCompletion("git fetch", "git fetch", "CMD"),
         TerminalCompletion("git remote -v", "git remote -v", "CMD"),
-    )
+        )
+    }
 
     // ── Phase 1: Filesystem scan ─────────────────────────────────
     private fun filesystemCommands(): List<TerminalCompletion> {

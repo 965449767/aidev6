@@ -196,10 +196,9 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val append = bc::append
 
         val stdApk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
-        val apkFromBuild = Regex("AIDev:\\s*APK\\s*->\\s*(\\S+)").find(bc.log.toString())?.groupValues?.getOrNull(1)
         val apk = when {
             stdApk.isFile -> stdApk
-            apkFromBuild != null && File(apkFromBuild).isFile -> File(apkFromBuild)
+            bc.buildApkPath != null && File(bc.buildApkPath!!).isFile -> File(bc.buildApkPath!!)
             else -> null
         }
         if (apk == null) {

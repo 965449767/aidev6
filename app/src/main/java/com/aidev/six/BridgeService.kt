@@ -55,7 +55,7 @@ abstract class BridgeService(private val tag: String) {
                     currentDelayMs = 500L
                 } else {
                     val idleMs = System.currentTimeMillis() - lastActiveMs
-                    currentDelayMs = if (idleMs > 5000) {
+                    currentDelayMs = if (idleMs > 1000) {
                         (currentDelayMs * 2).coerceAtMost(maxDelayMs)
                     } else {
                         500L

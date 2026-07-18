@@ -4,7 +4,7 @@ set -euo pipefail
 required_files=(
   "AGENTS.md"
   "current-task.md"
-  "docs/architecture.md"
+  "docs/app-architecture.md"
   "docs/verification.md"
   "docs/coding-guidelines.md"
   "docs/decisions.md"

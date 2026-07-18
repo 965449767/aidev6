@@ -234,7 +234,12 @@ object TerminalShellAssets {
             AIDEV_RESET="$(printf '\033[0m')"
             _aidev_ps1() {
               local _p="${'$'}{PWD/#${'$'}HOME/\~}"
-              PS1="${'$'}{AIDEV_REALM_COLOR}aidev[${'$'}{AIDEV_REALM:-H}]${'$'}{AIDEV_RESET}:${'$'}{_p}# "
+              # 用 ANSI-C 引号 $'\001'/$'\002' 产生真实控制字节（mksh 的 printf '\001' 不折叠成字节，
+              # 会原样打印成字面 001002）。0x01/0x02 是 readline 的忽略标记：包裹其间的 ANSI 颜色，
+              # 行编辑器计为零宽，否则颜色转义被当可见字符算入 PS1 宽度 → 光标错位、命令视觉断开。
+              local _i=$'\001'
+              local _o=$'\002'
+              PS1="${'$'}{_i}${'$'}{AIDEV_REALM_COLOR}${'$'}{_o}aidev[${'$'}{AIDEV_REALM:-H}]${'$'}{_i}${'$'}{AIDEV_RESET}${'$'}{_o}:${'$'}{_p}# "
               pwd > /host-home/.aidev-current-pwd 2>/dev/null || true
             }
             case "${'$'}{PROMPT_COMMAND:-}" in

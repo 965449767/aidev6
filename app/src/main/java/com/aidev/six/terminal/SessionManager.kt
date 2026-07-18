@@ -28,6 +28,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.termux.terminal.TerminalEmulator
@@ -61,6 +62,9 @@ class SessionManager(
         set(value) { completionEngine?.cachedCompletionPwd = value }
     private var pwdObserverJob: Job? = null
     private var pwdFileObserver: FileObserver? = null
+
+    /** pwd 变化事件流（由已有 FileObserver 驱动），供 Compose 侧订阅，避免 1s 轮询唤醒。 */
+    val pwdState = MutableStateFlow("")
 
     private val _sessions = mutableStateListOf<EmbeddedTermSession>()
     val sessions: List<EmbeddedTermSession> get() = _sessions
@@ -405,7 +409,10 @@ class SessionManager(
         if (pwdFile.isFile) {
             try {
                 val content = pwdFile.readText().trim()
-                if (content.isNotBlank()) cachedCompletionPwd = content
+                if (content.isNotBlank()) {
+                    cachedCompletionPwd = content
+                    pwdState.value = content
+                }
             } catch (e: Exception) {
                 Log.w("SessionManager", "read pwd failed", e)
             }
@@ -416,7 +423,10 @@ class SessionManager(
                 if (pwdFile.isFile) {
                     try {
                         val content = pwdFile.readText().trim()
-                        if (content.isNotBlank()) cachedCompletionPwd = content
+                        if (content.isNotBlank()) {
+                            cachedCompletionPwd = content
+                            pwdState.value = content
+                        }
                     } catch (e: Exception) {
                         Log.w("SessionManager", "FileObserver read pwd failed", e)
                     }
@@ -433,9 +443,12 @@ class SessionManager(
     fun startConsumeLoop() {
         consumeLoopJob?.cancel()
         consumeLoopJob = scope?.launch {
+            var idleTicks = 0
             while (isActive) {
+                val had = TerminalCommandBus.peek() != null
                 consumePendingCommand()
-                delay(500)
+                // 有命令时快速轮询（500ms），空闲时退避到 2s，减少持续唤醒。
+                delay(if (had) 500L else 2000L.also { idleTicks++ })
             }
         }
     }

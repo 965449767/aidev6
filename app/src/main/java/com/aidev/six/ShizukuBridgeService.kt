@@ -200,9 +200,11 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
     private fun appendCapped(file: File, text: String) {
         runCatching {
             file.appendText(text)
-            // 防止 follow 日志文件无限增长：超过上限时回收到最近一半。
+            // 防止 follow 日志文件无限增长：超过上限时截取最后 2000 行。
+            // 使用 readLines（仅超限时触发一次），避免原 readText().takeLast() 每行全量读入内存。
             if (file.length() > FOLLOW_LOG_MAX) {
-                file.writeText(file.readText().takeLast(FOLLOW_LOG_MAX / 2))
+                val lines = file.readLines()
+                file.writeText(lines.takeLast(2000).joinToString("\n"))
             }
         }.onFailure { AIDevLogger.w("ShizukuBridge", "append log line failed", it) }
     }

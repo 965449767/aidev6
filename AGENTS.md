@@ -83,10 +83,9 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug
 | File | Content |
 |------|---------|
 | `docs/app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、与 AI 工具解耦关系 |
-| `docs/architecture.md` | **（符号链接→`opencode-architecture.md`）** OpenCode HTTP/SSE 协议参考（仅供用户自装工具查阅），非 App 集成 |
-| `docs/opencode-architecture.md` | OpenCode HTTP/SSE 协议参考（仅参考，宿主已不集成） |
-| `docs/opencode-web-ui-reference.md` | OpenCode 官方 Web 前端设计参考 |
-| `docs/self-evolution-loop.md` | 自我进化闭环文件契约（**已退役**，保留为历史参考） |
+| `docs/archive/opencode-architecture.md` | **（已归档）** OpenCode HTTP/SSE 协议参考（仅供用户自装工具查阅），非 App 集成 |
+| `docs/archive/opencode-web-ui-reference.md` | **（已归档）** OpenCode 官方 Web 前端设计参考 |
+| `docs/archive/self-evolution-loop.md` | **（已归档·已退役）** 自我进化闭环文件契约，保留为历史参考 |
 | `docs/verification.md` | validation matrix per change type |
 | `docs/coding-guidelines.md` | Android, terminal, and agent conventions |
 | `docs/decisions.md` | 稳定架构决策日志（single source of truth；含 Phase F/G 冻结判据） |

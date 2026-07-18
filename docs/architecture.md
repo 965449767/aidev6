@@ -1,1 +1,0 @@
-opencode-architecture.md

@@ -8,6 +8,8 @@ object TerminalCommandBus {
 
     fun consume(): String? = queue.poll()
 
+    fun peek(): String? = queue.peek()
+
     fun post(command: String) {
         if (queue.size >= MAX_QUEUE_SIZE) {
             queue.poll()

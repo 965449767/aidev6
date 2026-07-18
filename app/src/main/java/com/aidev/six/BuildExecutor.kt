@@ -84,6 +84,9 @@ internal object BuildExecutor {
         val ws = bc.ws
         val append = bc::append
 
+        // 构建期间临时持唤醒锁，避免编译中途被系统休眠打断；结束即释放（见 KeepAliveService 按需持锁）。
+        KeepAliveService.acquireBuildLocks(ctx)
+        try {
         bc.timer.beginStep("准备宇宙 B")
         BuildEnvironmentSetup.ensureCompilerRootfs(ctx, id, append, activeProcesses, cancelledIds)
         bc.timer.endStep("rootfs + JDK + aapt2")
@@ -221,6 +224,9 @@ internal object BuildExecutor {
         }
         bc.timer.endStep("编译成功")
         return CompileResult(true, exitCode = exit)
+        } finally {
+            KeepAliveService.releaseBuildLocks()
+        }
     }
 
     internal fun isOnline(): Boolean = try {
