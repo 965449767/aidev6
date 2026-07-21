@@ -324,10 +324,6 @@ AIDEV_BOOTSTRAP_EOF
           cat > "${'$'}AIDEV_ROOTFS/root/.bashrc" <<'AIDEV_BASHRC_AGENT_EOF'
 # AIDEV_PWD_HOOK_BEGIN
 . /host-home/.aidevrc
-# pure-bash override: redirect /system/bin/sh -> /bin/sh, strip /system/ from PATH
-__f() { while IFS= read __l; do case "${'$'}__l" in */system/bin/sh*) echo "${'$'}{__l%%/system/bin/sh*}/bin/sh${'$'}{__l#*/system/bin/sh}";; *) echo "${'$'}__l";; esac; done; }
-eval "$(declare -f | __f)"
-unset -f __f
 _p="${'$'}PATH"; PATH=""
 while [ -n "${'$'}_p" ]; do _e="${'$'}{_p%%:*}"; case "${'$'}_e" in /system/*) ;; *) PATH="${'$'}{PATH:+${'$'}PATH:}${'$'}_e" ;; esac; [ "${'$'}_p" = "${'$'}_e" ] && _p="" || _p="${'$'}{_p#*:}"; done
 unset _p _e
@@ -441,10 +437,6 @@ AIDEV_BASHRC_AGENT_EOF
             cat > "${'$'}bashrc" << 'AIDEV_PWD_HOOK_EOF'
 # AIDEV_PWD_HOOK_BEGIN
 . /host-home/.aidevrc
-# pure-bash override: redirect /system/bin/sh -> /bin/sh, strip /system/ from PATH
-__f() { while IFS= read __l; do case "${'$'}__l" in */system/bin/sh*) echo "${'$'}{__l%%/system/bin/sh*}/bin/sh${'$'}{__l#*/system/bin/sh}";; *) echo "${'$'}__l";; esac; done; }
-eval "$(declare -f | __f)"
-unset -f __f
 _p="${'$'}PATH"; PATH=""
 while [ -n "${'$'}_p" ]; do _e="${'$'}{_p%%:*}"; case "${'$'}_e" in /system/*) ;; *) PATH="${'$'}{PATH:+${'$'}PATH:}${'$'}_e" ;; esac; [ "${'$'}_p" = "${'$'}_e" ] && _p="" || _p="${'$'}{_p#*:}"; done
 unset _p _e

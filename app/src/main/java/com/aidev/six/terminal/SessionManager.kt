@@ -2,6 +2,7 @@ package com.aidev.six.terminal
 
 import android.app.Activity
 import android.content.ClipData
+import android.os.Build
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.FileObserver
@@ -49,6 +50,7 @@ class SessionManager(
     companion object {
         private const val TAG = "SessionManager"
         @Volatile private var shellAssetsDeployed = false
+        @Volatile private var shellAssetsVersionCode = -1L
         private const val PREFS_KEY_COUNT = "terminal_session_count"
         private const val PREFS_KEY_SESSION = "terminal_session_"
         private const val MAX_SESSIONS = 8
@@ -116,10 +118,17 @@ class SessionManager(
         val s = scope ?: return
         val act = activity ?: return
         val savedTheme = currentTheme()
-        Log.d(TAG, "ensureSession: start, shellAssetsDeployed=$shellAssetsDeployed")
+        val currentCode = runCatching {
+            val pkg = act.packageManager.getPackageInfo(act.packageName, 0)
+            if (Build.VERSION.SDK_INT >= 28) pkg.longVersionCode else pkg.versionCode.toLong()
+        }.getOrDefault(-1L)
+        val codeMarker = File(act.filesDir, "home/.aidev-deploy-code")
+        val sameCode = codeMarker.isFile && codeMarker.readText().trim() == currentCode.toString()
+        val needsDeploy = !shellAssetsDeployed || !sameCode || currentCode != shellAssetsVersionCode
+        Log.d(TAG, "ensureSession: start, shellAssetsDeployed=$shellAssetsDeployed sameCode=$sameCode needsDeploy=$needsDeploy currentCode=$currentCode")
         s.launch(Dispatchers.IO) {
             val shellAssets: TerminalShellAssetPaths
-            if (shellAssetsDeployed) {
+            if (!needsDeploy) {
                 val home = TerminalShellAssetPaths(File(act.filesDir, "home"), File(act.filesDir, "home/.aidev_shell_entry"))
                 shellAssets = home
             } else {
@@ -133,6 +142,8 @@ class SessionManager(
                     return@launch
                 }
                 shellAssetsDeployed = true
+                shellAssetsVersionCode = currentCode
+                runCatching { codeMarker.writeText("$currentCode\n") }
             }
             withContext(Dispatchers.Main) {
                 Log.d(TAG, "ensureSession: onMain start, sessions.isEmpty=${_sessions.isEmpty()}")
@@ -310,6 +321,9 @@ class SessionManager(
             }
             override fun onTitleChanged(changedSession: TerminalSession) {}
             override fun onSessionFinished(finishedSession: TerminalSession) {
+                val exitStatus = finishedSession.getExitStatus()
+                val pid = finishedSession.getPid()
+                Log.d(TAG, "session finished: pid=$pid exitStatus=$exitStatus")
                 renderScheduler?.scheduleUpdate() ?: tv?.onScreenUpdated()
             }
             override fun onCopyTextToClipboard(session: TerminalSession, text: String) {

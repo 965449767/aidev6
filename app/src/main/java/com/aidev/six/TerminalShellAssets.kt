@@ -19,6 +19,17 @@ object TerminalShellAssets {
 
     fun ensure(activity: Activity): TerminalShellAssetPaths {
         val home = File(activity.filesDir, "home").apply { mkdirs() }
+        val errFile = File(home, ".aidev-init-error")
+        return try {
+            ensureInner(activity, home, errFile)
+        } catch (e: Throwable) {
+            runCatching { errFile.writeText("${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}\n") }
+            throw e
+        }
+    }
+
+    private fun ensureInner(activity: Activity, home: File, errFile: File): TerminalShellAssetPaths {
+        errFile.delete()
         File(home, "workspace").mkdirs()
         val rc = File(home, ".aidevrc")
         val entry = File(home, ".aidev_shell_entry")
@@ -196,22 +207,15 @@ object TerminalShellAssets {
         val v = getVersionCode(activity)
         rc.writeText(
             """
-            # AIDev canonical shell rc. 自动生成，请不要在这里保存个人配置。
-            # source 期间关闭历史记录，避免下方大量函数定义/alias 被写入历史（否则方向键会翻出函数体）。
-            set +o history 2>/dev/null || true
+            # AIDev canonical shell rc.
             AIDEV_VERSION="$v"
-            # 宿主 AIDEV_HOME 为 App 私有绝对路径；在 proot 内(终端环境)宿主 home 绑定于 /host-home。
-            # 本 rc 会被 rootfs 的 .bashrc 通过 `. /host-home/.aidevrc` 复用，故须按位置解析，避免命令指向不存在的宿主路径。
             if [ -d /host-home ]; then AIDEV_HOME="/host-home"; else AIDEV_HOME="${home.absolutePath}"; fi
             AIDEV_BIN="${'$'}AIDEV_HOME/dev-env/bin"
-            # 用户覆盖层：自定义命令放此处优先于出厂脚本，且不被 copyAssetScripts 覆盖（见 docs/error-journal 2026-07-17）。
             AIDEV_OVERRIDES="${'$'}AIDEV_HOME/overrides/bin"
             AIDEV_ROOTFS="${'$'}AIDEV_HOME/ubuntu-rootfs"
             AIDEV_WORKSPACE="${'$'}AIDEV_HOME/workspace"
             AIDEV_NATIVE="$nativeDir"
-            # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区）
             AIDEV_PROOT_LIBS="$nativeDir"
-            # libtalloc.so.2 版本化 soname 的符号链接目录（加入 LD_LIBRARY_PATH）
             AIDEV_PROOT_EXTRA_LIBS="$prootExtraLibs"
             AIDEV_PROOT="${'$'}AIDEV_PROOT_LIBS/libproot.so"
             AIDEV_PROOT_LOADER="${'$'}AIDEV_PROOT_LIBS/libproot_loader.so"
@@ -227,24 +231,38 @@ object TerminalShellAssets {
             export PATH="${'$'}{AIDEV_OVERRIDES}:/usr/local/bin:${'$'}AIDEV_BIN:${'$'}ANDROID_SDK_ROOT/cmdline-tools/latest/bin:/system/bin:/system/xbin:${'$'}PATH"
             AIDEV_REALM="${'$'}{AIDEV_REALM:-H}"
             case "${'$'}AIDEV_REALM" in
-              U) AIDEV_REALM_COLOR="$(printf '\033[32m')" ;;
-              H|*) AIDEV_REALM_COLOR="$(printf '\033[36m')" ;;
+              H) AIDEV_PROMPT_COLOR='36' ;;
+              U) AIDEV_PROMPT_COLOR='33' ;;
+              R) AIDEV_PROMPT_COLOR='31' ;;
+              *) AIDEV_PROMPT_COLOR='35' ;;
             esac
             AIDEV_RESET="$(printf '\033[0m')"
             _aidev_ps1() {
-              local _p="${'$'}{PWD/#${'$'}HOME/\~}"
-              # 用 ANSI-C 引号 $'\001'/$'\002' 产生真实控制字节（mksh 的 printf '\001' 不折叠成字节，
-              # 会原样打印成字面 001002）。0x01/0x02 是 readline 的忽略标记：包裹其间的 ANSI 颜色，
-              # 行编辑器计为零宽，否则颜色转义被当可见字符算入 PS1 宽度 → 光标错位、命令视觉断开。
-              local _i=$'\001'
-              local _o=$'\002'
-              PS1="${'$'}{_i}${'$'}{AIDEV_REALM_COLOR}${'$'}{_o}aidev[${'$'}{AIDEV_REALM:-H}]${'$'}{_i}${'$'}{AIDEV_RESET}${'$'}{_o}:${'$'}{_p}# "
-              pwd > /host-home/.aidev-current-pwd 2>/dev/null || true
+              local r="${'$'}?"
+              local c="\033[1;${'$'}{AIDEV_PROMPT_COLOR}m"
+              local s="\033[2m"
+              case "${'$'}TERM" in
+                screen-*|tmux*) printf "\033kAIDev\033\\" ;;
+              esac
+              local rd="${'$'}{PWD}"
+              case "${'$'}rd" in
+                "${'$'}HOME"*) rd="~${'$'}{rd#${'$'}HOME}" ;;
+              esac
+              printf "\r\033[0m\033[K\033[1;32m%.8s\033[0m" "${'$'}{AIDEV_VERSION:-?}"
+              printf " \033[1;34m%s\033[0m" "${'$'}{AIDEV_REALM}"
+              printf " \033[1;36m%s\033[0m" "${'$'}{rd}"
+              if [ "${'$'}r" -ne 0 ]; then printf " \033[1;31m✗%d\033[0m" "${'$'}r"; fi
+              case "${'$'}{AIDEV_REALM:-H}" in
+                U) printf "\n${'$'}{AIDEV_RESET}" ;;
+                *) printf "\n${'$'}{AIDEV_RESET} " ;;
+              esac
             }
             case "${'$'}{PROMPT_COMMAND:-}" in
-              *_aidev_ps1*) ;;
-              *) PROMPT_COMMAND="_aidev_ps1${'$'}{PROMPT_COMMAND:+;${'$'}{PROMPT_COMMAND}}" ;;
+              *'_aidev_ps1'*) ;;
+              *) PROMPT_COMMAND="_aidev_ps1${'$'}{PROMPT_COMMAND:+; ${'$'}PROMPT_COMMAND}" ;;
             esac
+            export HISTFILE="${'$'}HOME/.aidev_history"
+            export HISTSIZE=2000 HISTFILESIZE=2000
             alias ll='ls -lah'
             [ -f "${'$'}HOME/.aidev_aliases" ] && . "${'$'}HOME/.aidev_aliases"
             android-sh() { /system/bin/sh -lc "${'$'}*"; }
@@ -268,7 +286,6 @@ object TerminalShellAssets {
             aidev-gen() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-gen "${'$'}@"; }
             aidev-error-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-error-why "${'$'}@"; }
             aidev-index() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-index "${'$'}@"; }
-            android-sh() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" android-sh "${'$'}@"; }
             aidev-autoinstall() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-autoinstall "${'$'}@"; }
             aidev-clean() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-clean "${'$'}@"; }
             list-listen-ports() { /system/bin/sh "${'$'}AIDEV_BIN/list-listen-ports" "${'$'}@"; }
@@ -280,27 +297,8 @@ object TerminalShellAssets {
             aidev-tombstone() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-tombstone "${'$'}@"; }
             aidev-crash-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-crash-why "${'$'}@"; }
             aidev-dumpsys() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-dumpsys "${'$'}@"; }
-            # 交互历史 / 行编辑：必须在所有函数定义之后开启，否则上方函数体被写入历史，
-            # 方向键会翻出函数定义文本。source 开头已 set +o history 关闭记录，此处恢复。
-            case "$-" in
-              *i*)
-                export HISTFILE="${'$'}{HOME:-/data/data/com.aidev.six/files/home}/.aidev_sh_history"
-                export HISTSIZE=2000 HISTFILESIZE=2000
-                # 清理历史文件中的函数定义/转义残片（旧版本把 rc 函数体写进了历史，需一次性净化）。
-                # 注意：不得用 grep —— 宿主 /system/bin/grep 可能是坏架构二进制
-                # （cannot execute: required file not found），每次 source 本 rc 都会报错。
-                _aidev_purge=0
-                if [ -f "${'$'}{HISTFILE:-}" ]; then
-                  while IFS= read -r _aidev_line; do
-                    case "${'$'}_aidev_line" in
-                      *'() {'*|*'aidev[A]'*) _aidev_purge=1; break ;;
-                    esac
-                  done < "${'$'}{HISTFILE}"
-                fi
-                [ "${'$'}_aidev_purge" = 1 ] && : > "${'$'}{HISTFILE}" 2>/dev/null || true
-                set -o emacs 2>/dev/null || true
-                set -o history 2>/dev/null || true
-                ;;
+            case "${'$'}{AIDEV_REALM:-H}" in
+              H) [ -x "${'$'}{AIDEV_ROOTFS}/bin/bash" ] && ubuntu ;;
             esac
             """.trimIndent() + "\n"
         )
@@ -315,20 +313,9 @@ object TerminalShellAssets {
     }
 
     private fun writeShellEntry(home: File, rc: File, entry: File) {
-        val core = File(home, "dev-env/bin/aidev-ubuntu-core")
-        val ready = File(home, "ubuntu-rootfs/.aidev-rootfs-ready")
         entry.writeText(
             """
-            export ENV="${rc.absolutePath}"
-            if [ -f "${ready.absolutePath}" ] && [ -f "${core.absolutePath}" ]; then
-              /system/bin/sh "${core.absolutePath}" aidev-auto-bootstrap
-            fi
-            # 交互历史 / 行编辑：env 由 exec 继承；rc 亦经 ENV 加载并在末尾开启 history。
-            # 此处保持 history 关闭，避免 entry 固定脚本行进历史（rc 顶部已 set +o history）。
-            set +o history 2>/dev/null || true
-            export HISTFILE="${'$'}{HOME:-/data/data/com.aidev.six/files/home}/.aidev_sh_history"
-            export HISTSIZE=2000 HISTFILESIZE=2000
-            exec sh -i
+            exec /system/bin/sh -i
             """.trimIndent() + "\n"
         )
     }
