@@ -56,15 +56,12 @@ internal object CommandCatalog {
                 "      aidev-build-log DebugTest --tail 100",
         ),
         CommandInfo(
-            "aidev-deploy", "构建/部署",
-            "部署黑盒：把 APK 装到真机并（可选）启动，封装 Shizuku 安装/启动/权限。",
-            "aidev-deploy --apk <apk路径> --pkg <包名> [--launch|--no-launch]",
-        ),
-        CommandInfo(
-            "aidev-install", "构建/部署",
-            "安装 APK，支持静默（Shizuku）/标准（系统安装器）两种模式。",
-            "aidev-install [options] <apk_path>\n" +
-                "  例：aidev-install app-debug.apk",
+            "aidev-autoinstall", "构建/部署",
+            "全自动安装 APK。自动检测 Shizuku 状态，可用则静默安装，不可用则降级为系统安装界面（手机确认）。",
+            "aidev-autoinstall [options] <apk_path>\n" +
+                "  --launch <包名>      安装后启动应用\n" +
+                "  例：aidev-autoinstall app-debug.apk\n" +
+                "      aidev-autoinstall --launch com.example.app app-debug.apk",
         ),
         CommandInfo(
             "aidev-verify-run", "构建/部署",

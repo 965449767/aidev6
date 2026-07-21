@@ -124,7 +124,7 @@ class CompletionEngine(
         TerminalCompletion("aidev-gen", "aidev-gen", "CMD"),
         TerminalCompletion("aidev-error-why", "aidev-error-why", "CMD"),
         TerminalCompletion("aidev-index", "aidev-index", "CMD"),
-        TerminalCompletion("aidev-install", "aidev-install", "CMD"),
+        TerminalCompletion("aidev-autoinstall", "aidev-autoinstall", "CMD"),
         TerminalCompletion("aidev-clean", "aidev-clean", "CMD"),
         TerminalCompletion("aidev-proxy", "aidev-proxy", "CMD"),
         TerminalCompletion("aidev-logcat", "aidev-logcat", "CMD"),

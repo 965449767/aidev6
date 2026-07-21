@@ -8,7 +8,7 @@ PROJECT_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" >/dev/null 
 
 CCP="$PROJECT_ROOT/app/src/main/assets/scripts/create-compose-project.sh"
 PRECACHE="$PROJECT_ROOT/app/src/main/assets/scripts/aidev-precache.sh"
-BRIDGE="$PROJECT_ROOT/app/src/main/java/com/aidev/six/BuildEnvironmentSetup.kt"
+BRIDGE="$PROJECT_ROOT/app/src/main/java/com/aidev/six/build/BuildEnvironmentSetup.kt"
 
 # --- create-compose-project: Gradle 分发 ---
 assert_contains "$(cat "$CCP" 2>/dev/null)" "aidev-repo decide android-gradle" \

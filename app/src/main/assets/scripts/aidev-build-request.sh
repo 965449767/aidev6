@@ -112,7 +112,7 @@ if [ "$SUCCESS" = "true" ]; then
   [ -n "$MESSAGE" ] && echo "消息: $MESSAGE"
   if [ -n "$APK" ] && [ "$APK" != "null" ]; then
     echo "APK: $APK"
-    echo "→ 部署: aidev-deploy --apk $APK --pkg <包名>"
+    echo "→ 安装: aidev-autoinstall --launch <包名> $APK"
   fi
   exit 0
 else

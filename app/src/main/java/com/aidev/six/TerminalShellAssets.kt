@@ -128,8 +128,8 @@ object TerminalShellAssets {
             "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh",
             "aidev-logcat.sh", "aidev-shizuku.sh",
             "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh",
-            "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-gen.sh",
-            "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
+            "aidev-verify-run.sh", "aidev-gen.sh",
+            "aidev-error-why.sh", "aidev-index.sh", "aidev-autoinstall.sh", "android-sh.sh", "aidev-clean.sh",
             "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh",
             "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh"
         )
@@ -265,12 +265,11 @@ object TerminalShellAssets {
             aidev-logcat() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-logcat "${'$'}@"; }
             aidev-apk-info() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-apk-info "${'$'}@"; }
             aidev-build-request() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-build-request" "${'$'}@"; }
-            aidev-create-android-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" create-compose-project "${'$'}@"; }
             aidev-gen() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-gen "${'$'}@"; }
             aidev-error-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-error-why "${'$'}@"; }
             aidev-index() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-index "${'$'}@"; }
             android-sh() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" android-sh "${'$'}@"; }
-            aidev-install() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-install "${'$'}@"; }
+            aidev-autoinstall() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-autoinstall "${'$'}@"; }
             aidev-clean() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-clean "${'$'}@"; }
             list-listen-ports() { /system/bin/sh "${'$'}AIDEV_BIN/list-listen-ports" "${'$'}@"; }
             task-list() { /system/bin/sh "${'$'}AIDEV_BIN/task-list" "${'$'}@"; }

@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap
  *   home/.aidev-build-bridge/req-<id>.json
  *   { "project": "<workspace 下相对路径或 /workspace/...>", "flavor": "debug" }
  *
- * 构建黑盒只负责出产物（apk_path），部署（安装+启动）交由独立的部署黑盒 aidev-deploy。
+ * 构建黑盒只负责出产物（apk_path），部署（安装+启动）交由 aidev-autoinstall --launch。
  *
  * 本服务轮询该目录，在终端环境（ubuntu-rootfs）内执行 `./gradlew assembleDebug`，
  * 编译产物经共享 workspace 零延迟映射到物理硬盘；成功后静默安装并拉起，

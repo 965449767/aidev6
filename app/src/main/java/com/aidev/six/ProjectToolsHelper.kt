@@ -88,7 +88,7 @@ internal class ProjectToolsHelper(private val h: ProjectToolsHost) {
                     "运行开发服务" -> runInTerminal("cd \"$up\" && ${ProjectCommands.devCommand(dir)}")
                     "运行测试" -> runInTerminal("cd \"$up\" && ${ProjectCommands.testCommand(dir)}")
                     "构建项目" -> runInTerminal("cd \"$up\" && ${ProjectCommands.buildCommand(dir)}")
-                    "安装APK" -> runInTerminal("cd \"$up\" && cp \"$builtApkRel\" /sdcard/$(basename \"$up\")-debug.apk && aidev-install \"/sdcard/$(basename \"$up\")-debug.apk\"")
+                    "安装APK" -> runInTerminal("cd \"$up\" && cp \"$builtApkRel\" /sdcard/$(basename \"$up\")-debug.apk && aidev-autoinstall \"/sdcard/$(basename \"$up\")-debug.apk\"")
                     "运行App" -> runInTerminal("cd \"$up\" && PKG=\$(grep -oP 'namespace\\s*=\\s*\"\\K[^\"]+' app/build.gradle.kts) && am start -n \"\${PKG}/.MainActivity\"")
                     "终端进入目录" -> runInTerminal("cd \"$up\" && pwd && ls -la")
                     "复制项目命令" -> copyProjectCommands(dir)
@@ -372,7 +372,7 @@ internal class ProjectToolsHelper(private val h: ProjectToolsHost) {
         command.contains("install") || command.contains("fetch") -> "依赖"
         command.contains("clean") || command.contains("tidy") -> "修复"
         command.contains("tasks --all") || command.contains("collect-only") -> "诊断"
-        command.contains("aidev-install") || command.contains("pm install") -> "安装"
+        command.contains("aidev-autoinstall") || command.contains("aidev-install") || command.contains("pm install") -> "安装"
         command.contains("am start") -> "运行"
         else -> "命令"
     }

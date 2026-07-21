@@ -136,8 +136,8 @@ class DeployBridgeServiceTest {
     fun validateDeployScript_md5MismatchReturnsError() {
         val home = File(tempDir, "home").apply { mkdirs() }
         val bin = File(home, "dev-env/bin").apply { mkdirs() }
-        File(bin, "aidev-deploy").writeText("old-script-content")
-        File(bin, "aidev-deploy.md5").writeText("deadbeef")
+        File(bin, "aidev-autoinstall").writeText("old-script-content")
+        File(bin, "aidev-autoinstall.md5").writeText("deadbeef")
         val err = call("validateDeployScript", home) as String?
         assertNotNull(err)
         assertTrue(err!!.contains("MD5"))
@@ -147,9 +147,9 @@ class DeployBridgeServiceTest {
     fun validateDeployScript_validReturnsNull() {
         val home = File(tempDir, "home").apply { mkdirs() }
         val bin = File(home, "dev-env/bin").apply { mkdirs() }
-        val script = File(bin, "aidev-deploy").apply { writeText("script-body") }
+        val script = File(bin, "aidev-autoinstall").apply { writeText("script-body") }
         val md5 = md5Of(script)
-        File(bin, "aidev-deploy.md5").writeText(md5)
+        File(bin, "aidev-autoinstall.md5").writeText(md5)
         val err = call("validateDeployScript", home) as String?
         assertNull(err)
     }

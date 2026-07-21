@@ -21,16 +21,14 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 部署桥（黑盒2 落地）。
  *
- * 「服务器中心」面板的「安装 / 拉起」按钮，以及终端的 `aidev-deploy` 命令，
+ * 「服务器中心」面板的「安装 / 拉起」按钮，以及终端的 `aidev-autoinstall --launch` 命令，
  * 都走同一套标准入口/出口，保证服务一致性：
  *
  *   标准入口: 写入 home/.aidev-deploy-bridge/req-<id>.json
  *     { "id", "apk": "<宿主绝对路径>", "pkg": "<包名>", "launch": true/false }
- *   本服务轮询该目录，在【Ubuntu rootfs】内执行 `aidev-deploy --apk ... --pkg ...`，
+ *   本服务轮询该目录，在【Ubuntu rootfs】内执行 `aidev-autoinstall --json [--launch ...] ...`，
  *   解析其标准出口 JSON（{installed,launched,activity,error}），把进度/结果作为单一真源写入
  *   task-records.json（AF 面板轮询即看到一致过程），并写回 result-<id>.json。
- *
- * 部署黑盒的实现（Shizuku 静默安装 / 启动 / 二次校验）完全由 aidev-deploy 负责，本服务不越界。
  */
 object DeployBridgeService : BridgeService("DeployBridge") {
 
@@ -64,7 +62,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
                 runCatching { orphan.delete() }
             }
         }
-        // 部署黑盒脚本由 assets 落地到 dev-env/bin（PRoot 内 /host-home/dev-env/bin），
+        // 安装脚本由 assets 落地到 dev-env/bin（PRoot 内 /host-home/dev-env/bin），
         // 保证不打开终端也能 headless 调用（与 BuildBridgeService 自带 gradlew 同理）。
         runCatching { ensureDeployScripts(homeDir) }
             .onFailure { AIDevLogger.e("DeployBridge", "ensureDeployScripts failed", it) }
@@ -111,8 +109,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         val ctx = appCtx ?: return
         val bin = File(home, "dev-env/bin").apply { mkdirs() }
         val assets = mapOf(
-            "aidev-deploy.sh" to "aidev-deploy",
-            "aidev-install.sh" to "aidev-install",
+            "aidev-autoinstall.sh" to "aidev-autoinstall",
             "aidev-shizuku.sh" to "aidev-shizuku",
             "aidev-verify-run.sh" to "aidev-verify-run"
         )
@@ -150,7 +147,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
     }
 
     /**
-     * 部署入口脚本校验（MD5 握手 + Fail-Fast）：
+     * 安装脚本校验（MD5 握手 + Fail-Fast）：
      * 1) 脚本与 .md5 校验文件必须同时存在；
      * 2) 脚本实际 MD5 必须与 .md5 内容一致（拒绝旧/损坏/被截断的副本）。
      * 校验路径与 PRoot 内 AIDEV_HOME（/host-home）一致，规避 Android 侧真实 files/home
@@ -159,15 +156,15 @@ object DeployBridgeService : BridgeService("DeployBridge") {
      */
     private fun validateDeployScript(home: File): String? {
         val bin = File(home, "dev-env/bin")
-        val script = File(bin, "aidev-deploy")
-        val md5File = File(bin, "aidev-deploy.md5")
+        val script = File(bin, "aidev-autoinstall")
+        val md5File = File(bin, "aidev-autoinstall.md5")
         if (!script.exists() || !md5File.exists()) {
-            return "部署入口脚本或校验文件缺失（Agent 需在构建后投递 aidev-deploy + aidev-deploy.md5 到共享 home/bin）"
+            return "安装脚本或校验文件缺失"
         }
         val expect = runCatching { md5File.readText().trim().split("\\s+".toRegex())[0] }.getOrNull() ?: ""
         val actual = md5Of(script)
         if (expect.isEmpty() || actual.isEmpty() || expect != actual) {
-            return "部署脚本 MD5 不匹配（期望=$expect 实际=$actual），拒绝执行旧/损坏脚本"
+            return "安装脚本 MD5 不匹配（期望=$expect 实际=$actual），拒绝执行旧/损坏脚本"
         }
         return null
     }
@@ -208,8 +205,8 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             val rec = TaskRecord(
                 definition = TaskDefinition(
                     id = "deploy-$id", name = "部署 $pkg",
-                    description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
-                    command = "aidev-deploy --apk $apk --pkg $pkg${if (launch) " --launch" else " --no-launch"}",
+                    description = "aidev-autoinstall 安装${if (launch) "并拉起" else ""} ($pkg)",
+                    command = "aidev-autoinstall --json${if (launch) " --launch $pkg" else ""} $apk",
                     workingDirectory = PathConfig.workspaceDir(ctx).absolutePath,
                     tags = listOf("deploy", "self-evolution")
                 ),
@@ -226,13 +223,19 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         }
 
         // 部署在 PRoot 内执行，宿主绝对路径（/data/user/0/.../files/home/...）在 PRoot 视图中不可见；
-        // 必须用 PRoot 绑定视图路径 /host-home/...（与 line 259 的 AIDEV_HOME 一致）。
-        val deployScript = "/host-home/dev-env/bin/aidev-deploy"
+        // 必须用 PRoot 绑定视图路径 /host-home/...（与 AIDEV_HOME 一致）。
+        val deployScript = "/host-home/dev-env/bin/aidev-autoinstall"
+        val (prootApk, extraBinds) = toProotPath(apk, PathConfig.workspaceDir(ctx))
+        val cmdFlags = buildString {
+            append("--json")
+            if (launch) append(" --launch '${shEscape(pkg)}'")
+            append(" ")
+        }
         val definition = TaskDefinition(
             id = "deploy-$id",
             name = "部署 $pkg",
-            description = "aidev-deploy 安装${if (launch) "并拉起" else ""} ($pkg)",
-            command = "$deployScript --apk $apk --pkg $pkg${if (launch) " --launch" else " --no-launch"}",
+            description = "aidev-autoinstall 安装${if (launch) "并拉起" else ""} ($pkg)",
+            command = "$deployScript $cmdFlags'${shEscape(prootApk)}'",
             workingDirectory = PathConfig.workspaceDir(ctx).absolutePath,
             tags = listOf("deploy", "self-evolution")
         )
@@ -285,8 +288,6 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         publish(TaskStatus.RUNNING, -1, 0L, initSteps, "已提交部署请求，等待执行…")
         notify(ctx, "AIDev 部署", "开始部署 $pkg", "default")
 
-        val (prootApk, extraBinds) = toProotPath(apk, PathConfig.workspaceDir(ctx))
-        val cmd = "$deployScript --apk '${shEscape(prootApk)}' --pkg '${shEscape(pkg)}' ${if (launch) "--launch" else "--no-launch"}"
         val opts = ProotLauncher.Options(
             rootfs = PathConfig.rootfs(ctx).absolutePath,
             cwd = "/workspace",
@@ -299,6 +300,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             redirectErrorStream = true
         )
 
+        val cmd = "$deployScript $cmdFlags'${shEscape(prootApk)}'"
         val result = runCatching { ProotLauncher.run(ctx, cmd, opts) { activeProcesses[id] = it } }.getOrElse {
             val log = "✗ 部署执行异常: ${it.message}"
             publish(TaskStatus.FAILED, -1, System.currentTimeMillis(),
@@ -335,7 +337,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         )
 
         val logText = buildString {
-            append("aidev-deploy 输出:\n")
+            append("aidev-autoinstall 输出:\n")
             append(result.stdout.takeLast(4000))
             if (error != null) append("\n错误: $error")
             append("\n安装: ${if (installed) "成功" else "失败"}   拉起: ${if (launched) "成功" else if (launch) "失败" else "未请求"}")
@@ -347,7 +349,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
             success && launched -> "部署成功：已安装并拉起"
             success && !launch -> "部署成功：已安装"
             installed && !launched -> "已安装，但拉起失败：${error ?: ""}"
-            deploy == null -> "部署失败：aidev-deploy 未输出结构化结果。原始输出：\n$rawTail"
+            deploy == null -> "部署失败：aidev-autoinstall 未输出结构化结果。原始输出：\n$rawTail"
             else -> "部署失败：${error ?: "未知原因"}。原始输出：\n$rawTail"
         }
         if (!success) AIDevLogger.i("DeployBridge", "request $id 失败 rawStdout=\n${result.stdout.takeLast(1500)}")

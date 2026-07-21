@@ -30,7 +30,7 @@ object UbuntuBootstrapScripts {
         }
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh", "aidev-verify-run.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-autoinstall.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
@@ -468,12 +468,11 @@ AIDEV_PWD_HOOK_EOF
           aidev-doctor) aidev_doctor_android ;;
           setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" "${'$'}@" ;;
           aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" "${'$'}@" ;;
-          aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" "${'$'}@" ;;
+          aidev-autoinstall) run_ubuntu_command "/usr/local/bin/aidev-autoinstall" "${'$'}@" ;;
           aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" "${'$'}@" ;;
           aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" "${'$'}@" ;;
           aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" "${'$'}@" ;;
           aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" "${'$'}@" ;;
-          aidev-install) run_ubuntu_command "/usr/local/bin/aidev-install" "${'$'}@" ;;
           android-sh) run_ubuntu_command "/usr/local/bin/android-sh" "${'$'}@" ;;
           aidev-clean) run_ubuntu_command "/usr/local/bin/aidev-clean" "${'$'}@" ;;
           fix-bashrc) fix_bashrc ;;
