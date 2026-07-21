@@ -1,12 +1,10 @@
+import com.android.build.api.dsl.ApplicationExtension
 import java.io.File
 import java.io.FileInputStream
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Properties
-import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Provider
-import org.gradle.api.provider.ValueSource
-import org.gradle.api.provider.ValueSourceParameters
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -16,26 +14,17 @@ plugins {
 }
 
 /**
- * 执行外部命令并返回 stdout（使用 providers.exec，兼容 Gradle 配置缓存）。
- * 配置缓存要求所有外部进程调用必须通过 Gradle 的 Provider API 声明。
+ * 执行外部命令并返回 stdout。使用 provider {} 实现惰性求值，兼容配置缓存。
  */
-fun execCmd(vararg cmd: String): Provider<String> = providers.of(ExecValueSource::class) {
-    it.parameters { args -> args.commandLine.set(cmd.toList()) }
-}.map { result -> result.trim() }
-
-abstract class ExecValueSource : ValueSource<String, ExecValueSource.Params> {
-    interface Params : ValueSourceParameters {
-        val commandLine: ListProperty<String>
-    }
-    override fun obtain(): String {
-        return try {
-            ProcessBuilder(parameters.commandLine.get())
-                .directory(File("."))
-                .redirectErrorStream(true)
-                .start()
-                .inputStream.bufferedReader().readText()
-        } catch (_: Exception) { "" }
-    }
+fun execCmd(vararg cmd: String): Provider<String> = providers.provider {
+    try {
+        ProcessBuilder(cmd.toList())
+            .directory(project.projectDir)
+            .redirectErrorStream(true)
+            .start()
+            .apply { waitFor() }
+            .inputStream.bufferedReader().readText().trim()
+    } catch (_: Exception) { "" }
 }
 
 // git 信息：使用 providers.exec 以支持 Gradle 配置缓存
@@ -82,7 +71,7 @@ val keystoreProps = rootProject.file("keystore.properties").takeIf { it.isFile }
     Properties().apply { load(FileInputStream(it)) }
 }
 
-android {
+configure<ApplicationExtension> {
     namespace = "com.aidev.six"
     compileSdk = 36
     buildToolsVersion = "36.1.0"
@@ -163,10 +152,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     lint {
         // P1-4：启用 Lint 并冻结历史问题到基线；后续仅对新引入的问题报错。
         // 首次运行会自动生成 lint-baseline.xml（不阻断构建），之后增量校验。
@@ -178,11 +163,14 @@ android {
     }
 }
 
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 composeCompiler {
-    // Compose 强跳过模式：编译器自动推导哪些 lambda 可以跳过重组，
-    // 无需手动加 @Stable/@Immutable 注解，大幅减少不必要的重组。
-    // 这是 Compose 1.7+ 的最显著性能优化，默认在 Compose Compiler 1.5.7+ 引入。
-    strongSkippingMode = true
+    // Kotlin 2.0 compose 插件默认启用强跳过模式，无需显式设置。
     reportsDestination = layout.buildDirectory.dir("compose-reports")
     metricsDestination = layout.buildDirectory.dir("compose-reports")
 }

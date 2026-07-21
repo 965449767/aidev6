@@ -21,8 +21,6 @@ AIDev
 ├── UI
 ├── IDE
 │      Project / Editor / Terminal
-├── AI
-│      Engine / Session / Context
 ├── Runtime
 │      PRoot / Shell / Bootstrap
 ├── Bridge

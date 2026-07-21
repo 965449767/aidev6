@@ -161,11 +161,6 @@ internal object CommandCatalog {
             "create-compose-project [options] <ProjectName>\n" +
                 "  例：create-compose-project -p com.demo MyApp",
         ),
-        CommandInfo(
-            "aidev-create-android-project", "代码/脚手架",
-            "兼容封装，统一委托 create-compose-project（保留旧接口）。",
-            "aidev-create-android-project [options] <ProjectName>",
-        ),
 
         // ── 环境 / 工具 ───────────────────────────────────────────────
         CommandInfo(
@@ -176,7 +171,7 @@ internal object CommandCatalog {
         CommandInfo(
             "aidev-precache", "环境/工具",
             "预缓存 AIDev 开发基线依赖，保障离线构建。",
-            "aidev-precache [--project <路径>] [--universe-b]",
+            "aidev-precache [--project <路径>]",
         ),
         CommandInfo(
             "aidev-repo", "环境/工具",
@@ -192,11 +187,6 @@ internal object CommandCatalog {
             "setup-dev-env", "环境/工具",
             "初始化 / 修复开发环境（安装脚本、工具链、依赖）。",
             "setup-dev-env",
-        ),
-        CommandInfo(
-            "aidev-ensure-envs", "环境/工具",
-            "确保各 rootfs（Ubuntu / 编译器）环境就绪。",
-            "aidev-ensure-envs",
         ),
         CommandInfo(
             "aidev-bridge", "环境/工具",
@@ -276,24 +266,9 @@ internal object CommandCatalog {
             "ubuntu [command]",
         ),
         CommandInfo(
-            "compiler", "rootfs 管理",
-            "进入 / 操作编译器 rootfs（JDK + Android SDK + Gradle）。",
-            "compiler [command]",
-        ),
-        CommandInfo(
             "install-ubuntu", "rootfs 管理",
             "安装 / 修复主 Ubuntu rootfs。",
             "install-ubuntu",
-        ),
-        CommandInfo(
-            "install-compiler", "rootfs 管理",
-            "安装 / 修复编译器 rootfs。",
-            "install-compiler",
-        ),
-        CommandInfo(
-            "aidev-auto-bootstrap", "rootfs 管理",
-            "会话启动时自动确保 Ubuntu 环境就绪（通常无需手动调用）。",
-            "aidev-auto-bootstrap",
         ),
     )
 

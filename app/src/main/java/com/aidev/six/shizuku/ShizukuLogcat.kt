@@ -1,5 +1,6 @@
 package com.aidev.six.shizuku
 
+import com.aidev.six.ShellResult
 import android.content.pm.PackageManager
 import android.util.Log
 import java.io.BufferedReader

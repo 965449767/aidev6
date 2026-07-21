@@ -18,7 +18,7 @@
 | 图标库 | `androidx.compose.material:material-icons-extended`（基线默认含，离线可用） |
 
 注意：**这是「模板栈」（目标 App），故意与 AIDev 宿主栈（AGP 9.0.1 / Kotlin 2.0.21 / compileSdk 36）不同。**
-宿主 `app/build.gradle.kts` 的 BOM 保持不变（同样 2024.12.01，宇宙 B 不受影响）。
+宿主 `app/build.gradle.kts` 的 BOM 保持不变（同样 2024.12.01）。
 
 两处生成器必须与 `ScaffoldBaseline` 保持一致：
 - `ProjectScaffoldState.generateScript()`（App 内「新建项目」生成的 shell 脚本）
@@ -34,14 +34,13 @@ aidev-precache <project-dir>   # 预缓存指定项目的真实依赖
 ```
 
 - 原理：把依赖解析结果下载进 Gradle 缓存，离线构建不再缺包。
-- **自动同步宇宙 B 缓存**：脚本会探测宇宙 B 在宿主侧的 gradle 缓存真实路径
-  （即 `filesDir/home/gradle-cache`，对应宇宙 B 内 `/host-home/gradle-cache`），
-  把基线依赖也同步过去。这样宇宙 B（编译器 rootfs）**断网也能离线构建**。
-- 也可显式指定落点：`aidev-precache --gradle-home <DIR>`（即 GRADLE_USER_HOME），或
-  `aidev-precache --universe-b` 强制同步到宇宙 B 缓存。
-- **自动预热**：App 内提交构建时，`BuildBridgeService` 会在编译前检测宇宙 B 缓存是否缺基线标记；
-  若缺且联网，自动在宇宙 B 内跑 `./gradlew dependencies` 预热其缓存（落点 `/host-home/gradle-cache`）。
-  因此首次在线构建后，宇宙 B **断网也能离线编译**，无需手动跑 `aidev-precache`（除非要提前备货）。
+- **自动同步编译缓存**：脚本会探测编译环境的 gradle 缓存真实路径
+  （即 `filesDir/home/gradle-cache`，对应 `/host-home/gradle-cache`），
+  把基线依赖也同步过去。这样编译环境**断网也能离线构建**。
+- 也可显式指定落点：`aidev-precache --gradle-home <DIR>`（即 GRADLE_USER_HOME）。
+- **自动预热**：App 内提交构建时，`BuildBridgeService` 会在编译前检测编译缓存是否缺基线标记；
+  若缺且联网，自动跑 `./gradlew dependencies` 预热其缓存（落点 `/host-home/gradle-cache`）。
+  因此首次在线构建后，**断网也能离线编译**，无需手动跑 `aidev-precache`（除非要提前备货）。
 - 自带离线自检：缓存可离线解析才报成功。
 - **仅联网时有意义**；离线运行会明确提示「请联网后重试」。
 

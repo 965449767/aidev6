@@ -109,6 +109,8 @@ fun TerminalPanel(
             } catch (_: Exception) {
                 Toast.makeText(activity, "读取剪贴板失败", Toast.LENGTH_SHORT).show()
             }
+            @Suppress("UNUSED_EXPRESSION")
+            Unit
         }
     }
     val handleNewSession = remember(page) { { page.sessionManager.addSession() } }
@@ -173,9 +175,7 @@ fun TerminalPanel(
         ) {
                 TerminalTopBar(
                     activity = activity,
-                    page = page,
                     onNewSession = handleNewSession,
-                onCopy = {},
                     onPaste = handlePaste,
                     onMore = handleMore,
                     onTogglePerf = handleTogglePerf,
@@ -206,8 +206,9 @@ fun TerminalPanel(
                 TerminalKeyboard(page)
             }
         }
-        if (showPerfHud && perfSample != null) {
-            TerminalPerfHud(perfSample, Modifier.align(Alignment.TopStart).padding(8.dp))
+        val sample = perfSample
+        if (showPerfHud && sample != null) {
+            TerminalPerfHud(sample, Modifier.align(Alignment.TopStart).padding(8.dp))
         }
     }
 

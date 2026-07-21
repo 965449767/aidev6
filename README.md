@@ -46,11 +46,7 @@ bash scripts/harness_check.sh                    # Harness / 文档校验
 ### 项目技术文档（`docs/`）
 | 文件 | 内容 |
 |------|------|
-| `app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信、自我进化闭环 |
-| `architecture.md`（→`opencode-architecture.md`） | OpenCode HTTP/SSE 协议参考（非 App 架构） |
-| `opencode-architecture.md` | OpenCode 集成参考 |
-| `opencode-web-ui-reference.md` | OpenCode Web 前端设计参考 |
-| `self-evolution-loop.md` | 自我进化闭环文件契约（Phase F/G） |
+| `app-architecture.md` | 宿主应用架构：入口、运行时、PRoot 集成、桥接通信 |
 | `silence-install.md` | Shizuku 静默安装方法与修复记录 |
 | `android-guidelines.md` | HyperOS 规则、权限范围、验证 |
 | `coding-guidelines.md` | Android / 终端 / agent 约定 |

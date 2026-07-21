@@ -15,7 +15,7 @@ if [ ! -f "$SRC" ]; then
 fi
 
 # Commands that REQUIRE positional args (must dispatch with "${@}").
-ARG_CMDS="aidev-create-android-project aidev-gen aidev-error-why aidev-index \
+ARG_CMDS="aidev-gen aidev-error-why aidev-index \
 android-sh aidev-clean aidev-backup aidev-logcat aidev-anr aidev-tombstone \
 aidev-crash-why aidev-dumpsys aidev-install aidev-deploy setup-dev-env \
 aidev-apk-info aidev-verify-run"

@@ -1,6 +1,10 @@
 package com.aidev.six.build
 
 import android.content.Context
+import com.aidev.six.AIDevLogger
+import com.aidev.six.KeepAliveService
+import com.aidev.six.PathConfig
+import com.aidev.six.TerminalShellAssets
 import com.aidev.six.monitor.SystemMetricsCollector
 import com.aidev.six.task.BuildProgress.Phase
 import com.aidev.six.terminal.ProotLauncher
@@ -131,7 +135,7 @@ internal object BuildExecutor {
             return CompileResult(false, message = "构建前护栏拦截：${pre.hardErrors.first().removePrefix("✖ ")}")
         }
 
-        val compilerRootfs = PathConfig.compilerRootfs(ctx).absolutePath
+        val rootfs = PathConfig.rootfs(ctx).absolutePath
         val bind = ProotLauncher.ProotBind(ws.absolutePath, "/workspace")
         val aapt2Override = BuildEnvironmentSetup.ensureX86Aapt2(ctx)
         val aapt2Arg = aapt2Override?.let { " -Pandroid.aapt2FromMavenOverride=$it" } ?: ""
@@ -145,7 +149,7 @@ internal object BuildExecutor {
                     ctx, id,
                     "cd /workspace/$rel && ./gradlew dependencies --no-daemon$aapt2Arg",
                     ProotLauncher.Options(
-                        rootfs = compilerRootfs,
+                        rootfs = rootfs,
                         cwd = "/workspace/$rel",
                         binds = listOf(bind),
                         env = mapOf(
@@ -174,7 +178,7 @@ internal object BuildExecutor {
                 ctx, id,
                 "$aapt2Override version 2>&1; echo \"AAPT2_PROBE_EXIT=\$?\"",
                 ProotLauncher.Options(
-                    rootfs = PathConfig.compilerRootfs(ctx).absolutePath,
+                    rootfs = PathConfig.rootfs(ctx).absolutePath,
                     cwd = "/root",
                     binds = listOf(ProotLauncher.ProotBind(ws.absolutePath, "/workspace")),
                     env = mapOf("ANDROID_SDK_ROOT" to "/host-home/android-sdk"),
@@ -197,7 +201,7 @@ internal object BuildExecutor {
             ctx, id,
             "cd /workspace/$rel && chmod +x gradlew && ./gradlew assembleDebug --no-daemon$aapt2Arg",
             ProotLauncher.Options(
-                rootfs = compilerRootfs,
+                rootfs = rootfs,
                 cwd = "/workspace/$rel",
                 binds = listOf(bind),
                 env = mapOf(

@@ -117,12 +117,12 @@ fi
 PROJECT_DIR="${OUTPUT_DIR}/${PROJECT_NAME}"
 PACKAGE_PATH=$(echo "$PACKAGE" | tr '.' '/')
 
-# 输出目录必须位于 /workspace（AGENTS.md 铁律：否则宇宙B 编译不可见）
+# 输出目录必须位于 /workspace（AGENTS.md 铁律：否则编译环境不可见）
 # 兼容写法：/workspace、/workspace/xxx、/host-home/workspace
 case "$OUTPUT_DIR" in
     /workspace|/workspace/*|/host-home/workspace|/host-home/workspace/*) ;;
     *)
-        echo "错误: 输出目录必须位于 /workspace 下（铁律：否则宇宙B 不可见、无法编译）。"
+        echo "错误: 输出目录必须位于 /workspace 下（铁律：否则编译环境不可见、无法编译）。"
         echo "      当前: $OUTPUT_DIR"
         echo "      建议: create-compose-project -o /workspace <ProjectName>"
         exit 1 ;;
@@ -139,16 +139,16 @@ if [ -d "$PROJECT_DIR" ]; then
     fi
 fi
 
-# ─── JDK 说明（宇宙A 不负责编译，仅提示，不阻断）────────────
-# 实际编译在宇宙B（独立 PRoot rootfs）内进行，宇宙A 无需本地 Java。
+# ─── JDK 说明（终端环境不负责编译，仅提示，不阻断）────────────
+# 实际编译在终端环境内进行，终端环境无需本地 Java。
 # 此处仅做信息提示，避免因找不到 java 而产生"环境损坏"的误判。
 if command -v java >/dev/null 2>&1; then
     JAVA_VERSION=$(java -version 2>&1 | head -1)
     if ! echo "$JAVA_VERSION" | grep -qi '17\.'; then
-        echo "  提示: 宇宙A 检测到 JDK 非 17 (${JAVA_VERSION})，但编译在宇宙B 进行，不影响构建。"
+        echo "  提示: 终端环境检测到 JDK 非 17 (${JAVA_VERSION})，但编译在隔离环境进行，不影响构建。"
     fi
 else
-    echo "  提示: 宇宙A 未安装 Java（符合设计：编译隔离在宇宙B，宇宙A 不负责编译）。"
+    echo "  提示: 终端环境未安装 Java（符合设计：编译在隔离环境进行，终端环境不负责编译）。"
 fi
 
 # ─── 模板校验 ────────────────────────────────────────────
@@ -229,7 +229,7 @@ echo "  Kotlin:    ${KOTLIN_VERSION}"
 echo "  Compose:   ${COMPOSE_BOM}"
 echo "  Gradle:    ${GRADLE_VERSION}"
 echo "  SDK:       ${COMPILE_SDK} / ${TARGET_SDK} / ${MIN_SDK}"
-echo "  JDK:       编译在宇宙B（隔离），宇宙A 无需本地 JDK"
+echo "  JDK:       编译在隔离环境，终端环境无需本地 JDK"
 echo "  架构:      ${ARCH}"
 if [ "$IS_ARM64" = true ] && [ -n "$AAPT2_OVERRIDE" ]; then
     echo "  AAPT2:     ${AAPT2_OVERRIDE} (QEMU wrapper)"
@@ -523,7 +523,7 @@ echo "  项目创建完成!"
 echo "═══════════════════════════════════════════"
 echo "  目录: ${PROJECT_DIR}"
 echo "  构建: aidev-build-request --project ${PROJECT_DIR}"
-echo "        （编译在宇宙B 隔离环境进行，构建成功后可 aidev-deploy 安装）"
+echo "        （编译在隔离环境进行，构建成功后可 aidev-deploy 安装）"
 echo ""
-echo "  提交宇宙B 构建并安装后，即可看到: \"Hello, ${APP_NAME}!\""
+echo "  提交构建并安装后，即可看到: \"Hello, ${APP_NAME}!\""
 echo "═══════════════════════════════════════════"

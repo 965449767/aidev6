@@ -94,7 +94,7 @@ internal class ProjectManagerState(activity: Activity) {
                     return@launch
                 }
 
-                val readyFile = File(PathConfig.agentRootfs(_activity), ".aidev-rootfs-ready")
+                val readyFile = File(PathConfig.rootfs(_activity), ".aidev-rootfs-ready")
                 if (!readyFile.isFile) {
                     withContext(Dispatchers.Main) {
                         buildLog += "⚠ Ubuntu 环境未就绪，请先在终端中进入 Ubuntu 完成初始化\n"
@@ -127,8 +127,8 @@ internal class ProjectManagerState(activity: Activity) {
                     return@launch
                 }
 
-                val rootfs = PathConfig.agentRootfs(_activity).absolutePath
-                val prootCwd = projectDir.absolutePath.removePrefix(rootfs).trimStart('/')
+                val rootfs2 = PathConfig.rootfs(_activity).absolutePath
+                val prootCwd = projectDir.absolutePath.removePrefix(rootfs2).trimStart('/')
                 process = createProotProcess("cd /$prootCwd && chmod +x gradlew && ./gradlew assembleDebug --no-daemon")
                 process.inputStream.bufferedReader().use { reader ->
                     var line = reader.readLine()
@@ -435,7 +435,7 @@ internal class ProjectManagerState(activity: Activity) {
     }
 
     private fun createProotProcess(innerCmd: String): Process {
-        val rootfs = PathConfig.agentRootfs(_activity).absolutePath
+        val rootfs = PathConfig.rootfs(_activity).absolutePath
         return ProotLauncher.start(
             _activity,
             innerCmd,

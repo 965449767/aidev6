@@ -1,6 +1,10 @@
 package com.aidev.six.build
 
 import android.content.Context
+import com.aidev.six.AIDevCommandDispatcher
+import com.aidev.six.AIDevLogger
+import com.aidev.six.LogHub
+import com.aidev.six.PathConfig
 import com.aidev.six.task.BuildProgress
 import com.aidev.six.task.BuildProgress.Phase
 import com.aidev.six.task.ProjectTaskLock

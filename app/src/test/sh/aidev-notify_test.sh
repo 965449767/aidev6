@@ -9,6 +9,6 @@ assert_contains "$output" "用法" "no args should show usage"
 output=$(bash "$SCRIPT" --help 2>&1 || true)
 assert_contains "$output" "aidev-notify" "--help should show script name"
 
-# unknown flag is consumed as message by *) case
+# unknown flag is consumed as message by *) case (fallback to file channel)
 output=$(bash "$SCRIPT" --unknown 2>&1 || true)
-assert_contains "$output" "通知" "unknown flag should be treated as message"
+assert_contains "$output" "文件通道" "unknown flag should be treated as message"

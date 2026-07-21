@@ -155,12 +155,6 @@ class EmbeddedTerminalPage {
         prefs.edit().putString(key, (old + label).takeLast(6).joinToString("\n")).apply()
     }
 
-    private fun sendAgentCommand(command: String) {
-        sessionManager.flushInput()
-        val dir = completionEngine.currentProjectDir()
-        if (dir != null) sessionManager.send("cd ${shellEscape(dir.absolutePath)} && $command") else sessionManager.send(command)
-    }
-
     internal fun consumePendingCommand() = sessionManager.consumePendingCommand()
 
     fun onSelected(activity: Activity) {

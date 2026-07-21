@@ -10,7 +10,7 @@
 
 ## 0. TL;DR（给接手者的速读）
 
-aidev6 在手机上启动 PRoot（进宇宙A 终端 `ubuntu` 命令）时，最后一步 exec proot 二进制报
+aidev6 在手机上启动 PRoot（进终端 `ubuntu` 命令）时，最后一步 exec proot 二进制报
 `Permission denied`，**无论文件是否有 +x 位都报同样的错**。
 
 当前 proot 二进制位于 `home/proot-lib/libproot.so`（app 私有数据区 `/data/data/com.aidev.six.dev/files/home/proot-lib/`）。
@@ -33,7 +33,7 @@ Ubuntu 初始化完成。
   /data/user/0/com.aidev.six.dev/files/home/proot-lib/libproot.so: Permission denied
 ```
 
-- rootfs（宇宙A ubuntu-base 24.04）已成功下载解包（`home/ubuntu-rootfs/.aidev-rootfs-ready` 已生成）。
+- rootfs（ubuntu-base 24.04）已成功下载解包（`home/ubuntu-rootfs/.aidev-rootfs-ready` 已生成）。
 - 失败发生在「用 proot 进入 rootfs」这一步，即宿主侧 exec `libproot.so` 时被拒。
 - 已多次重装（versionCode 14→15→16），每次都在 exec 这一步失败，报错完全一致。
 
@@ -44,8 +44,7 @@ Ubuntu 初始化完成。
 相关代码：
 - `app/src/main/java/com/aidev/six/PathConfig.kt`
   - `aidevHome(ctx)` = `ctx.filesDir/home` → `/data/data/com.aidev.six.dev/files/home`
-  - `agentRootfs` = `home/ubuntu-rootfs`（宇宙A，OpenCode 宿主）
-  - `compilerRootfs` = `home/compiler_rootfs`（宇宙B，编译器）
+  - `rootfs` = `home/ubuntu-rootfs`（终端/编译环境）
   - `workspaceDir` = `home/workspace`（共享工作区）
   - `prootLibDir(ctx)` = `home/proot-lib`  ← **当前 proot 二进制所在**
 - `app/src/main/java/com/aidev/six/terminal/ProotLauncher.kt`

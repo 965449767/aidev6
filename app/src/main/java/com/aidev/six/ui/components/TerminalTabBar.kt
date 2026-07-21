@@ -102,7 +102,7 @@ internal fun TabChip(
                             if (!change.pressed) break
                         }
                     } else {
-                        var event = firstEvent
+                        var event = firstEvent!!
                         while (true) {
                             val change = event.changes.firstOrNull() ?: break
                             if (!change.pressed) break

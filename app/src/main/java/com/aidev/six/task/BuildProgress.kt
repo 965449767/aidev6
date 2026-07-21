@@ -54,8 +54,8 @@ internal object BuildProgress {
         if (log.isBlank()) return emptyList()
         var activeReached = -1
         val markers = mapOf(
-            Phase.PREPARE to listOf("准备编译环境", "准备宇宙 B", "宇宙 B 已就绪", "编译环境已就绪", "install-compiler", "JDK17"),
-            Phase.COMPILE to listOf("进入编译", "进入宇宙 B 编译", "gradlew assembleDebug", "构建成功", "构建失败"),
+            Phase.PREPARE to listOf("准备编译环境", "编译环境已就绪", "JDK17"),
+            Phase.COMPILE to listOf("进入编译", "gradlew assembleDebug", "构建成功", "构建失败"),
             Phase.INSTALL to listOf("通过 Shizuku 安装", "复制 APK", "未找到产物", "已安装"),
             Phase.LAUNCH to listOf("已拉起"),
         )

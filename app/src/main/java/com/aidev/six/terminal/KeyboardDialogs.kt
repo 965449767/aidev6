@@ -38,7 +38,7 @@ internal class KeyboardDialogs(
                 EmbeddedVirtualKey("Ubuntu", "ubuntu\n"),
                 EmbeddedVirtualKey("任务", "task-list\n")
             )
-            keys.addAll(parseCustomKeys(prefs.getString(Constants.PrefKeys.TERMINAL_CUSTOM_KEYS, "") ?: "")
+            keys.addAll(parseCustomKeys(prefs.getString(Constants.PrefKeys.TERMINAL_CUSTOM_KEYS, "") ?: ""))
             MaterialAlertDialogBuilder(act)
                 .setTitle("扩展键盘更多")
                 .setItems(keys.map { it.label }.toTypedArray()) { _, which -> getSession()?.write(keys[which].input) }
@@ -140,7 +140,7 @@ internal class KeyboardDialogs(
             background = GradientDrawable().apply {
                 setColor(0xFF1F2937.toInt())
                 cornerRadius = 6f
-            })
+            }
             layoutParams = android.widget.LinearLayout.LayoutParams(dp(36), dp(36)).apply {
                 setMargins(dp(2), dp(2), dp(2), dp(2))
             }
@@ -194,13 +194,13 @@ internal class KeyboardDialogs(
         content.addView(android.widget.TextView(act).apply {
             text = "下滑命令"
             setTextColor(0xFF9CA3AF.toInt()); textSize = 13f
-        }))
+        })
         val currentSwipeDown = if (key.swipeCommand.isNotEmpty()) "  当前: ${encodeKeyInput(key.swipeCommand)}" else "  （未设置）"
         content.addView(android.widget.TextView(act).apply {
             text = currentSwipeDown
             setTextColor(0xFF6B7280.toInt()); textSize = 11f
             layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) }
-        }))
+        })
         val swipeDownInput = android.widget.EditText(act).apply {
             hint = "例如 clear、pwd、ls "
             setText(encodeKeyInput(key.swipeCommand))
@@ -210,13 +210,13 @@ internal class KeyboardDialogs(
         content.addView(android.widget.TextView(act).apply {
             text = "上滑命令"
             setTextColor(0xFF9CA3AF.toInt()); textSize = 13f
-        }))
+        })
         val currentSwipeUp = if (key.swipeUpCommand.isNotEmpty()) "  当前: ${encodeKeyInput(key.swipeUpCommand)}" else "  （未设置）"
         content.addView(android.widget.TextView(act).apply {
             text = currentSwipeUp
             setTextColor(0xFF6B7280.toInt()); textSize = 11f
             layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) }
-        }))
+        })
         val swipeUpInput = android.widget.EditText(act).apply {
             hint = "例如 cd ..、exit、grep "
             setText(encodeKeyInput(key.swipeUpCommand))

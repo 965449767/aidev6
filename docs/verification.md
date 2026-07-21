@@ -129,11 +129,11 @@ Do not initialize Git or create commits without explicit user approval.
 2. **构建**：`assembleDebug`（aapt2 覆盖）。
 3. **Shell 测试**：`bash app/src/test/sh/run.sh`（含 `aidev-build-request`、建项目等命令测试）。
 4. **Harness**：`bash scripts/harness_check.sh`。
-5. **人工端到端**：见 `docs/real-device-runbook.md` 第 1–4 步（装 App → 宇宙B 编译 → 可选 OpenCode 改码 → 人类提交 `aidev-build-request`）。
+5. **人工端到端**：见 `docs/real-device-runbook.md` 第 1–4 步（装 App → 编译 → 可选 OpenCode 改码 → 人类提交 `aidev-build-request`）。
 
 ## Phase I — 面板部署黑盒（DeployBridgeService）验证
 
-「宇宙 B → 部署到设备」按钮（v121）的验证分两层。
+「编译到部署」按钮（v121）的验证分两层。
 
 ### 本环境可验（已自动化 / 可模拟）
 

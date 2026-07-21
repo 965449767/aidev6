@@ -1,5 +1,6 @@
 package com.aidev.six.bridge
 
+import com.aidev.six.AIDevLogger
 import com.aidev.six.shizuku.ShizukuLogcat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch

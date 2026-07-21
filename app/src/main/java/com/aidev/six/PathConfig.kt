@@ -10,13 +10,6 @@ object PathConfig {
 
     /** 终端开发环境（ubuntu-rootfs），所有操作（包括编译）均在此环境内执行 */
     fun rootfs(ctx: Context) = File(aidevHome(ctx), "ubuntu-rootfs")
-    fun agentRootfs(ctx: Context) = rootfs(ctx)
-
-    /**
-     * 编译器环境（已统一到终端环境，不再区分独立宇宙）。
-     * 保留此函数名以保持向后兼容，实际返回终端 rootfs。
-     */
-    fun compilerRootfs(ctx: Context) = rootfs(ctx)
 
     /** 共享工作区：终端与编译器零延迟共享同一份源码 */
     fun workspaceDir(ctx: Context) = File(aidevHome(ctx), "workspace")

@@ -113,7 +113,7 @@ if command -v aidev-shizuku >/dev/null 2>&1; then
     done
 fi
 if [ "$VERIFIED" != true ]; then
-    echo "⚠ 落地软校验未取到 pm list 输出（宇宙A 侧设备不可见，非安装失败）；以 aidev-install 结果为准。"
+    echo "⚠ 落地软校验未取到 pm list 输出（终端侧设备不可见，非安装失败）；以 aidev-install 结果为准。"
 fi
 
 # 3) 启动（可选）

@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import com.aidev.six.shizuku.ShizukuLogcat
-import com.aidev.six.ShizukuState
+import com.aidev.six.shizuku.ShizukuState
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

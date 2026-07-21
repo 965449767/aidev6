@@ -24,7 +24,7 @@ object ProjectDetector {
             if (File(current, ".git").isDirectory && gitRoot == null) gitRoot = current
             val parent = current.parentFile ?: break
             val pname = parent.name
-            if (pname == "workspace" || pname == "ubuntu-rootfs" || pname == "compiler_rootfs" || pname == "home") break
+            if (pname == "workspace" || pname == "ubuntu-rootfs" || pname == "home") break
             current = parent
         }
         return best ?: gitRoot

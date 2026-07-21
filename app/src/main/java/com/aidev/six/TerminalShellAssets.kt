@@ -128,7 +128,7 @@ object TerminalShellAssets {
             "check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh",
             "aidev-logcat.sh", "aidev-shizuku.sh",
             "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh",
-            "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh",
+            "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-gen.sh",
             "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh",
             "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh",
             "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh"
@@ -200,15 +200,13 @@ object TerminalShellAssets {
             # source 期间关闭历史记录，避免下方大量函数定义/alias 被写入历史（否则方向键会翻出函数体）。
             set +o history 2>/dev/null || true
             AIDEV_VERSION="$v"
-            # 宿主(宇宙H) AIDEV_HOME 为 App 私有绝对路径；在 proot 内(终端环境)宿主 home 绑定于 /host-home。
+            # 宿主 AIDEV_HOME 为 App 私有绝对路径；在 proot 内(终端环境)宿主 home 绑定于 /host-home。
             # 本 rc 会被 rootfs 的 .bashrc 通过 `. /host-home/.aidevrc` 复用，故须按位置解析，避免命令指向不存在的宿主路径。
             if [ -d /host-home ]; then AIDEV_HOME="/host-home"; else AIDEV_HOME="${home.absolutePath}"; fi
             AIDEV_BIN="${'$'}AIDEV_HOME/dev-env/bin"
             # 用户覆盖层：自定义命令放此处优先于出厂脚本，且不被 copyAssetScripts 覆盖（见 docs/error-journal 2026-07-17）。
             AIDEV_OVERRIDES="${'$'}AIDEV_HOME/overrides/bin"
             AIDEV_ROOTFS="${'$'}AIDEV_HOME/ubuntu-rootfs"
-            # 编译器 rootfs 已统一到终端环境（保留变量名以向后兼容）
-            AIDEV_COMPILER_ROOTFS="${'$'}AIDEV_ROOTFS"
             AIDEV_WORKSPACE="${'$'}AIDEV_HOME/workspace"
             AIDEV_NATIVE="$nativeDir"
             # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区）
@@ -222,15 +220,14 @@ object TerminalShellAssets {
             LD_LIBRARY_PATH="${'$'}AIDEV_PROOT_EXTRA_LIBS:${'$'}AIDEV_NATIVE${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
             ANDROID_SDK_ROOT="${'$'}AIDEV_HOME/android-sdk"
             GRADLE_USER_HOME="${'$'}AIDEV_HOME/gradle-cache"
-            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_OVERRIDES AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
+            export AIDEV_VERSION AIDEV_HOME AIDEV_BIN AIDEV_OVERRIDES AIDEV_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
             export ANDROID_SDK_ROOT GRADLE_USER_HOME
             export LANG=C.UTF-8
             export LC_ALL=C.UTF-8
             export PATH="${'$'}{AIDEV_OVERRIDES}:/usr/local/bin:${'$'}AIDEV_BIN:${'$'}ANDROID_SDK_ROOT/cmdline-tools/latest/bin:/system/bin:/system/xbin:${'$'}PATH"
-            AIDEV_REALM_COLOR="$(printf '\033[0m')"
-            case "${'$'}{AIDEV_REALM:-H}" in
-              A) AIDEV_REALM_COLOR="$(printf '\033[32m')" ;;
-              B) AIDEV_REALM_COLOR="$(printf '\033[33m')" ;;
+            AIDEV_REALM="${'$'}{AIDEV_REALM:-H}"
+            case "${'$'}AIDEV_REALM" in
+              U) AIDEV_REALM_COLOR="$(printf '\033[32m')" ;;
               H|*) AIDEV_REALM_COLOR="$(printf '\033[36m')" ;;
             esac
             AIDEV_RESET="$(printf '\033[0m')"
@@ -256,10 +253,10 @@ object TerminalShellAssets {
             getpropx() { android-sh "getprop ${'$'}*"; }
             logcatx() { android-sh "logcat ${'$'}*"; }
             ubuntu() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" ubuntu "${'$'}@"; }
-            compiler() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" compiler "${'$'}@"; }
+            compiler() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" ubuntu "${'$'}@"; }
             install-ubuntu() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" install-ubuntu "${'$'}@"; }
-            install-compiler() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" install-compiler "${'$'}@"; }
-            aidev-ensure-envs() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-ensure-envs "${'$'}@"; }
+            install-compiler() { echo "编译器环境已统一到终端 rootfs，无需单独安装。"; }
+            aidev-ensure-envs() { echo "环境已整合为单一 rootfs，无需额外操作。"; }
             aidev-auto-bootstrap() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-auto-bootstrap "${'$'}@"; }
             aidev-doctor() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-doctor "${'$'}@"; }
             setup-dev-env() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" setup-dev-env "${'$'}@"; }
@@ -268,7 +265,7 @@ object TerminalShellAssets {
             aidev-logcat() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-logcat "${'$'}@"; }
             aidev-apk-info() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-apk-info "${'$'}@"; }
             aidev-build-request() { /system/bin/sh "${'$'}AIDEV_ROOTFS/usr/local/bin/aidev-build-request" "${'$'}@"; }
-            aidev-create-android-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-create-android-project "${'$'}@"; }
+            aidev-create-android-project() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" create-compose-project "${'$'}@"; }
             aidev-gen() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-gen "${'$'}@"; }
             aidev-error-why() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-error-why "${'$'}@"; }
             aidev-index() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-index "${'$'}@"; }

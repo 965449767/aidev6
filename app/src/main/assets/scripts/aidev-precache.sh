@@ -12,20 +12,16 @@
 #       本脚本会自动探测该目录并同步。
 # 注意: 本工具只在「联网时」有意义；离线运行会明确报告无法获取。
 #
-# 注：--universe-b 选项已废弃（不再区分独立编译器宇宙），保留仅为向后兼容。
-
 set -e
 
 AIDEV_GRADLE="/root/projects/aidev6/gradlew"
 
 GRADLE_HOME_OVERRIDE=""
-FORCE_UB=0  # 废弃，保留向后兼容
 MODE_PROJECT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --gradle-home) GRADLE_HOME_OVERRIDE="$2"; shift 2 ;;
-        --universe-b) FORCE_UB=1; shift ;;  # 废弃，无实际效果
         -h|--help)
             echo "用法: aidev-precache [选项] [project-dir]"
             echo "  (无参数)            预缓存模板基线依赖"

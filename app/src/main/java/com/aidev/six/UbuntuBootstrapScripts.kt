@@ -30,7 +30,7 @@ object UbuntuBootstrapScripts {
         }
         val binDir = java.io.File(rootfs, "usr/local/bin")
         binDir.mkdirs()
-        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-create-android-project.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
+        val scripts = listOf("check-dev-env.sh", "repair-dev-env.sh", "setup-dev-env.sh", "aidev-logcat.sh", "aidev-shizuku.sh", "aidev-apk-info.sh", "aidev-build-request.sh", "aidev-build-log.sh", "aidev-verify-run.sh", "aidev-deploy.sh", "aidev-gen.sh", "aidev-error-why.sh", "aidev-index.sh", "aidev-install.sh", "android-sh.sh", "aidev-clean.sh", "aidev-backup.sh", "aidev-anr.sh", "aidev-tombstone.sh", "aidev-crash-why.sh", "aidev-dumpsys.sh", "create-compose-project.sh", "aidev-precache.sh", "aidev-repo.sh", "aidev-bridge.sh", "aidev-notify.sh")
         for (script in scripts) {
             val dstName = script.removeSuffix(".sh")
             val dst = java.io.File(binDir, dstName)
@@ -78,7 +78,6 @@ object UbuntuBootstrapScripts {
         AIDEV_BIN="${'$'}{AIDEV_BIN:-${'$'}AIDEV_HOME/dev-env/bin}"
         AIDEV_OVERRIDES="${'$'}{AIDEV_OVERRIDES:-${'$'}AIDEV_HOME/overrides/bin}"
         AIDEV_ROOTFS="${'$'}{AIDEV_ROOTFS:-${'$'}AIDEV_HOME/ubuntu-rootfs}"
-        AIDEV_COMPILER_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS:-${'$'}AIDEV_ROOTFS}"
         AIDEV_WORKSPACE="${'$'}{AIDEV_WORKSPACE:-${'$'}AIDEV_HOME/workspace}"
         AIDEV_NATIVE="${'$'}{AIDEV_NATIVE:-$nativeDir}"
         # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区；filesDir/cacheDir/code_cache 均被 W^X 拒绝）
@@ -91,11 +90,11 @@ object UbuntuBootstrapScripts {
         # proot 及其依赖 libtalloc.so.2 / libandroid-shmem.so 的动态链接搜索路径
         LD_LIBRARY_PATH="${'$'}AIDEV_PROOT_EXTRA_LIBS:${'$'}AIDEV_PROOT_LIBS${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
         PROOT_TMP_DIR="${'$'}{PROOT_TMP_DIR:-${'$'}AIDEV_HOME/proot-tmp}"
-        export AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_COMPILER_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
+        export AIDEV_HOME AIDEV_BIN AIDEV_ROOTFS AIDEV_WORKSPACE AIDEV_NATIVE AIDEV_PROOT_LIBS AIDEV_PROOT_EXTRA_LIBS AIDEV_PROOT AIDEV_PROOT_LOADER PROOT_LOADER PROOT_TMP_DIR LD_LIBRARY_PATH
 
-        # 是否已在 rootfs 内（宇宙A/B）。此时宿主 home 绑定为 /host-home 或 AIDEV_REALM 非 H；
+        # 是否已在 rootfs 内。此时宿主 home 绑定为 /host-home 或 AIDEV_REALM 为 U；
         # 不能再嵌套 proot，命令应就地执行。
-        if [ -d /host-home ] || [ "${'$'}{AIDEV_REALM:-H}" != "H" ]; then
+        if [ -d /host-home ] || [ "${'$'}{AIDEV_REALM:-H}" = "U" ]; then
           AIDEV_IN_ROOTFS=1
         else
           AIDEV_IN_ROOTFS=0
@@ -210,23 +209,6 @@ AIDEV_APT_EOF
           date '+%F %T' > "${'$'}AIDEV_ROOTFS.tmp/.aidev-rootfs-ready"
           mv "${'$'}AIDEV_ROOTFS.tmp" "${'$'}AIDEV_ROOTFS"
           echo "Ubuntu 初始化完成。"
-        }
-
-        install_compiler_rootfs() {
-          _saved_rootfs="${'$'}{AIDEV_ROOTFS}"
-          AIDEV_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS}"
-          export AIDEV_ROOTFS
-          install_ubuntu "$@"
-          _rc=$?
-          AIDEV_ROOTFS="${'$'}{_saved_rootfs}"
-          export AIDEV_ROOTFS
-          return ${'$'}_rc
-        }
-
-        ensure_all_rootfs() {
-          install_ubuntu --fast || return ${'$'}?
-          install_compiler_rootfs --fast || return ${'$'}?
-          echo "双宇宙环境已就绪：agent=${'$'}{AIDEV_ROOTFS} compiler=${'$'}{AIDEV_COMPILER_ROOTFS} workspace=${'$'}{AIDEV_WORKSPACE}"
         }
 
         ensure_android_groups() {
@@ -396,28 +378,15 @@ AIDEV_BASHRC_AGENT_EOF
         proot_common_env() {
           _JDK=${'$'}(aidev_resolve_jdk)
           _JDK_BIN="${'$'}_JDK/bin:"
-          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=${'$'}{1:-H} ANDROID_SDK_ROOT=/host-home/android-sdk ${'$'}{_JDK:+JAVA_HOME=${'$'}_JDK }GRADLE_USER_HOME=/host-home/gradle-cache PATH=${'$'}_JDK_BIN/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
-        }
-
-        # 在编译器 rootfs 中通过 PRoot 运行一次性命令
-        run_compiler_cmd() {
-          _cmd="${'$'}*"
-          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
-            echo "已在 rootfs 内，无法从此处进入宇宙B（编译器）。请退出到宿主(宇宙H)后再执行。" >&2
-            return 1
-          fi
-          eval "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_COMPILER_ROOTFS" \
-            $(proot_common_binds) \
-            -w /root /usr/bin/env -i \
-            $(proot_common_env "B") /bin/sh -c "${'$'}_cmd"
+          echo "HOME=/root AIDEV_HOME=/host-home AIDEV_VERSION=${'$'}{AIDEV_VERSION:-unknown} AIDEV_REALM=U ANDROID_SDK_ROOT=/host-home/android-sdk ${'$'}{_JDK:+JAVA_HOME=${'$'}_JDK }GRADLE_USER_HOME=/host-home/gradle-cache PATH=${'$'}_JDK_BIN/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/host-home/dev-env/bin:/host-home/android-sdk/cmdline-tools/latest/bin TERM=${'$'}{TERM:-xterm-256color} LANG=C.UTF-8 LC_ALL=C.UTF-8"
         }
 
         enter_ubuntu() {
           if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
-            printf '已在宇宙 A（OpenCode），无需重复进入。\n'
+            printf '已在终端环境（Ubuntu），无需重复进入。\n'
             return 0
           fi
-          printf '\033[32m已进入宇宙 A（OpenCode）\033[0m\n'
+          printf '\033[32m已进入 Ubuntu 终端环境\033[0m\n'
           has_ubuntu || install_ubuntu --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_ROOTFS"
           ensure_ubuntu_helpers
@@ -429,7 +398,7 @@ AIDEV_BASHRC_AGENT_EOF
           eval exec "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_ROOTFS" \
             $(proot_common_binds) \
             -w /workspace /usr/bin/env -i \
-            $(proot_common_env "A") "${'$'}shell" -l
+            $(proot_common_env) "${'$'}shell" -l
         }
 
         run_ubuntu_command() {
@@ -445,7 +414,7 @@ AIDEV_BASHRC_AGENT_EOF
             _ru_cmd="${'$'}{AIDEV_OVERRIDES}/${'$'}{_ru_base}"
           fi
           _ru_line="${'$'}{_ru_cmd} ${'$'}{_ru_rest}"
-          # 已在宇宙A 内：直接就地执行，避免嵌套 proot 及指向宿主绝对路径失败
+          # 已在 rootfs 内：直接就地执行，避免嵌套 proot 及指向宿主绝对路径失败
           if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
             exec /bin/sh -lc "${'$'}{_ru_line}" 2>/dev/null
           fi
@@ -456,87 +425,7 @@ AIDEV_BASHRC_AGENT_EOF
           eval exec "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_ROOTFS" \
             $(proot_common_binds) \
             -w /root /usr/bin/env -i \
-            $(proot_common_env "A") /bin/sh -lc "${'$'}{_ru_line}" 2>/dev/null
-        }
-
-        has_compiler() {
-          [ -f "${'$'}AIDEV_COMPILER_ROOTFS/.aidev-rootfs-ready" ] &&
-          [ -f "${'$'}AIDEV_COMPILER_ROOTFS/etc/os-release" ] &&
-          { [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/sh" ] || [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/bash" ]; }
-        }
-
-        enter_compiler_rootfs() {
-          if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
-            echo "已在 rootfs 内，无法从此处进入编译环境。请退出到宿主后再执行 compiler。" >&2
-            return 1
-          fi
-          printf '\033[33m已进入编译环境\033[0m\n'
-          has_compiler || install_compiler_rootfs --fast || return ${'$'}?
-          ensure_android_groups "${'$'}AIDEV_COMPILER_ROOTFS"
-          # deploy helper scripts to compiler rootfs
-          _saved_rootfs="${'$'}{AIDEV_ROOTFS}"
-          AIDEV_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS}"
-          export AIDEV_ROOTFS
-          ensure_ubuntu_helpers
-          AIDEV_ROOTFS="${'$'}{_saved_rootfs}"
-          export AIDEV_ROOTFS
-          mkdir -p "${'$'}AIDEV_COMPILER_ROOTFS/root"
-          cat > "${'$'}AIDEV_COMPILER_ROOTFS/root/.bashrc" <<'AIDEV_BASHRC_COMPILER_EOF'
-# AIDEV_PWD_HOOK_BEGIN
-. /host-home/.aidevrc
-# pure-bash override: redirect /system/bin/sh -> /bin/sh, strip /system/ from PATH
-__f() { while IFS= read __l; do case "${'$'}__l" in */system/bin/sh*) echo "${'$'}{__l%%/system/bin/sh*}/bin/sh${'$'}{__l#*/system/bin/sh}";; *) echo "${'$'}__l";; esac; done; }
-eval "$(declare -f | __f)"
-unset -f __f
-_p="${'$'}PATH"; PATH=""
-while [ -n "${'$'}_p" ]; do _e="${'$'}{_p%%:*}"; case "${'$'}_e" in /system/*) ;; *) PATH="${'$'}{PATH:+${'$'}PATH:}${'$'}_e" ;; esac; [ "${'$'}_p" = "${'$'}_e" ] && _p="" || _p="${'$'}{_p#*:}"; done
-unset _p _e
-aidev_write_pwd() {
-  pwd > /host-home/.aidev-current-pwd 2>/dev/null || true
-}
-case "${'$'}{PROMPT_COMMAND:-}" in
-  *aidev_write_pwd*) ;;
-  *) PROMPT_COMMAND="aidev_write_pwd${'$'}{PROMPT_COMMAND:+;${'$'}PROMPT_COMMAND}" ;;
-esac
-aidev_write_pwd
-# AIDEV_PWD_HOOK_END
-AIDEV_BASHRC_COMPILER_EOF
-          # 确保编译器 rootfs 有核心工具（coreutils）
-          if [ ! -x "${'$'}AIDEV_COMPILER_ROOTFS/usr/bin/ls" ] && [ -x "${'$'}AIDEV_PROOT" ] && [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/sh" ]; then
-            printf '正在引导编译器 universe（安装必要软件包）...\n'
-            run_compiler_cmd "apt-get update -qq 2>/dev/null && apt-get install -y -qq coreutils 2>/dev/null" || true
-          fi
-          # 确保编译器 rootfs 内有 JDK 17（gradlew 编译 Android 必需，且必须是 glibc 版）
-          if [ -x "${'$'}AIDEV_PROOT" ] && [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/sh" ]; then
-            _has_java="$(run_compiler_cmd 'command -v java >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)"
-            case "${'$'}_has_java" in *yes*) ;;
-              *)
-                printf '正在为编译器 universe 安装 OpenJDK 17（gradle 编译所需）...\n'
-                run_compiler_cmd "apt-get update -qq 2>/dev/null && apt-get install -y -qq openjdk-17-jdk 2>/dev/null" || true
-              ;;
-            esac
-            unset _has_java
-          fi
-          # 确保编译环境内有 qemu-user-static（aapt2 覆盖依赖 x86_64→arm64 模拟，否则资源编译 Daemon 失败）
-          if [ -x "${'$'}AIDEV_PROOT" ] && [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/sh" ]; then
-            _has_qemu="$(run_compiler_cmd 'command -v qemu-amd64-static >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)"
-            case "${'$'}_has_qemu" in *yes*) ;;
-              *)
-                printf '正在为编译器 universe 安装 qemu-user-static（aapt2 模拟所需）...\n'
-                run_compiler_cmd "apt-get update -qq 2>/dev/null && apt-get install -y -qq qemu-user-static 2>/dev/null" || true
-              ;;
-            esac
-            unset _has_qemu
-          fi
-          shell="/bin/bash"
-          [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/bash" ] || shell="/bin/sh"
-          cd "${'$'}AIDEV_HOME" || exit 1
-          mkdir -p "${'$'}{PROOT_TMP_DIR:-${'$'}AIDEV_HOME/proot-tmp}"
-          sleep 0.05
-          eval exec "${'$'}AIDEV_PROOT" --link2symlink -0 -r "${'$'}AIDEV_COMPILER_ROOTFS" \
-            $(proot_common_binds) \
-            -w /root /usr/bin/env -i \
-            $(proot_common_env "B") "${'$'}shell" -l
+            $(proot_common_env) /bin/sh -lc "${'$'}{_ru_line}" 2>/dev/null
         }
 
         fix_bashrc() {
@@ -575,16 +464,12 @@ AIDEV_PWD_HOOK_EOF
 
         case "${'$'}cmd" in
           ubuntu) enter_ubuntu "${'$'}@" ;;
-          compiler) enter_compiler_rootfs "${'$'}@" ;;
           install-ubuntu) install_ubuntu "${'$'}@" ;;
-          install-compiler) install_compiler_rootfs "${'$'}@" ;;
-          aidev-ensure-envs) ensure_all_rootfs ;;
           aidev-doctor) aidev_doctor_android ;;
           setup-dev-env) run_ubuntu_command "/usr/local/bin/setup-dev-env" "${'$'}@" ;;
           aidev-verify-run) run_ubuntu_command "/usr/local/bin/aidev-verify-run" "${'$'}@" ;;
           aidev-deploy) run_ubuntu_command "/usr/local/bin/aidev-deploy" "${'$'}@" ;;
           aidev-apk-info) run_ubuntu_command "/usr/local/bin/aidev-apk-info" "${'$'}@" ;;
-          aidev-create-android-project) run_ubuntu_command "/usr/local/bin/aidev-create-android-project" "${'$'}@" ;;
           aidev-gen) run_ubuntu_command "/usr/local/bin/aidev-gen" "${'$'}@" ;;
           aidev-error-why) run_ubuntu_command "/usr/local/bin/aidev-error-why" "${'$'}@" ;;
           aidev-index) run_ubuntu_command "/usr/local/bin/aidev-index" "${'$'}@" ;;
@@ -616,7 +501,7 @@ AIDEV_PWD_HOOK_EOF
     /**
      * 预置 create-compose-project 所需的模板目录（gradlew + gradle-wrapper.jar）。
      * 独立于脚本版本门控：幂等补齐——仅当 gradlew 不存在时才复制，确保已部署设备也能获得。
-     * 宇宙A 内 ${'$'}HOME=/root，对应 rootfs 的 root/；脚本据此解析 TEMPLATE_DIR=/root/.gradle/template-wrapper。
+     * 终端环境内 ${'$'}HOME=/root，对应 rootfs 的 root/；脚本据此解析 TEMPLATE_DIR=/root/.gradle/template-wrapper。
      */
     private fun ensureTemplateWrapper(activity: android.app.Activity, rootfs: java.io.File) {
         val templateRoot = java.io.File(rootfs, "root/.gradle/template-wrapper")

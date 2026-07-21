@@ -121,7 +121,6 @@ class CompletionEngine(
         TerminalCompletion("setup-dev-env", "setup-dev-env", "CMD"),
         TerminalCompletion("aidev-build-request", "aidev-build-request", "CMD"),
         TerminalCompletion("aidev-apk-info", "aidev-apk-info", "CMD"),
-        TerminalCompletion("aidev-create-android-project", "aidev-create-android-project", "CMD"),
         TerminalCompletion("aidev-gen", "aidev-gen", "CMD"),
         TerminalCompletion("aidev-error-why", "aidev-error-why", "CMD"),
         TerminalCompletion("aidev-index", "aidev-index", "CMD"),
@@ -363,7 +362,7 @@ class CompletionEngine(
         return when {
             pwd == "/host-home" -> home
             pwd.startsWith("/host-home/") -> File(home, pwd.removePrefix("/host-home/"))
-            // 共享 workspace 绑定于宿主 home/workspace（宇宙A/B 内均为 /workspace）
+            // 共享 workspace 绑定于宿主 home/workspace（终端环境内均为 /workspace）
             pwd == "/workspace" -> File(home, "workspace")
             pwd.startsWith("/workspace/") -> File(home, "workspace/${pwd.removePrefix("/workspace/")}")
             pwd == "/root" -> File(home, "ubuntu-rootfs/root")

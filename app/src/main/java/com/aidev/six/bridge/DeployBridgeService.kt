@@ -1,6 +1,9 @@
 package com.aidev.six.bridge
 
 import android.content.Context
+import com.aidev.six.AIDevCommandDispatcher
+import com.aidev.six.AIDevLogger
+import com.aidev.six.PathConfig
 import com.aidev.six.task.TaskDefinition
 import com.aidev.six.task.TaskRecord
 import com.aidev.six.task.TaskStatus
@@ -285,7 +288,7 @@ object DeployBridgeService : BridgeService("DeployBridge") {
         val (prootApk, extraBinds) = toProotPath(apk, PathConfig.workspaceDir(ctx))
         val cmd = "$deployScript --apk '${shEscape(prootApk)}' --pkg '${shEscape(pkg)}' ${if (launch) "--launch" else "--no-launch"}"
         val opts = ProotLauncher.Options(
-            rootfs = PathConfig.agentRootfs(ctx).absolutePath,
+            rootfs = PathConfig.rootfs(ctx).absolutePath,
             cwd = "/workspace",
             binds = listOf(ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")) + extraBinds,
             env = mapOf(

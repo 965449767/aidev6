@@ -16,7 +16,7 @@ object UbuntuShell {
     }
 
     private fun runInProot(c: Context, command: String): ShellResult {
-        val rootfs = PathConfig.agentRootfs(c).absolutePath
+        val rootfs = PathConfig.rootfs(c).absolutePath
         return ProotLauncher.run(c, command, ProotLauncher.Options(rootfs = rootfs))
     }
 }

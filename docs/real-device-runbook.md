@@ -1,7 +1,7 @@
 # 真机实测手册（Real-Device Runbook）
 
 > ⚠️ **已退役「自我进化闭环」**：原「改码 → 提交 → 编译 → 安装 → 拉起 → 抓崩溃 → 守护自动改码 → 再构建」的自治闭环已在 2026-07-17 的人类驱动重构中整体移除。AIDev 现在要求**终端在无 AI Agent 时也必须完整可用**，OpenCode 仅作为人类驱动的写代码工具。
-> 本手册改为描述**人类驱动的端到端验证**：装 App → 确认宇宙B 能编译 →（可选）用 OpenCode 改码 → 人类提交构建。
+> 本手册改为描述**人类驱动的端到端验证**：装 App → 确认编译可用 →（可选）用 OpenCode 改码 → 人类提交构建。
 
 ---
 
@@ -26,15 +26,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 安装前确认：手机已装 **Shizuku** 并授权 aidev6 的 `moe.shizuku.manager.permission.API_V23`；
 `aidev-install --status` 应显示"桥接通道正常"。
 
-## 第 2 步：确认宇宙B 能编译（关键前提）
+## 第 2 步：确认编译可用（关键前提）
 
 在终端执行统一构建入口：
 ```bash
 aidev-build-request --project /workspace/<应用名>
 ```
 或在 App 终端页面对项目目录点 **「编译」** 按钮（等价于在终端写入上述命令）。盯着任务流看 4 个阶段：
-- 准备宇宙B → 编译 → 安装 → 拉起
-全绿（最后一条 SUCCEEDED）才说明宇宙B 编译链路正常。**这步不过，后面都没意义。**
+- 准备编译环境 → 编译 → 安装 → 拉起
+全绿（最后一条 SUCCEEDED）才说明编译链路正常。**这步不过，后面都没意义。**
 
 ## 第 3 步：构建失败时人工排查
 
@@ -55,6 +55,6 @@ aidev-error-why            # 从 last-build-failure.log 自动匹配中文方案
 - `testDebugUnitTest` + `assembleDebug` 绿灯。
 - `bash app/src/test/sh/run.sh`：shell 测试全过。
 - `bash scripts/harness_check.sh`：Harness check passed（文档/结构完好）。
-- A3 复核：宇宙B 项目 `./gradlew assembleDebug` → BUILD SUCCESSFUL。
+- A3 复核：项目 `./gradlew assembleDebug` → BUILD SUCCESSFUL。
 - A1 复核：APK 真值（aapt2）包名 `com.aidev.six.dev`、含 arm64-v8a、debuggable=true、权限齐全。
 - 真机端到端（Shizuku 安装/拉起）仍需在设备上实测。

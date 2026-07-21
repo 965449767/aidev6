@@ -1,6 +1,8 @@
 package com.aidev.six.build
 
 import android.content.Context
+import com.aidev.six.AIDevLogger
+import com.aidev.six.PathConfig
 import com.aidev.six.terminal.ProotLauncher
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -20,8 +22,7 @@ internal object BuildEnvironmentSetup {
         activeProcesses: ConcurrentHashMap<String, Process>,
         cancelledIds: MutableSet<String>
     ) {
-        // 重构后：编译器环境已统一到终端环境（ubuntu-rootfs），不再创建独立 rootfs
-        val rootfs = PathConfig.compilerRootfs(ctx) // 实际返回 rootfs()
+        val rootfs = PathConfig.rootfs(ctx)
         if (File(rootfs, ".aidev-rootfs-ready").isFile &&
             File(rootfs, "usr/bin/bash").isFile
         ) {
@@ -105,7 +106,7 @@ internal object BuildEnvironmentSetup {
             ProotLauncher.run(
                 ctx, cmd,
                 ProotLauncher.Options(
-                    rootfs = PathConfig.compilerRootfs(ctx).absolutePath,
+                    rootfs = PathConfig.rootfs(ctx).absolutePath,
                     cwd = "/workspace",
                     binds = listOf(ProotLauncher.ProotBind(ws.absolutePath, "/workspace")),
                     env = mapOf("ANDROID_SDK_ROOT" to "/host-home/android-sdk"),
@@ -123,18 +124,18 @@ internal object BuildEnvironmentSetup {
      * JDK 解压到共享持久目录 /host-home/jdk17，跨重建复用。幂等。
      */
     fun ensureJdk(ctx: Context, id: String, append: (String) -> Unit, activeProcesses: ConcurrentHashMap<String, Process>, cancelledIds: MutableSet<String>) {
-        val compilerRootfs = PathConfig.compilerRootfs(ctx)
+        val jdkRootfs = PathConfig.rootfs(ctx)
         val wsBind = ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")
         append("→ 检查/安装 JDK17（便携版，免 apt）...")
 
         runCatching {
-            val curlDst = File(compilerRootfs, "usr/local/bin/curl")
+            val curlDst = File(jdkRootfs, "usr/local/bin/curl")
             if (!curlDst.isFile || curlDst.length() == 0L) {
                 curlDst.parentFile?.mkdirs()
                 ctx.assets.open("tools/curl").use { i -> curlDst.outputStream().use { o -> i.copyTo(o) } }
                 curlDst.setExecutable(true)
             }
-            val caDst = File(compilerRootfs, "etc/ssl/certs/ca-certificates.crt")
+            val caDst = File(jdkRootfs, "etc/ssl/certs/ca-certificates.crt")
             if (!caDst.isFile) {
                 caDst.parentFile?.mkdirs()
                 ctx.assets.open("tools/ca-certificates.crt").use { i -> caDst.outputStream().use { o -> i.copyTo(o) } }
@@ -211,7 +212,7 @@ internal object BuildEnvironmentSetup {
             id,
             script,
             ProotLauncher.Options(
-                rootfs = compilerRootfs.absolutePath,
+                rootfs = jdkRootfs.absolutePath,
                 cwd = "/root",
                 binds = listOf(wsBind),
                 env = mapOf(

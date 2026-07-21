@@ -104,22 +104,6 @@ class PreferencesManager(context: Context) {
         }
     }
 
-    var projectActionHistory: String
-        get() = prefs.getString(Constants.PrefKeys.PROJECT_ACTION_HISTORY, "") ?: ""
-        set(value) = write { putString(Constants.PrefKeys.PROJECT_ACTION_HISTORY, value) }
-
-    var recentFileMore: String
-        get() = prefs.getString(Constants.PrefKeys.RECENT_FILE_MORE, "") ?: ""
-        set(value) = write { putString(Constants.PrefKeys.RECENT_FILE_MORE, value) }
-
-    var recentTerminalMore: String
-        get() = prefs.getString(Constants.PrefKeys.RECENT_TERMINAL_MORE, "") ?: ""
-        set(value) = write { putString(Constants.PrefKeys.RECENT_TERMINAL_MORE, value) }
-
-    var recentAgentMore: String
-        get() = prefs.getString(Constants.PrefKeys.RECENT_AGENT_MORE, "") ?: ""
-        set(value) = write { putString(Constants.PrefKeys.RECENT_AGENT_MORE, value) }
-
     var autoShowKeyboard: Boolean
         get() = prefs.getBoolean(Constants.PrefKeys.AUTO_SHOW_KEYBOARD, true)
         set(value) = write { putBoolean(Constants.PrefKeys.AUTO_SHOW_KEYBOARD, value) }

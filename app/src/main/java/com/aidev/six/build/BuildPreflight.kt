@@ -8,7 +8,7 @@ import java.net.Socket
 /**
  * 预构建体检的纯逻辑（无 Android 依赖，可单测）。
  *
- * 编译前扫描 `app/build.gradle.kts` 常见宇宙B 必失败的错误模式，产出中文告警提示，
+ * 编译前扫描 `app/build.gradle.kts` 常见编译环境必失败的错误模式，产出中文告警提示，
  * 供人类在提交构建前自行修正（仅提示，不自动改写工程文件）。
  */
 object BuildPreflight {
@@ -30,11 +30,11 @@ object BuildPreflight {
         val stripped = stripTopLevelBlock(text, "repositories")
         if (stripped != text) {
             text = stripped
-            messages += "⚠ 体检：已自动移除 app/build.gradle.kts 里的模块级 repositories{}（宇宙B 统一用 settings 的阿里云镜像，模块级会触发 FAIL_ON_PROJECT_REPOS 硬失败）"
+            messages += "⚠ 体检：已自动移除 app/build.gradle.kts 里的模块级 repositories{}（编译环境统一用 settings 的阿里云镜像，模块级会触发 FAIL_ON_PROJECT_REPOS 硬失败）"
         }
 
         Regex("""compileSdk\s*=?\s*(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { sdk ->
-            if (sdk != 36) messages += "⚠ 体检：compileSdk=$sdk 与宇宙B 已装的 android-36 不符，建议改回 36（缺对应 SDK 平台会编译失败）"
+            if (sdk != 36) messages += "⚠ 体检：compileSdk=$sdk 与编译环境已装的 android-36 不符，建议改回 36（缺对应 SDK 平台会编译失败）"
         }
 
         val usesCompose = text.contains("androidx.compose") || text.contains("compose = true") || text.contains("compose=true")
@@ -167,7 +167,7 @@ object BuildPreflight {
     }
 
     /**
-     * 设备/宇宙B 硬禁止的权限（来源：AGENTS.md 约束）。
+     * 设备硬禁止的权限（来源：AGENTS.md 约束）。
      * 命中即构建或安装必失败，应在构建前明确拦截，而不是浪费数分钟编译后报错。
      */
     val HARD_BLOCKER_PERMISSIONS: List<String> = listOf(
@@ -193,7 +193,7 @@ object BuildPreflight {
 
     /**
      * 构建前护栏（vibe coding 护栏的「硬」一层）：
-     *  1) Manifest 含 HARD_BLOCKER 权限 → hardErrors（设备/宇宙B 禁止）
+     *  1) Manifest 含 HARD_BLOCKER 权限 → hardErrors（设备禁止）
      *  2) 离线且基线依赖未预缓存 → warnings（提示先 aidev-precache，避免缺包失败）
      * 纯逻辑、可单测；不修改任何文件。
      */
@@ -212,7 +212,7 @@ object BuildPreflight {
             val text = runCatching { manifest.readText() }.getOrDefault("")
             HARD_BLOCKER_PERMISSIONS.forEach { perm ->
                 if (Regex("""android:name="$perm"""").containsMatchIn(text)) {
-                    hard += "✖ 硬限制命中：Manifest 声明了受限权限 $perm（设备/宇宙B 禁止，构建或安装必失败）。" +
+                    hard += "✖ 硬限制命中：Manifest 声明了受限权限 $perm（设备禁止，构建或安装必失败）。" +
                         "请改用其他方案，或在合规环境单独处理。"
                 }
             }

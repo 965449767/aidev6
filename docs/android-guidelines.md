@@ -20,7 +20,7 @@ Do not expand ROM-specific work to Huawei, OPPO, vivo, or other vendors unless e
 - Kotlin + Jetpack Compose Android app
 - `ShellActivity` (ComponentActivity + `setContent`) launcher
 - Embedded terminal based on Termux terminal-view
-- Dual Ubuntu rootfs (agent + compiler) through bundled PRoot
+- Single Ubuntu rootfs through bundled PRoot
 
 ### Main Directories
 

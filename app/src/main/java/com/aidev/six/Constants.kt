@@ -21,7 +21,6 @@ object Constants {
 
     // SharedPreferences 文件名
     const val PREFS_NAME = "aidev_ui"
-    const val PREFS_SHELL = "aidev_shell"
     const val REPO_ROOT = "/sdcard/.AIDevRepo"
 
     // SharedPreferences Key 常量
@@ -37,9 +36,6 @@ object Constants {
         const val BACKUP_DIR = "backup_dir"
         const val EXTERNAL_AIDEV_DIR = "external_aidev_dir"
         const val PROJECT_ACTION_HISTORY = "project_action_history"
-        const val RECENT_FILE_MORE = "recent_file_more"
-        const val RECENT_TERMINAL_MORE = "recent_terminal_more"
-        const val RECENT_AGENT_MORE = "recent_agent_more"
         const val TERMINAL_CUSTOM_KEYS = "terminal_custom_keys"
         const val TERMINAL_KEY_OVERRIDES = "terminal_key_overrides"
         const val TERMINAL_KEY_ALIASES = "terminal_key_aliases"
@@ -48,8 +44,6 @@ object Constants {
         const val AUTO_SHOW_KEYBOARD = "auto_show_keyboard"
         const val FILE_FAVORITES = "file_favorites"
         const val FILE_RECENT_DIRS = "file_recent_dirs"
-        const val ONELINERS = "oneliners"
-        const val SSH_CONNECTIONS = "connections"
         const val FILE_LAYOUT_MODE = "file_layout_mode"
         const val TERMINAL_THEME = "terminal_theme"
         const val USE_TRASH = "use_trash"
