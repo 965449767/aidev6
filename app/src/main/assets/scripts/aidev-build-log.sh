@@ -1,9 +1,9 @@
 #!/bin/sh
 # aidev-build-log: 读取本地构建日志（宿主写入 /sdcard/AIDev/logs/<项目>/build.log）
 #
-# 构建在宇宙 B（编译器 rootfs）内进行，但构建日志由宿主实时落盘到本地
-# /sdcard/AIDev/logs/<项目名>/build.log（universe A 的 PRoot 已绑定 /sdcard，
-# 故宇宙 A 内可直接读取，无需跨宇宙回传）。
+# 构建在终端环境内进行，但构建日志由宿主实时落盘到本地
+# /sdcard/AIDev/logs/<项目名>/build.log（PRoot 已绑定 /sdcard，
+# 故终端内可直接读取）。
 #
 # 用法:
 #   aidev-build-log <project>           打印指定项目的完整构建日志
@@ -25,7 +25,7 @@ usage() {
       aidev-build-log -h                  显示帮助
 
   读取宿主落盘的本地构建日志（/sdcard/AIDev/logs/<项目>/build.log）。
-  构建在宇宙 B 进行，但日志实时写回本地，宇宙 A 可直接读取。
+  构建在终端环境进行，日志实时写回本地，可直接读取。
 HELP
     exit 0
 }

@@ -6,7 +6,8 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 编译环境初始化：宇宙 B rootfs、JDK、aapt2（x86_64/qemu）、APK 包名提取。
+ * 编译环境初始化：JDK、aapt2（x86_64/qemu）、APK 包名提取。
+ * 所有编译操作统一在终端环境（ubuntu-rootfs）内执行，不再区分独立编译器宇宙。
  */
 internal object BuildEnvironmentSetup {
 
@@ -19,35 +20,36 @@ internal object BuildEnvironmentSetup {
         activeProcesses: ConcurrentHashMap<String, Process>,
         cancelledIds: MutableSet<String>
     ) {
-        val compilerRootfs = PathConfig.compilerRootfs(ctx)
-        if (File(compilerRootfs, ".aidev-rootfs-ready").isFile &&
-            File(compilerRootfs, "usr/bin/bash").isFile
+        // 重构后：编译器环境已统一到终端环境（ubuntu-rootfs），不再创建独立 rootfs
+        val rootfs = PathConfig.compilerRootfs(ctx) // 实际返回 rootfs()
+        if (File(rootfs, ".aidev-rootfs-ready").isFile &&
+            File(rootfs, "usr/bin/bash").isFile
         ) {
-            append("宇宙 B 已就绪: ${compilerRootfs.absolutePath}")
+            append("编译环境已就绪（终端环境）: ${rootfs.absolutePath}")
             ensureJdk(ctx, id, append, activeProcesses, cancelledIds)
             return
         }
-        append("→ 准备宇宙 B（编译器 rootfs）...")
+        append("→ 准备编译环境（终端 rootfs）...")
 
         val installExit = BuildExecutor.runStreaming(
             ctx,
             id,
             "AIDEV_HOME=/host-home " +
-                "AIDEV_ROOTFS=/host-home/compiler_rootfs " +
+                "AIDEV_ROOTFS=/host-home/ubuntu-rootfs " +
                 "AIDEV_PROOT=/bin/true " +
                 "sh /host-home/dev-env/bin/aidev-ubuntu-core install-ubuntu",
             ProotLauncher.Options(
-                rootfs = compilerRootfs.absolutePath,
+                rootfs = rootfs.absolutePath,
                 timeoutSec = 600,
                 redirectErrorStream = true
             ),
             append,
-            heartbeat = "准备宇宙 B 基础系统（首次下载解压 Ubuntu base）",
+            heartbeat = "准备终端基础系统（首次下载解压 Ubuntu base）",
             activeProcesses = activeProcesses,
             cancelledIds = cancelledIds
         )
         if (installExit != 0) {
-            append("⚠ 宇宙 B Ubuntu 基础环境安装失败(exit=$installExit)，编译可能失败")
+            append("⚠ Ubuntu 基础环境安装失败(exit=$installExit)，编译可能失败")
         }
 
         ensureJdk(ctx, id, append, activeProcesses, cancelledIds)
@@ -63,7 +65,7 @@ internal object BuildEnvironmentSetup {
 
     /**
      * 部署自带的 x86_64 aapt2 运行环境（qemu + aapt2.real + loader + glibc），生成包装脚本，
-     * 返回其在 universe B 内的路径 (/host-home/x86_64/aapt2)。失败返回 null。幂等。
+     * 返回其在终端环境内的路径 (/host-home/x86_64/aapt2)。失败返回 null。幂等。
      */
     fun ensureX86Aapt2(ctx: Context): String? {
         return runCatching {
@@ -116,14 +118,14 @@ internal object BuildEnvironmentSetup {
     }
 
     /**
-     * 确保宇宙 B 内 java 可用。采用便携版 JDK tarball（自带完整 cacerts），
+     * 确保终端环境内 java 可用。采用便携版 JDK tarball（自带完整 cacerts），
      * 免 apt/dpkg/debconf——本机 rootfs 的 dpkg/debconf 环境损坏，apt 装 openjdk 的 postinst 必崩。
      * JDK 解压到共享持久目录 /host-home/jdk17，跨重建复用。幂等。
      */
     fun ensureJdk(ctx: Context, id: String, append: (String) -> Unit, activeProcesses: ConcurrentHashMap<String, Process>, cancelledIds: MutableSet<String>) {
         val compilerRootfs = PathConfig.compilerRootfs(ctx)
         val wsBind = ProotLauncher.ProotBind(PathConfig.workspaceDir(ctx).absolutePath, "/workspace")
-        append("→ 检查/安装宇宙 B JDK17（便携版，免 apt）...")
+        append("→ 检查/安装 JDK17（便携版，免 apt）...")
 
         runCatching {
             val curlDst = File(compilerRootfs, "usr/local/bin/curl")
@@ -137,7 +139,7 @@ internal object BuildEnvironmentSetup {
                 caDst.parentFile?.mkdirs()
                 ctx.assets.open("tools/ca-certificates.crt").use { i -> caDst.outputStream().use { o -> i.copyTo(o) } }
             }
-        }.onFailure { AIDevLogger.e("BuildBridge", "部署 curl/ca 到宇宙 B 失败", it) }
+        }.onFailure { AIDevLogger.e("BuildBridge", "部署 curl/ca 到编译环境失败", it) }
 
         val script = """
             set -u
@@ -225,6 +227,6 @@ internal object BuildEnvironmentSetup {
             activeProcesses = activeProcesses,
             cancelledIds = cancelledIds
         )
-        append("→ 宇宙 B JDK17: ${if (javaExit == 0) "OK" else "返回非零(可重试)"}")
+        append("→ JDK17: ${if (javaExit == 0) "OK" else "返回非零(可重试)"}")
     }
 }

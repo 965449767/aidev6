@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * 构建黑盒只负责出产物（apk_path），部署（安装+启动）交由独立的部署黑盒 aidev-deploy。
  *
- * 本服务轮询该目录，在【宇宙 B（compiler_rootfs）】内执行 `./gradlew assembleDebug`，
+ * 本服务轮询该目录，在终端环境（ubuntu-rootfs）内执行 `./gradlew assembleDebug`，
  * 编译产物经共享 workspace 零延迟映射到物理硬盘；成功后静默安装并拉起，
  * 最后写入 result-<id>.json 并通知宿主。
  */
@@ -155,7 +155,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val definition = com.aidev.six.task.TaskDefinition(
             id = "build-$id",
             name = "构建 $project",
-            description = "宇宙 B 编译 → 静默安装 → 自动拉起",
+            description = "终端环境编译 → 静默安装 → 自动拉起",
             command = "aidev-build-request --project $project",
             workingDirectory = PathConfig.workspaceDir(ctx).absolutePath,
             tags = listOf("build", "self-evolution")
@@ -202,7 +202,7 @@ object BuildBridgeService : BridgeService("BuildBridge") {
             else -> null
         }
         if (apk == null) {
-            append("✗ 构建成功但找不到有效产物 APK（Gradle 产物与宇宙 B 副本均缺失）: ${stdApk.absolutePath}")
+            append("✗ 构建成功但找不到有效产物 APK（Gradle 产物缺失）: ${stdApk.absolutePath}")
             bc.finishAndPublish(false, "构建成功但缺少 APK")
             return
         }

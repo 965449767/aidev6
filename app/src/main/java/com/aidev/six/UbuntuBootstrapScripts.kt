@@ -78,7 +78,7 @@ object UbuntuBootstrapScripts {
         AIDEV_BIN="${'$'}{AIDEV_BIN:-${'$'}AIDEV_HOME/dev-env/bin}"
         AIDEV_OVERRIDES="${'$'}{AIDEV_OVERRIDES:-${'$'}AIDEV_HOME/overrides/bin}"
         AIDEV_ROOTFS="${'$'}{AIDEV_ROOTFS:-${'$'}AIDEV_HOME/ubuntu-rootfs}"
-        AIDEV_COMPILER_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS:-${'$'}AIDEV_HOME/compiler_rootfs}"
+        AIDEV_COMPILER_ROOTFS="${'$'}{AIDEV_COMPILER_ROOTFS:-${'$'}AIDEV_ROOTFS}"
         AIDEV_WORKSPACE="${'$'}{AIDEV_WORKSPACE:-${'$'}AIDEV_HOME/workspace}"
         AIDEV_NATIVE="${'$'}{AIDEV_NATIVE:-$nativeDir}"
         # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区；filesDir/cacheDir/code_cache 均被 W^X 拒绝）
@@ -467,10 +467,10 @@ AIDEV_BASHRC_AGENT_EOF
 
         enter_compiler_rootfs() {
           if [ "${'$'}{AIDEV_IN_ROOTFS:-0}" = "1" ]; then
-            echo "已在 rootfs 内，无法从此处进入宇宙B（编译器）。请退出到宿主(宇宙H)后再执行 compiler。" >&2
+            echo "已在 rootfs 内，无法从此处进入编译环境。请退出到宿主后再执行 compiler。" >&2
             return 1
           fi
-          printf '\033[33m已进入宇宙 B（编译器）\033[0m\n'
+          printf '\033[33m已进入编译环境\033[0m\n'
           has_compiler || install_compiler_rootfs --fast || return ${'$'}?
           ensure_android_groups "${'$'}AIDEV_COMPILER_ROOTFS"
           # deploy helper scripts to compiler rootfs
@@ -517,7 +517,7 @@ AIDEV_BASHRC_COMPILER_EOF
             esac
             unset _has_java
           fi
-          # 确保宇宙 B 内有 qemu-user-static（aapt2 覆盖依赖 x86_64→arm64 模拟，否则资源编译 Daemon 失败）
+          # 确保编译环境内有 qemu-user-static（aapt2 覆盖依赖 x86_64→arm64 模拟，否则资源编译 Daemon 失败）
           if [ -x "${'$'}AIDEV_PROOT" ] && [ -x "${'$'}AIDEV_COMPILER_ROOTFS/bin/sh" ]; then
             _has_qemu="$(run_compiler_cmd 'command -v qemu-amd64-static >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)"
             case "${'$'}_has_qemu" in *yes*) ;;

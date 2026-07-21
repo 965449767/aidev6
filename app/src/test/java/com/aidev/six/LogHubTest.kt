@@ -171,7 +171,7 @@ class LogHubTest {
         val writer = LogHub.openBuildLog(dir, "MyAndroidProject")
         val timer = LogHub.StepTimer(writer)
 
-        timer.beginStep("准备宇宙 B")
+        timer.beginStep("准备编译环境")
         writer.append("确保 rootfs + JDK 17")
         Thread.sleep(15)
         timer.endStep("rootfs + JDK + aapt2")
@@ -208,7 +208,7 @@ class LogHubTest {
         assertTrue("latest-build-profile.json 应存在", latest.exists())
         val profile = latest.readText()
         assertTrue("profile 应包含 totalMs", profile.contains("totalMs"))
-        assertTrue("profile 应包含 4 个步骤", profile.contains("准备宇宙 B"))
+        assertTrue("profile 应包含 4 个步骤", profile.contains("准备编译环境"))
 
         dir.deleteRecursively()
     }

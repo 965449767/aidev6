@@ -1,5 +1,5 @@
 #!/bin/sh
-# aidev-build-request: 请求宿主在编译器宇宙 B 中构建项目（自我进化闭环触发信号）
+# aidev-build-request: 请求宿主在终端环境中构建项目
 # Usage: aidev-build-request [--project <name|/workspace/path>] [--no-install] [--no-launch] [--launch-package <pkg>]
 #
 # 改进：提交请求后阻塞等待宿主 BuildBridge 的 result-<id>.json，并打印构建结果：
@@ -11,7 +11,7 @@ set -e
 . "$(dirname "$0")/lib/json-utils.sh"
 
 # 桥目录必须与宿主 BuildBridge 写入位置一致：宿主用 aidevHome=ctx.filesDir/home，
-# 在 Ubuntu 宇宙 A 中挂载为 /host-home。结果/请求都落在 /host-home/.aidev-build-bridge。
+# 在终端环境中挂载为 /host-home。结果/请求都落在 /host-home/.aidev-build-bridge。
 # 若仍按默认 $HOME(=/root) 轮询，则永远找不到 result-<id>.json，导致 900s 超时、
 # agent 在结果回来前就结束会话、收不到构建反馈。
 if [ -d /host-home ]; then
@@ -78,7 +78,7 @@ fi
 
 RESULT="$BRIDGE/result-$ID.json"
 echo "已提交构建请求：project=$PROJECT install=$AUTO_INSTALL launch=$AUTO_LAUNCH (id=$ID)"
-echo "宿主 BuildBridge 将监听并在宇宙 B（编译器）中编译，等待结果..."
+echo "宿主 BuildBridge 将监听并在终端环境中编译，等待结果..."
 
 # ── 阻塞等待结果 ──
 TIMEOUT=900
@@ -117,7 +117,7 @@ if [ "$SUCCESS" = "true" ]; then
   exit 0
 else
   # 特例：该项目已有构建在进行中（宿主 ProjectTaskLock 占用）。这不是编译失败，
-  # 常见于上一次请求客户端超时中断、但宇宙B 仍在后台编译时重复提交。此时应引导
+  # 常见于上一次请求客户端超时中断、但仍在后台编译时重复提交。此时应引导
   # 用户跟踪进行中的构建，而不是当作失败盲目重试（见闭环报告 2026-07-18 问题1）。
   case "$MESSAGE" in
     *已有任务进行中*|*任务进行中*)
@@ -126,7 +126,7 @@ else
       echo "═══ 构建跳过（已有构建进行中）═══"
       echo "消息: $MESSAGE"
       echo ""
-      echo "提示: 该项目已有一次构建在宇宙B 后台运行（可能来自上次超时中断的请求）。"
+      echo "提示: 该项目已有一次构建在后台运行（可能来自上次超时中断的请求）。"
       echo "      请勿重复提交——用 'aidev-build-log $PROJ_NORM' 跟踪其进度与结果，"
       echo "      待其结束后再按需重新构建。"
       exit 3

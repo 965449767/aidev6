@@ -42,14 +42,14 @@ internal object CommandCatalog {
         // ── 构建 / 部署 ───────────────────────────────────────────────
         CommandInfo(
             "aidev-build-request", "构建/部署",
-            "请求宿主在编译器宇宙 B 中构建项目，是唯一构建入口。",
+            "请求宿主在终端环境中构建项目，是唯一构建入口。",
             "aidev-build-request [--project <名称|/workspace/路径>] [--no-install] [--no-launch] [--launch-package <pkg>]\n" +
                 "  例：aidev-build-request --project MyApp\n" +
                 "      aidev-build-request --project /workspace/MyApp --no-launch",
         ),
         CommandInfo(
             "aidev-build-log", "构建/部署",
-            "读取本地构建日志（宿主实时落盘 /sdcard/AIDev/logs/<项目>/build.log，宇宙 A 可直接读）。",
+            "读取本地构建日志（宿主实时落盘 /sdcard/AIDev/logs/<项目>/build.log，终端可直接读）。",
             "aidev-build-log <project> [--tail N]\n" +
                 "  aidev-build-log latest|list          列出最近构建日志\n" +
                 "  例：aidev-build-log DebugTest\n" +

@@ -9,7 +9,7 @@ import java.io.File
  */
 internal object BuildProjectScaffolder {
 
-    /** 从 assets 拷贝 gradle-wrapper.jar，缺失才写入。宇宙 B 无 curl/wget，禁止网络下载。 */
+    /** 从 assets 拷贝 gradle-wrapper.jar，缺失才写入。终端环境无 curl/wget，禁止网络下载。 */
     fun ensureWrapperJar(projectDir: File, ctx: Context): Boolean {
         val wrapperJar = File(projectDir, "gradle/wrapper/gradle-wrapper.jar")
         if (wrapperJar.isFile && wrapperJar.length() > 0) return true

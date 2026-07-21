@@ -67,7 +67,7 @@ internal class BuildContext(
             startedAt = startedAt,
             finishedAt = finishedAt,
             exitCode = exitCode,
-            log = log.toString().takeLast(6000).ifBlank { "已提交构建请求，等待宇宙 B 调度…" },
+            log = log.toString().takeLast(6000).ifBlank { "已提交构建请求，等待编译调度…" },
             lastUpdatedAt = System.currentTimeMillis(),
             steps = steps
         )

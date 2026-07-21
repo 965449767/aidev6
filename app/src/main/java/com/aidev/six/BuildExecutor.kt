@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 编译执行器：项目编译流程、PRoot 流式执行、预构建体检。
+ * 所有编译统一在终端环境（ubuntu-rootfs）内执行，不再区分独立编译器宇宙。
  */
 internal object BuildExecutor {
 
@@ -87,7 +88,7 @@ internal object BuildExecutor {
         // 构建期间临时持唤醒锁，避免编译中途被系统休眠打断；结束即释放（见 KeepAliveService 按需持锁）。
         KeepAliveService.acquireBuildLocks(ctx)
         try {
-        bc.timer.beginStep("准备宇宙 B")
+        bc.timer.beginStep("准备编译环境")
         BuildEnvironmentSetup.ensureCompilerRootfs(ctx, id, append, activeProcesses, cancelledIds)
         bc.timer.endStep("rootfs + JDK + aapt2")
 
@@ -139,7 +140,7 @@ internal object BuildExecutor {
         val ubMarker = File(PathConfig.aidevHome(ctx), "gradle-cache/caches/modules-2/files-2.1/androidx.compose.material/material-icons-extended")
         if (!ubMarker.isDirectory) {
             if (isOnline()) {
-                append("→ 预热宇宙 B 依赖缓存（首次在线构建）...")
+                append("→ 预热依赖缓存（首次在线构建）...")
                 runStreaming(
                     ctx, id,
                     "cd /workspace/$rel && ./gradlew dependencies --no-daemon$aapt2Arg",
@@ -157,13 +158,13 @@ internal object BuildExecutor {
                         redirectErrorStream = true
                     ),
                     append,
-                    heartbeat = "预热宇宙 B 缓存",
+                    heartbeat = "预热依赖缓存",
                     activeProcesses = activeProcesses,
                     cancelledIds = cancelledIds
                 )
-                append("→ 宇宙 B 依赖缓存预热完成（断网可离线构建）")
+                append("→ 依赖缓存预热完成（断网可离线构建）")
             } else {
-                append("⚠ 宇宙 B 依赖缓存缺失且当前离线；若构建报缺包，请联网后运行 aidev-precache 再构建。")
+                append("⚠ 依赖缓存缺失且当前离线；若构建报缺包，请联网后运行 aidev-precache 再构建。")
             }
         }
 
@@ -191,7 +192,7 @@ internal object BuildExecutor {
         val buildDir = File(projectDir, "app/build")
         val buildType = if (buildDir.isDirectory && buildDir.listFiles()?.isNotEmpty() == true) "增量编译" else "全量编译"
         bc.timer.beginStep("编译 ($buildType)")
-        append("→ 进入宇宙 B 编译（$buildType）: cd /workspace/$rel && ./gradlew assembleDebug")
+        append("→ 进入编译（$buildType）: cd /workspace/$rel && ./gradlew assembleDebug")
         val exit = runStreaming(
             ctx, id,
             "cd /workspace/$rel && chmod +x gradlew && ./gradlew assembleDebug --no-daemon$aapt2Arg",
@@ -239,7 +240,7 @@ internal object BuildExecutor {
     }
 
     /**
-     * 预构建体检：编译前扫描 app/build.gradle.kts，提示几类宇宙B 必失败的错误写法。
+     * 预构建体检：编译前扫描 app/build.gradle.kts，提示几类必失败的错误写法。
      * 全部尽力而为，失败不阻断构建；提示以中文写入构建日志，小白可读。
      */
     internal fun preflightCheck(projectDir: File, append: (String) -> Unit) {

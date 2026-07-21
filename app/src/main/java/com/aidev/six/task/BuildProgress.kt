@@ -4,7 +4,7 @@ package com.aidev.six.task
  * 构建进度阶段推导（单一真源）。
  *
  * 无论构建由「服务器中心」手动提交，还是在终端调用 `aidev-build-request`
- * 提交，都从同一份构建日志推导出「准备宇宙 B → 编译 → 安装 → 拉起」四个阶段，
+ * 提交，都从同一份构建日志推导出「准备编译环境 → 编译 → 安装 → 拉起」四个阶段，
  * 保证不同入口在 AF 面板呈现完全一致的过程。
  *
  * OPT-03: 新增 [Phase] 枚举，发布进度时直接用枚举值，不再仅靠日志文本推导。
@@ -16,7 +16,7 @@ internal object BuildProgress {
     enum class Phase { PREPARE, COMPILE, INSTALL, LAUNCH }
 
     private val phaseNames = mapOf(
-        Phase.PREPARE to "准备宇宙 B",
+        Phase.PREPARE to "准备编译环境",
         Phase.COMPILE to "编译",
         Phase.INSTALL to "安装",
         Phase.LAUNCH to "拉起",
@@ -54,8 +54,8 @@ internal object BuildProgress {
         if (log.isBlank()) return emptyList()
         var activeReached = -1
         val markers = mapOf(
-            Phase.PREPARE to listOf("准备宇宙 B", "宇宙 B 已就绪", "install-compiler", "JDK17"),
-            Phase.COMPILE to listOf("进入宇宙 B 编译", "gradlew assembleDebug", "构建成功", "构建失败"),
+            Phase.PREPARE to listOf("准备编译环境", "准备宇宙 B", "宇宙 B 已就绪", "编译环境已就绪", "install-compiler", "JDK17"),
+            Phase.COMPILE to listOf("进入编译", "进入宇宙 B 编译", "gradlew assembleDebug", "构建成功", "构建失败"),
             Phase.INSTALL to listOf("通过 Shizuku 安装", "复制 APK", "未找到产物", "已安装"),
             Phase.LAUNCH to listOf("已拉起"),
         )

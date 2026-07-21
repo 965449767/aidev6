@@ -11,10 +11,9 @@ import java.util.concurrent.TimeUnit
  * 三处历史实现（UbuntuShell / ProjectManagerState.createProotProcess / aidev-ubuntu-core 的 shell 生成器）
  * 中，两个 Kotlin 调用点在此收敛；交互式终端会话仍经 shell 入口脚本复用相同参数。
  *
- * 双 rootfs 架构：
- *  - 主 Ubuntu rootfs（[com.aidev.six.PathConfig.agentRootfs]）：运行开发终端与工具
- *  - 编译器 rootfs（[com.aidev.six.PathConfig.compilerRootfs]）：运行 JDK + Android SDK + Gradle
- * 两者通过 [ProotBind] 把 [com.aidev.six.PathConfig.workspaceDir] 绑入各自内部 /workspace 实现物理隔离 + 源码共享。
+ * 单 rootfs 架构：所有操作统一在终端环境（[com.aidev.six.PathConfig.rootfs]）内执行，
+ * 包括开发终端与编译构建共享同一环境。工作区通过 [ProotBind] 把 [com.aidev.six.PathConfig.workspaceDir]
+ * 绑入内部 /workspace 实现源码共享。
  */
 object ProotLauncher {
 

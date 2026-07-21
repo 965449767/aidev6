@@ -4,32 +4,33 @@
 # 用法:
 #   aidev-precache                          # 预缓存「模板基线」依赖（compose-bom 2024.12.01 + material-icons-extended 等）
 #   aidev-precache <project-dir>            # 预缓存指定项目的实际依赖（解析其 gradle 配置并下载）
-#   aidev-precache --gradle-home <DIR>      # 把缓存落点指定为 <DIR>（即 GRADLE_USER_HOME），用于给宇宙 B 等独立缓存预热
-#   aidev-precache --universe-b             # 强制把基线缓存同步到宇宙 B 的 gradle 缓存目录（filesDir/home/gradle-cache）
+#   aidev-precache --gradle-home <DIR>      # 把缓存落点指定为 <DIR>（即 GRADLE_USER_HOME）
 #
 # 原理: 把依赖解析结果下载进 Gradle 缓存，使后续离线构建不缺包。
-# 关键: 宇宙 B（编译器 rootfs）构建用的 GRADLE_USER_HOME 是 /host-home/gradle-cache，它在宿主真实路径是
-#       filesDir/home/gradle-cache。认准这个目录预热，宇宙 B 才能离线构建。本脚本会【自动探测】该目录并同步。
+# 关键: 构建使用的 GRADLE_USER_HOME 是 /host-home/gradle-cache（宿主真实路径是
+#       filesDir/home/gradle-cache）。认准这个目录预热才能离线构建。
+#       本脚本会自动探测该目录并同步。
 # 注意: 本工具只在「联网时」有意义；离线运行会明确报告无法获取。
+#
+# 注：--universe-b 选项已废弃（不再区分独立编译器宇宙），保留仅为向后兼容。
 
 set -e
 
 AIDEV_GRADLE="/root/projects/aidev6/gradlew"
 
 GRADLE_HOME_OVERRIDE=""
-FORCE_UB=0
+FORCE_UB=0  # 废弃，保留向后兼容
 MODE_PROJECT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --gradle-home) GRADLE_HOME_OVERRIDE="$2"; shift 2 ;;
-        --universe-b) FORCE_UB=1; shift ;;
+        --universe-b) FORCE_UB=1; shift ;;  # 废弃，无实际效果
         -h|--help)
             echo "用法: aidev-precache [选项] [project-dir]"
-            echo "  (无参数)            预缓存模板基线依赖到宿主 ~/.gradle"
+            echo "  (无参数)            预缓存模板基线依赖"
             echo "  <project-dir>       预缓存指定项目的真实依赖"
-            echo "  --gradle-home <DIR> 把缓存落点指定为 <DIR>（GRADLE_USER_HOME），用于给宇宙 B 等独立缓存预热"
-            echo "  --universe-b        强制把基线缓存同步到宇宙 B 的 gradle 缓存目录"
+            echo "  --gradle-home <DIR> 把缓存落点指定为 <DIR>（GRADLE_USER_HOME）"
             echo "  -h|--help           显示帮助"
             exit 0 ;;
         *) MODE_PROJECT="$1"; shift ;;
@@ -46,8 +47,8 @@ else
     exit 1
 fi
 
-# 探测宇宙 B 在宿主侧的 gradle 缓存真实路径（/host-home/gradle-cache ↔ filesDir/home/gradle-cache）
-detect_ub_cache() {
+# 探测编译环境的 gradle 缓存真实路径（/host-home/gradle-cache ↔ filesDir/home/gradle-cache）
+detect_build_cache() {
     local cand
     for cand in "$AIDEV_FILES_DIR/home/gradle-cache" "$HOME/home/gradle-cache"; do
         [ -n "$cand" ] && [ -d "$cand" ] && { echo "$cand"; return 0; }
@@ -58,9 +59,9 @@ detect_ub_cache() {
     return 1
 }
 
-UB_CACHE=""
-if [ "$FORCE_UB" = 1 ] || [ -z "$GRADLE_HOME_OVERRIDE" ]; then
-    UB_CACHE=$(detect_ub_cache 2>/dev/null) || UB_CACHE=""
+BUILD_CACHE=""
+if [ -z "$GRADLE_HOME_OVERRIDE" ]; then
+    BUILD_CACHE=$(detect_build_cache 2>/dev/null) || BUILD_CACHE=""
 fi
 
 # ── 模式 1: 指定项目 → 解析其真实依赖（落点由 GRADLE_USER_HOME 控制）──
@@ -88,15 +89,15 @@ case "$DEC" in
     cp -r "$REPO_MAVEN/." "$HOME/.gradle/caches/" 2>/dev/null \
         && echo "✅ 已从仓库复制 Maven 基线到宿主缓存" \
         || echo "⚠ 从仓库复制失败，回退网络预缓存"
-    if [ -n "$UB_CACHE" ]; then
-        mkdir -p "$UB_CACHE/caches"
-        cp -r "$REPO_MAVEN/." "$UB_CACHE/caches/" 2>/dev/null \
-            && echo "✅ 已同步到宇宙 B 缓存" \
-            || echo "⚠ 同步到宇宙 B 缓存失败（可忽略）"
+    if [ -n "$BUILD_CACHE" ]; then
+        mkdir -p "$BUILD_CACHE/caches"
+        cp -r "$REPO_MAVEN/." "$BUILD_CACHE/caches/" 2>/dev/null \
+            && echo "✅ 已同步到编译环境缓存" \
+            || echo "⚠ 同步到编译环境缓存失败（可忽略）"
     fi
     if offline_ok "$HOME/.gradle"; then echo "✅ 离线自检通过（宿主缓存）"; else echo "⚠ 离线自检未通过（宿主缓存）"; fi
-    if [ -n "$UB_CACHE" ]; then
-        if offline_ok "$UB_CACHE"; then echo "✅ 离线自检通过（宇宙 B）"; else echo "⚠ 离线自检未通过（宇宙 B）"; fi
+    if [ -n "$BUILD_CACHE" ]; then
+        if offline_ok "$BUILD_CACHE"; then echo "✅ 离线自检通过（编译环境）"; else echo "⚠ 离线自检未通过（编译环境）"; fi
     fi
     exit 0
     ;;
@@ -134,7 +135,7 @@ dependencies {
 }
 EOF
 
-# 解析基线依赖到宿主缓存（默认落点）
+# 解析基线依赖到指定缓存
 resolve_to() {
     _home="$1"
     export GRADLE_USER_HOME="$_home"
@@ -159,26 +160,26 @@ if [ -n "$GRADLE_HOME_OVERRIDE" ]; then
     # 显式落点：直接解析到该目录
     resolve_to "$GRADLE_HOME_OVERRIDE" || OK=0
     TARGET_HOMES="$GRADLE_HOME_OVERRIDE"
-    # 若同时探测到宇宙 B 且不同于落点，把宿主缓存同步过去（避免重复下载）
-    if [ -n "$UB_CACHE" ] && [ "$GRADLE_HOME_OVERRIDE" != "$UB_CACHE" ]; then
-        echo "▶ 同步宿主缓存到宇宙 B 缓存: $UB_CACHE"
-        mkdir -p "$UB_CACHE"
-        cp -r "$HOME/.gradle/caches" "$UB_CACHE/caches" 2>/dev/null \
-            && echo "✅ 已同步到宇宙 B 缓存" \
-            || echo "⚠ 同步到宇宙 B 缓存失败（可忽略：首次构建时宇宙 B 会自行拉取）"
-        TARGET_HOMES="$TARGET_HOMES $UB_CACHE"
+    # 若同时探测到编译环境缓存且不同于落点，同步过去（避免重复下载）
+    if [ -n "$BUILD_CACHE" ] && [ "$GRADLE_HOME_OVERRIDE" != "$BUILD_CACHE" ]; then
+        echo "▶ 同步宿主缓存到编译环境缓存: $BUILD_CACHE"
+        mkdir -p "$BUILD_CACHE"
+        cp -r "$HOME/.gradle/caches" "$BUILD_CACHE/caches" 2>/dev/null \
+            && echo "✅ 已同步到编译环境缓存" \
+            || echo "⚠ 同步到编译环境缓存失败（可忽略：首次构建时会自行拉取）"
+        TARGET_HOMES="$TARGET_HOMES $BUILD_CACHE"
     fi
 else
-    # 默认：解析到宿主缓存；若探测到宇宙 B，再同步过去（单次下载，避免双重拉取）
+    # 默认：解析到宿主缓存；若探测到编译环境缓存，再同步过去（单次下载，避免双重拉取）
     resolve_to "$HOME/.gradle" || OK=0
     TARGET_HOMES="$HOME/.gradle"
-    if [ -n "$UB_CACHE" ]; then
-        echo "▶ 同步宿主缓存到宇宙 B 缓存: $UB_CACHE"
-        mkdir -p "$UB_CACHE"
-        cp -r "$HOME/.gradle/caches" "$UB_CACHE/caches" 2>/dev/null \
-            && echo "✅ 已同步到宇宙 B 缓存" \
-            || echo "⚠ 同步到宇宙 B 缓存失败（可忽略：首次构建时宇宙 B 会自行拉取）"
-        TARGET_HOMES="$TARGET_HOMES $UB_CACHE"
+    if [ -n "$BUILD_CACHE" ]; then
+        echo "▶ 同步宿主缓存到编译环境缓存: $BUILD_CACHE"
+        mkdir -p "$BUILD_CACHE"
+        cp -r "$HOME/.gradle/caches" "$BUILD_CACHE/caches" 2>/dev/null \
+            && echo "✅ 已同步到编译环境缓存" \
+            || echo "⚠ 同步到编译环境缓存失败（可忽略：首次构建时会自行拉取）"
+        TARGET_HOMES="$TARGET_HOMES $BUILD_CACHE"
     fi
 fi
 

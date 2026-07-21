@@ -199,14 +199,15 @@ object TerminalShellAssets {
             # source 期间关闭历史记录，避免下方大量函数定义/alias 被写入历史（否则方向键会翻出函数体）。
             set +o history 2>/dev/null || true
             AIDEV_VERSION="$v"
-            # 宿主(宇宙H) AIDEV_HOME 为 App 私有绝对路径；在 proot 内(宇宙A/B)宿主 home 绑定于 /host-home。
+            # 宿主(宇宙H) AIDEV_HOME 为 App 私有绝对路径；在 proot 内(终端环境)宿主 home 绑定于 /host-home。
             # 本 rc 会被 rootfs 的 .bashrc 通过 `. /host-home/.aidevrc` 复用，故须按位置解析，避免命令指向不存在的宿主路径。
             if [ -d /host-home ]; then AIDEV_HOME="/host-home"; else AIDEV_HOME="${home.absolutePath}"; fi
             AIDEV_BIN="${'$'}AIDEV_HOME/dev-env/bin"
             # 用户覆盖层：自定义命令放此处优先于出厂脚本，且不被 copyAssetScripts 覆盖（见 docs/error-journal 2026-07-17）。
             AIDEV_OVERRIDES="${'$'}AIDEV_HOME/overrides/bin"
             AIDEV_ROOTFS="${'$'}AIDEV_HOME/ubuntu-rootfs"
-            AIDEV_COMPILER_ROOTFS="${'$'}AIDEV_HOME/compiler_rootfs"
+            # 编译器 rootfs 已统一到终端环境（保留变量名以向后兼容）
+            AIDEV_COMPILER_ROOTFS="${'$'}AIDEV_ROOTFS"
             AIDEV_WORKSPACE="${'$'}AIDEV_HOME/workspace"
             AIDEV_NATIVE="$nativeDir"
             # proot 可执行体在 nativeLibraryDir（唯一 exec 允许区）
@@ -435,14 +436,6 @@ object TerminalShellAssets {
                 File(ubuntuDir, name).writeText(content + "\n")
             }
         }
-
-        // 宇宙 B（编译器 rootfs）同样需要 Gradle 初始化脚本（aapt2 包装 + APK 拷贝）
-        val compilerRootfs = File(home, "compiler_rootfs")
-        if (compilerRootfs.isDirectory) {
-            val compilerDir = File(compilerRootfs, "root/.gradle/init.d").apply { mkdirs() }
-            scripts.forEach { (name, content) ->
-                File(compilerDir, name).writeText(content + "\n")
-            }
-        }
+        // 注：编译器环境已统一到终端 rootfs，无需再单独安装
     }
 }

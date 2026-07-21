@@ -7,7 +7,7 @@ package com.aidev.six
  *   `/usr/local/bin/create-compose-project` 都必须与此保持一致（见 docs/dev-workflow.md）。
  * -  deliberately 与 AIDev 宿主栈（AGP 9.0.1 / Kotlin 2.0.21 / compileSdk 36）不同：
  *   模板是「目标 App」，采用保守黄金组合（AGP 8.7.0 / Kotlin 2.0.20 / compileSdk 35）。
- * - 宿主 `app/build.gradle.kts` 的 BOM 保持不变（2024.12.01 与之同款），宇宙 B 不受影响。
+ * - 宿主 `app/build.gradle.kts` 的 BOM 保持不变（2024.12.01 与之同款），编译环境不受影响。
  */
 object ScaffoldBaseline {
     const val COMPOSE_BOM = "2024.12.01"

@@ -50,7 +50,7 @@ object BuildDiagnostics {
             }
             val iconsMissing = log.contains("material-icons-extended")
             if (offline || iconsMissing) {
-                hints.add("依赖无法解析（可能离线或缓存缺失）：联网后运行 `aidev-precache` 预缓存基线依赖（含 material-icons-extended），之后可断网构建；也可 `aidev-precache --universe-b` 预热宇宙 B 缓存。")
+                hints.add("依赖无法解析（可能离线或缓存缺失）：联网后运行 `aidev-precache` 预缓存基线依赖（含 material-icons-extended），之后可断网构建。")
             }
         }
 
