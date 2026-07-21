@@ -3,6 +3,10 @@ import java.io.FileInputStream
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Properties
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Provider
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -11,38 +15,42 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-fun git(vararg args: String): String {
-    return try {
-        val proc = ProcessBuilder("git", *args)
-            .directory(File("."))
-            .redirectErrorStream(true)
-            .start()
-        proc.inputStream.bufferedReader().readText().trim()
-    } catch (_: Exception) { "" }
-}
+/**
+ * 执行外部命令并返回 stdout（使用 providers.exec，兼容 Gradle 配置缓存）。
+ * 配置缓存要求所有外部进程调用必须通过 Gradle 的 Provider API 声明。
+ */
+fun execCmd(vararg cmd: String): Provider<String> = providers.of(ExecValueSource::class) {
+    it.parameters { args -> args.commandLine.set(cmd.toList()) }
+}.map { result -> result.trim() }
 
-fun gitCount(): Int? {
-    return try {
-        git("rev-list", "--count", "HEAD").toIntOrNull()
-    } catch (_: Exception) {
-        null
+abstract class ExecValueSource : ValueSource<String, ExecValueSource.Params> {
+    interface Params : ValueSourceParameters {
+        val commandLine: ListProperty<String>
+    }
+    override fun obtain(): String {
+        return try {
+            ProcessBuilder(parameters.commandLine.get())
+                .directory(File("."))
+                .redirectErrorStream(true)
+                .start()
+                .inputStream.bufferedReader().readText()
+        } catch (_: Exception) { "" }
     }
 }
 
-fun gitDescribe(): String {
-    return try {
-        val description = git("describe", "--tags", "--dirty", "--always")
-        description.ifBlank { "local" }
-    } catch (_: Exception) {
-        "local"
-    }
-}
+// git 信息：使用 providers.exec 以支持 Gradle 配置缓存
+val gitDescribeProvider: Provider<String> = execCmd("git", "describe", "--tags", "--dirty", "--always")
+    .map { it.ifBlank { "local" } }
+val gitCountProvider: Provider<Int> = execCmd("git", "rev-list", "--count", "HEAD")
+    .map { it.toIntOrNull() ?: 1 }
 
 // Build counter persisted across builds so every APK gets a unique, monotonic version
 // (lets Shizuku pm install upgrade correctly and tells rebuilds apart in the self-evolution loop).
 // Seed from git commit count so existing installs (versionCode = gitCount) still upgrade.
 val buildCounterFile = file("build-counter.properties")
-val buildCounterSeed = gitCount() ?: 1
+// 注意：gitCountProvider.get() 会在配置期求值，但由于我们用了 ValueSource + providers.of，
+// Gradle 配置缓存能够识别并缓存这个外部进程调用的结果。
+val buildCounterSeed = runCatching { gitCountProvider.get() }.getOrNull() ?: 1
 val buildCounterLast = runCatching {
     if (buildCounterFile.isFile) {
         Properties().apply { load(FileInputStream(buildCounterFile)) }
@@ -55,7 +63,7 @@ val buildNumber = buildCounterLast + 1
 // Example: ./gradlew :app:assembleDebug -PversionCode=100 -PversionName=1.0.0
 val versionCodeOverride = findProperty("versionCode")?.toString()?.toIntOrNull()
 val versionNameOverride = findProperty("versionName")?.toString()
-val generatedVersionName = "1.0.0-b$buildNumber-${gitDescribe()}"
+val generatedVersionName = "1.0.0-b$buildNumber-${runCatching { gitDescribeProvider.get() }.getOrNull() ?: "local"}"
 
 fun File.sha256(): String {
     val md = MessageDigest.getInstance("SHA-256")
@@ -171,6 +179,10 @@ android {
 }
 
 composeCompiler {
+    // Compose 强跳过模式：编译器自动推导哪些 lambda 可以跳过重组，
+    // 无需手动加 @Stable/@Immutable 注解，大幅减少不必要的重组。
+    // 这是 Compose 1.7+ 的最显著性能优化，默认在 Compose Compiler 1.5.7+ 引入。
+    strongSkippingMode = true
     reportsDestination = layout.buildDirectory.dir("compose-reports")
     metricsDestination = layout.buildDirectory.dir("compose-reports")
 }
