@@ -166,56 +166,5 @@ case "$SUBCOMMAND" in
     ;;
 esac
 
-# 构建 KEY=VALUE 载荷（去除换行，防注入）
-CMD=$(printf '%s' "$CMD" | tr '\n' ' ')
-PAYLOAD="TYPE=exec
-COMMAND=$CMD"
-
-# 优先走 Socket（即时响应）；失败回退文件通道（原逻辑）
-if command -v aidev-bridge >/dev/null 2>&1; then
-  RESP=$(aidev-bridge send shizuku "$PAYLOAD" 2>/dev/null)
-  if [ -n "$RESP" ]; then
-    echo "Shizuku 请求已发送 (socket)"
-    echo "命令: $CMD"
-    printf '%s\n' "$RESP"
-    case "$RESP" in
-      ERROR:*) exit 1 ;;
-    esac
-    exit 0
-  fi
-fi
-
-# ── 文件通道兜底（原有逻辑）──
-REQ_ID="exec_$(date +%s%N)_$$"
-REQ_FILE="$REQUEST_DIR/$REQ_ID"
-RES_FILE="$RESULT_DIR/$REQ_ID"
-
-cat > "$REQ_FILE" <<EOF
-TYPE=exec
-COMMAND=$CMD
-EOF
-
-echo "Shizuku 请求已发送"
-echo "命令: $CMD"
-echo "等待执行结果..."
-
-TIMEOUT=30
-WAITED=0
-while [ ! -s "$RES_FILE" ] && [ "$WAITED" -lt "$TIMEOUT" ]; do
-  sleep 1
-  WAITED=$((WAITED + 1))
-  if [ -f "$RES_FILE" ] && grep -q "^ERROR:" "$RES_FILE" 2>/dev/null; then
-    cat "$RES_FILE"
-    rm -f "$REQ_FILE" "$RES_FILE"
-    exit 1
-  fi
-done
-
-if [ ! -s "$RES_FILE" ]; then
-  echo "ERROR: 请求超时。Shizuku 可能未运行或未授权。"
-  rm -f "$REQ_FILE" "$RES_FILE"
-  exit 1
-fi
-
-cat "$RES_FILE"
-rm -f "$REQ_FILE" "$RES_FILE"
+# 统一走 shizuku_exec（Socket 优先 + 文件通道兜底），消除重复逻辑
+shizuku_exec "$CMD" || exit 1
