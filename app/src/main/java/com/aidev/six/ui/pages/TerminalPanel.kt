@@ -16,6 +16,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -88,7 +89,77 @@ fun TerminalPanel(
         )
     }
     var themeDragAccumulator by remember { mutableFloatStateOf(0f) }
-    val decorView = activity.window?.decorView
+    val decorView = remember { activity.window?.decorView }
+
+    // 用 remember 缓存 lambda，避免每次重组重新创建导致子组件不必要重组
+    val handlePaste = remember(page) {
+        {
+            try {
+                val text = ClipboardHelper.paste(activity)
+                if (text != null) {
+                    try {
+                        page.flushInput()
+                        page.sessionManager.currentTerminalSession?.write(text)
+                    } catch (_: Exception) {
+                        Toast.makeText(activity, "粘贴写入失败", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(activity, "剪贴板为空", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(activity, "读取剪贴板失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val handleNewSession = remember(page) { { page.sessionManager.addSession() } }
+    val handleMore = remember { { showMoreSheet = true } }
+    val handleTogglePerf = remember { { showPerfHud = !showPerfHud } }
+    val handleHelp = remember { { showCommandHelp = true } }
+
+    val handleFontDragStart = remember { { dragAccumulator = 0f; showFontSlider = true } }
+    val handleFontDrag = remember(page, sliderFontSp, decorView) {
+        { deltaPx: Float ->
+            dragAccumulator += deltaPx * 0.025f
+            val steps = dragAccumulator.roundToInt()
+            if (steps != 0) {
+                dragAccumulator -= steps
+                val prev = sliderFontSp.roundToInt()
+                val newSp = (sliderFontSp + steps).coerceIn(10f, 24f).roundToInt().toFloat()
+                sliderFontSp = newSp
+                if (newSp.roundToInt() != prev) {
+                    decorView?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+                page.applyFontSp(newSp)
+            }
+        }
+    }
+    val handleFontDragEnd = remember(page, sliderFontSp) {
+        { page.applyFontSp(sliderFontSp); showFontSlider = false }
+    }
+
+    val themeKeyMap = remember { themePresetList.mapIndexed { i, (k, _) -> k to i }.toMap() }
+    val handleThemeDragStart = remember { { themeDragAccumulator = 0f; showThemeOverlay = true } }
+    val handleThemeDrag = remember(page, currentThemeKey, decorView, themeKeyMap) {
+        { deltaPx: Float ->
+            themeDragAccumulator += deltaPx * 0.03f
+            val steps = themeDragAccumulator.roundToInt()
+            if (steps != 0) {
+                themeDragAccumulator -= steps
+                val currentIdx = themeKeyMap[currentThemeKey] ?: -1
+                if (currentIdx >= 0) {
+                    val size = themePresetList.size
+                    val newIdx = ((currentIdx + steps) % size + size) % size
+                    val (newKey, _) = themePresetList[newIdx]
+                    currentThemeKey = newKey
+                    page.sessionManager.applyThemeToAll(newKey)
+                    activity.getSharedPreferences("aidev_ui", Activity.MODE_PRIVATE)
+                        .edit().putString("terminal_theme", newKey).apply()
+                    decorView?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+            }
+        }
+    }
+    val handleThemeDragEnd = remember { { showThemeOverlay = false } }
 
     LaunchedEffect(Unit) {
         page.sessionManager.ensureSession()
@@ -103,71 +174,24 @@ fun TerminalPanel(
                 TerminalTopBar(
                     activity = activity,
                     page = page,
-                    onNewSession = { page.sessionManager.addSession() },
+                    onNewSession = handleNewSession,
                 onCopy = {},
-                    onPaste = {
-                        try {
-                            val text = ClipboardHelper.paste(activity)
-                            if (text != null) {
-                                try {
-                                    page.flushInput()
-                                    page.sessionManager.currentTerminalSession?.write(text)
-                                } catch (_: Exception) {
-                                    Toast.makeText(activity, "粘贴写入失败", Toast.LENGTH_SHORT).show()
-                                }
-                            } else {
-                                Toast.makeText(activity, "剪贴板为空", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (_: Exception) {
-                            Toast.makeText(activity, "读取剪贴板失败", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onMore = { showMoreSheet = true },
-                    onTogglePerf = { showPerfHud = !showPerfHud },
+                    onPaste = handlePaste,
+                    onMore = handleMore,
+                    onTogglePerf = handleTogglePerf,
                 )
                 TerminalTabs(page)
                 TerminalStatusBar(
                     page = page,
                     fontSpClipped = sliderFontSp,
-                    onFontSizeDragStart = { dragAccumulator = 0f; showFontSlider = true },
-                    onFontSizeDrag = { deltaPx ->
-                        dragAccumulator += deltaPx * 0.025f
-                        val steps = dragAccumulator.roundToInt()
-                        if (steps != 0) {
-                            dragAccumulator -= steps
-                            val prev = sliderFontSp.roundToInt()
-                            sliderFontSp = (sliderFontSp + steps).coerceIn(10f, 24f).roundToInt().toFloat()
-                            if (sliderFontSp.roundToInt() != prev) {
-                                decorView?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                            page.applyFontSp(sliderFontSp)
-                        }
-                    },
-                    onFontSizeDragEnd = {
-                        page.applyFontSp(sliderFontSp)
-                        showFontSlider = false
-                    },
+                    onFontSizeDragStart = handleFontDragStart,
+                    onFontSizeDrag = handleFontDrag,
+                    onFontSizeDragEnd = handleFontDragEnd,
                     currentThemeKey = currentThemeKey,
-                    onHelp = { showCommandHelp = true },
-                    onThemeDragStart = { themeDragAccumulator = 0f; showThemeOverlay = true },
-                    onThemeDrag = { deltaPx ->
-                        themeDragAccumulator += deltaPx * 0.03f
-                        val steps = themeDragAccumulator.roundToInt()
-                        if (steps != 0) {
-                            themeDragAccumulator -= steps
-                            val currentIdx = themePresetList.indexOfFirst { it.first == currentThemeKey }
-                            if (currentIdx >= 0) {
-                                val newIdx = ((currentIdx + steps) % themePresetList.size + themePresetList.size) % themePresetList.size
-                                val (newKey, _) = themePresetList[newIdx]
-                                currentThemeKey = newKey
-                                page.sessionManager.applyThemeToAll(newKey)
-                                activity.getSharedPreferences("aidev_ui", Activity.MODE_PRIVATE)
-                                    .edit().putString("terminal_theme", newKey).apply()
-                                decorView?.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            }
-                        }
-                    },
-                    onThemeDragEnd = { showThemeOverlay = false },
+                    onHelp = handleHelp,
+                    onThemeDragStart = handleThemeDragStart,
+                    onThemeDrag = handleThemeDrag,
+                    onThemeDragEnd = handleThemeDragEnd,
                 )
 
             Column(

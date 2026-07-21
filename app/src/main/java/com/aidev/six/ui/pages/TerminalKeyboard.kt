@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +73,11 @@ internal fun TerminalKeyboard(page: EmbeddedTerminalPage, modifier: Modifier = M
     }
 
     val kv = km.keyVersion
+    // 预计算手势阈值，避免每个按键每次重组都重新计算
+    val density = LocalDensity.current
+    val hThresholdPx = with(density) { 72.dp.toPx() }
+    val vThresholdPx = with(density) { 24.dp.toPx() }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -80,7 +86,6 @@ internal fun TerminalKeyboard(page: EmbeddedTerminalPage, modifier: Modifier = M
             .padding(horizontal = 4.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        km.keyVersion
         val keys = km.getOrderedKeys()
         keys.chunked(KEYS_PER_ROW).forEach { rowKeys ->
             Row(
@@ -88,13 +93,9 @@ internal fun TerminalKeyboard(page: EmbeddedTerminalPage, modifier: Modifier = M
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 rowKeys.forEach { key ->
-                    KeyboardKey(
-                        key = key,
-                        isCtrlLatched = km.ctrlLatched && key.id == "ctrl",
-                        isRearranging = km.isRearranging,
-                        isSelected = selectedKeyId == key.id,
-                        isSwapping = key.id in swapPair,
-                        onTap = { tapId ->
+                    // 用 remember 缓存每个按键的回调，避免每次重组重新创建
+                    val onTapHandler = remember(key.id, km, selectedKeyId) {
+                        { tapId: String ->
                             if (km.isRearranging) {
                                 val sel = selectedKeyId
                                 when {
@@ -110,24 +111,32 @@ internal fun TerminalKeyboard(page: EmbeddedTerminalPage, modifier: Modifier = M
                                 selectedKeyId = null
                                 km.handleVirtualKeyTap(key)
                             }
-                        },
-                        onLongPress = {
+                        }
+                    }
+                    val onLongPressHandler = remember(key.id, km) {
+                        {
                             if (km.isRearranging) {
                                 km.editVirtualKey(key.id)
                             } else if (key.id == "bspace") {
                                 km.writeToSession("\u0015")
                             }
-                        },
-                        onSwipeLeft = {
+                        }
+                    }
+                    val onSwipeLeftHandler = remember(key.id, km) {
+                        {
                             if (km.isRearranging) {
                                 km.exitRearrangeMode(true)
                                 selectedKeyId = null
                             } else {
                                 km.enterRearrangeMode()
                             }
-                        },
-                        onSwipeRight = { if (!km.isRearranging) km.writeToSession("\r") },
-                        onSwipeDown = {
+                        }
+                    }
+                    val onSwipeRightHandler = remember(key.id, km) {
+                        { if (!km.isRearranging) km.writeToSession("\r") }
+                    }
+                    val onSwipeDownHandler = remember(key.id, km, key.swipeCommand) {
+                        {
                             if (!km.isRearranging) {
                                 if (key.id == "bspace") {
                                     km.sendSwipeAction("\u0015")
@@ -135,12 +144,29 @@ internal fun TerminalKeyboard(page: EmbeddedTerminalPage, modifier: Modifier = M
                                     km.sendSwipeAction(key.swipeCommand)
                                 }
                             }
-                        },
-                        onSwipeUp = {
+                        }
+                    }
+                    val onSwipeUpHandler = remember(key.id, km, key.swipeUpCommand) {
+                        {
                             if (!km.isRearranging && key.swipeUpCommand.isNotBlank()) {
                                 km.sendSwipeAction(key.swipeUpCommand)
                             }
-                        },
+                        }
+                    }
+                    KeyboardKey(
+                        key = key,
+                        isCtrlLatched = km.ctrlLatched && key.id == "ctrl",
+                        isRearranging = km.isRearranging,
+                        isSelected = selectedKeyId == key.id,
+                        isSwapping = key.id in swapPair,
+                        onTap = onTapHandler,
+                        onLongPress = onLongPressHandler,
+                        onSwipeLeft = onSwipeLeftHandler,
+                        onSwipeRight = onSwipeRightHandler,
+                        onSwipeDown = onSwipeDownHandler,
+                        onSwipeUp = onSwipeUpHandler,
+                        hThresholdPx = hThresholdPx,
+                        vThresholdPx = vThresholdPx,
                         modifier = Modifier
                             .weight(1f)
                             .padding(2.dp)
@@ -171,10 +197,11 @@ private fun KeyboardKey(
     onSwipeRight: () -> Unit,
     onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
+    hThresholdPx: Float,
+    vThresholdPx: Float,
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalContext.current as Activity
-    val density = LocalDensity.current
 
     val swapProgress by animateFloatAsState(
         targetValue = if (isSwapping) 1f else 0f,
@@ -239,8 +266,6 @@ private fun KeyboardKey(
             .pointerInput(key.id) {
                 val vc = viewConfiguration
                 val slop = vc.touchSlop
-                val hThreshold = with(density) { 72.dp.toPx() }
-                val vThreshold = 24.dp.toPx()
                 val timeoutMs = vc.longPressTimeoutMillis
 
                 awaitEachGesture {
@@ -296,11 +321,11 @@ private fun KeyboardKey(
                             }
                             when {
                                 abs(dragTotal.x) > abs(dragTotal.y) -> {
-                                    if (dragTotal.x < -hThreshold) onSwipeLeft()
-                                    else if (dragTotal.x > hThreshold) onSwipeRight()
+                                    if (dragTotal.x < -hThresholdPx) onSwipeLeft()
+                                    else if (dragTotal.x > hThresholdPx) onSwipeRight()
                                 }
-                                dragTotal.y > vThreshold -> onSwipeDown()
-                                dragTotal.y < -vThreshold -> onSwipeUp()
+                                dragTotal.y > vThresholdPx -> onSwipeDown()
+                                dragTotal.y < -vThresholdPx -> onSwipeUp()
                             }
                             return@awaitEachGesture
                         }

@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,12 +74,46 @@ internal fun TerminalTopBar(
         }
     }
 
-    val isAndroid = projectDir != null && ProjectDetector.isAndroidProject(projectDir)
+    val isAndroid by remember(projectDir) {
+        derivedStateOf { projectDir != null && ProjectDetector.isAndroidProject(projectDir!!) }
+    }
     val canBuild = isAndroid
     val canLaunch = pkgName != null
 
-    val disabledBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-    val disabledFg = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+    val disabledBg by remember {
+        derivedStateOf { MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f) }
+    }
+    val disabledFg by remember {
+        derivedStateOf { MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) }
+    }
+
+    // 缓存 lambda，避免每次重组重新创建
+    val buildOnClick = remember(canBuild, projectDir, page, activity) {
+        {
+            if (!canBuild) return@remember
+            val dir = projectDir ?: return@remember
+            val cmd = "aidev-build-request --project ${dir.name} --no-install --no-launch"
+            val ts = page.sessionManager.currentTerminalSession
+            if (ts != null) {
+                page.completionEngine?.inputBuffer = ""
+                ts.write("$cmd\r")
+                page.completionEngine?.focusTerminalInput()
+                Toast.makeText(activity, "已在终端提交构建：${dir.name}（不自动安装）", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(activity, "当前无可用终端会话", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val launchOnClick = remember(canLaunch, pkgName, scope, activity) {
+        {
+            if (!canLaunch) return@remember
+            val pkg = pkgName ?: return@remember
+            scope.launch {
+                ShizukuLogcat.executeCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+                Toast.makeText(activity, "已拉起：$pkg", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Row(
         modifier = modifier
@@ -91,21 +126,7 @@ internal fun TerminalTopBar(
         AppChip(
             text = "编译",
             modifier = Modifier.widthIn(max = 120.dp),
-            onClick = {
-                if (!canBuild) return@AppChip
-                val dir = projectDir ?: return@AppChip
-                // 在终端会话里真正执行构建命令，使构建过程在终端可见
-                val cmd = "aidev-build-request --project ${dir.name} --no-install --no-launch"
-                val ts = page.sessionManager.currentTerminalSession
-                if (ts != null) {
-                    page.completionEngine?.inputBuffer = ""
-                    ts.write("$cmd\r")
-                    page.completionEngine?.focusTerminalInput()
-                    Toast.makeText(activity, "已在终端提交构建：${dir.name}（不自动安装）", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(activity, "当前无可用终端会话", Toast.LENGTH_SHORT).show()
-                }
-            },
+            onClick = buildOnClick,
             bgColor = if (canBuild) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canBuild) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
         )
@@ -113,14 +134,7 @@ internal fun TerminalTopBar(
         AppChip(
             text = "拉起",
             modifier = Modifier.widthIn(max = 120.dp),
-            onClick = {
-                if (!canLaunch) return@AppChip
-                val pkg = pkgName ?: return@AppChip
-                scope.launch {
-                    ShizukuLogcat.executeCommand("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
-                    Toast.makeText(activity, "已拉起：$pkg", Toast.LENGTH_SHORT).show()
-                }
-            },
+            onClick = launchOnClick,
             bgColor = if (canLaunch) MaterialTheme.colorScheme.primaryContainer else disabledBg,
             textColor = if (canLaunch) MaterialTheme.colorScheme.onPrimaryContainer else disabledFg,
         )
