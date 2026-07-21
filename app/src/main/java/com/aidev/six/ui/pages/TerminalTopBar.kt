@@ -75,7 +75,7 @@ internal fun TerminalTopBar(
     }
 
     val isAndroid by remember(projectDir) {
-        derivedStateOf { projectDir != null && ProjectDetector.isAndroidProject(projectDir!!) }
+        derivedStateOf { projectDir?.let { ProjectDetector.isAndroidProject(it) } == true }
     }
     val canBuild = isAndroid
     val canLaunch = pkgName != null
