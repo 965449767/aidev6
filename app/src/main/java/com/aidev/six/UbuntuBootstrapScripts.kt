@@ -324,6 +324,18 @@ AIDEV_BOOTSTRAP_EOF
           cat > "${'$'}AIDEV_ROOTFS/root/.bashrc" <<'AIDEV_BASHRC_AGENT_EOF'
 # AIDEV_PWD_HOOK_BEGIN
 . /host-home/.aidevrc
+# Replace /system/bin/sh -> /bin/sh in .aidevrc function bodies (pure bash, no sed)
+_p=/system/bin/sh _q=/bin/sh
+eval "${'$'}(
+              declare -f |
+              while IFS= read -r __l; do
+                case "${'$'}__l" in
+                  *${'$'}_p*) printf '%s\n' "${'$'}{__l//${'$'}_p/${'$'}_q}" ;;
+                  *) printf '%s\n' "${'$'}__l" ;;
+                esac
+              done
+)"
+unset _p _q
 _p="${'$'}PATH"; PATH=""
 while [ -n "${'$'}_p" ]; do _e="${'$'}{_p%%:*}"; case "${'$'}_e" in /system/*) ;; *) PATH="${'$'}{PATH:+${'$'}PATH:}${'$'}_e" ;; esac; [ "${'$'}_p" = "${'$'}_e" ] && _p="" || _p="${'$'}{_p#*:}"; done
 unset _p _e
@@ -437,6 +449,18 @@ AIDEV_BASHRC_AGENT_EOF
             cat > "${'$'}bashrc" << 'AIDEV_PWD_HOOK_EOF'
 # AIDEV_PWD_HOOK_BEGIN
 . /host-home/.aidevrc
+# Replace /system/bin/sh -> /bin/sh in .aidevrc function bodies (pure bash, no sed)
+_p=/system/bin/sh _q=/bin/sh
+eval "${'$'}(
+              declare -f |
+              while IFS= read -r __l; do
+                case "${'$'}__l" in
+                  *${'$'}_p*) printf '%s\n' "${'$'}{__l//${'$'}_p/${'$'}_q}" ;;
+                  *) printf '%s\n' "${'$'}__l" ;;
+                esac
+              done
+)"
+unset _p _q
 _p="${'$'}PATH"; PATH=""
 while [ -n "${'$'}_p" ]; do _e="${'$'}{_p%%:*}"; case "${'$'}_e" in /system/*) ;; *) PATH="${'$'}{PATH:+${'$'}PATH:}${'$'}_e" ;; esac; [ "${'$'}_p" = "${'$'}_e" ] && _p="" || _p="${'$'}{_p#*:}"; done
 unset _p _e

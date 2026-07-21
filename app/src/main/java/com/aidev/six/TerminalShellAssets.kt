@@ -271,10 +271,7 @@ object TerminalShellAssets {
             getpropx() { android-sh "getprop ${'$'}*"; }
             logcatx() { android-sh "logcat ${'$'}*"; }
             ubuntu() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" ubuntu "${'$'}@"; }
-            compiler() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" ubuntu "${'$'}@"; }
             install-ubuntu() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" install-ubuntu "${'$'}@"; }
-            install-compiler() { echo "编译器环境已统一到终端 rootfs，无需单独安装。"; }
-            aidev-ensure-envs() { echo "环境已整合为单一 rootfs，无需额外操作。"; }
             aidev-auto-bootstrap() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-auto-bootstrap "${'$'}@"; }
             aidev-doctor() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" aidev-doctor "${'$'}@"; }
             setup-dev-env() { /system/bin/sh "${'$'}AIDEV_BIN/aidev-ubuntu-core" setup-dev-env "${'$'}@"; }
