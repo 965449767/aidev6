@@ -76,14 +76,15 @@ class DevEnvironmentChecker(
             .setPositiveButton(if (fixable.isNotEmpty()) "一键修复" else null) { _, _ ->
                 val cmds = mutableListOf<String>()
                 for (item in fixable) {
-                    when (item.fixAction) {
+                    val action = item.fixAction ?: continue
+                    when (action) {
                         "action:storage" -> openStorageSettings()
                         "action:battery" -> {
                             activity.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                                 data = Uri.parse("package:${activity.packageName}")
                             })
                         }
-                        else -> cmds.add(item.fixAction!!)
+                        else -> cmds.add(action)
                     }
                 }
                 if (cmds.isNotEmpty()) {

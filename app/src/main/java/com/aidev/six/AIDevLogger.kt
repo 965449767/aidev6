@@ -112,10 +112,11 @@ object AIDevLogger {
                 if (fileWriter == null) {
                     fileWriter = BufferedWriter(FileWriter(f, true))
                 }
+                val w = fileWriter ?: error("fileWriter 初始化失败")
                 val ts = tsFmt.format(Date())
                 val line = "[$sessionId][$ts][${level.tag}] $tag: $message\n"
-                fileWriter!!.write(line)
-                fileWriter!!.flush()
+                w.write(line)
+                w.flush()
                 currentFileSize += line.toByteArray().size
             }
         }

@@ -34,11 +34,11 @@ object LogHub {
         fun append(line: String) {
             val elapsed = System.currentTimeMillis() - startTime
             val ts = tsFmt.format(Date())
-            ensureOpen()
-            writer!!.append("[$ts +${elapsed}ms] $line\n")
+            val w = ensureOpen()
+            w.append("[$ts +${elapsed}ms] $line\n")
             val now = System.currentTimeMillis()
             if (now - lastFlush > 1000) {
-                writer!!.flush()
+                w.flush()
                 lastFlush = now
             }
         }
@@ -46,10 +46,10 @@ object LogHub {
         @Synchronized
         fun finish() {
             val total = System.currentTimeMillis() - startTime
-            ensureOpen()
-            writer!!.append("=== 完成 (${total}ms) ===\n")
-            writer!!.flush()
-            writer!!.close()
+            val w = ensureOpen()
+            w.append("=== 完成 (${total}ms) ===\n")
+            w.flush()
+            w.close()
             writer = null
         }
 
@@ -70,8 +70,10 @@ object LogHub {
             return target
         }
 
-        private fun ensureOpen() {
+        /** 确保 writer 已打开，返回非空引用。 */
+        private fun ensureOpen(): BufferedWriter {
             if (writer == null) writer = BufferedWriter(FileWriter(file, true))
+            return writer ?: error("LogWriter 初始化失败")
         }
     }
 
@@ -139,7 +141,7 @@ object LogHub {
     fun openBuildLog(logsDir: File, project: String): LogWriter {
         val dir = subdir(logsDir, project)
         val file = File(dir, "build.log")
-        file.writeText("=== 构建 $project 开始于 ${dateFmt.get()!!.format(Date())} ===\n")
+        file.writeText("=== 构建 $project 开始于 ${dateFmt.get()?.format(Date())} ===\n")
         return LogWriter(file, "build")
     }
 
@@ -151,7 +153,7 @@ object LogHub {
      */
     fun openCrashLog(logsDir: File, tempId: String): LogWriter {
         val file = File(logsDir, "crash-$tempId.log")
-        file.writeText("=== 崩溃报告 开始于 ${dateFmt.get()!!.format(Date())} ===\n")
+        file.writeText("=== 崩溃报告 开始于 ${dateFmt.get()?.format(Date())} ===\n")
         return LogWriter(file, "crash")
     }
 

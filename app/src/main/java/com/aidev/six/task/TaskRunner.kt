@@ -144,10 +144,10 @@ internal object TaskRunner {
             val reader = Thread {
                 try {
                     process.inputStream.bufferedReader().use { r ->
-                        var line: String?
-                        while (r.readLine().also { line = it } != null) {
+                        while (true) {
+                            val line = r.readLine() ?: break
                             output.append(line).append('\n')
-                            onLine(line!!)
+                            onLine(line)
                         }
                     }
                 } catch (_: Throwable) {

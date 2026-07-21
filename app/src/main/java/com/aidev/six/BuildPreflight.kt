@@ -149,7 +149,8 @@ object BuildPreflight {
                     val type = match.groupValues[1]
                     val name = match.groupValues[2]
                     // 只检查我们已收集的资源类型
-                    if (type in definedResources && name !in definedResources[type]!!) {
+                    val typeSet = definedResources[type]
+                    if (typeSet != null && name !in typeSet) {
                         messages += "⚠ 资源预检：${f.name} 引用了 @type/$name，但 res/values/ 中未定义该资源，编译将报 not found"
                     }
                 }

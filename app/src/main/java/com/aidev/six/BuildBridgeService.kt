@@ -196,9 +196,10 @@ object BuildBridgeService : BridgeService("BuildBridge") {
         val append = bc::append
 
         val stdApk = File(projectDir, "app/build/outputs/apk/debug/app-debug.apk")
+        val customApk = bc.buildApkPath?.let { File(it) }
         val apk = when {
             stdApk.isFile -> stdApk
-            bc.buildApkPath != null && File(bc.buildApkPath!!).isFile -> File(bc.buildApkPath!!)
+            customApk != null && customApk.isFile -> customApk
             else -> null
         }
         if (apk == null) {
