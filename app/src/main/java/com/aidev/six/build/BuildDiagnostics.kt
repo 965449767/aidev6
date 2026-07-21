@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.build
 
 /**
  * 构建错误诊断工具：解析常见编译错误，返回中文修复建议。

@@ -3,7 +3,7 @@ package com.aidev.six.files
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import com.aidev.six.ShizukuLogcat
+import com.aidev.six.shizuku.ShizukuLogcat
 import com.aidev.six.ShizukuState
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope

@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.bridge
 
 /**
  * 桥接 Socket 服务：持有 [BridgeTransport]，把收到的请求帧路由到已注册的桥。

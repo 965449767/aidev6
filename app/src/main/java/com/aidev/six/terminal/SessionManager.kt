@@ -10,11 +10,11 @@ import android.view.View
 import android.widget.Toast
 import com.aidev.six.ClipboardHelper
 import com.aidev.six.Constants
-import com.aidev.six.NotifyBridgeService
-import com.aidev.six.BuildBridgeService
-import com.aidev.six.DeployBridgeService
-import com.aidev.six.ShizukuBridgeService
-import com.aidev.six.ShizukuLogcat
+import com.aidev.six.bridge.BuildBridgeService
+import com.aidev.six.bridge.DeployBridgeService
+import com.aidev.six.bridge.NotifyBridgeService
+import com.aidev.six.bridge.ShizukuBridgeService
+import com.aidev.six.shizuku.ShizukuLogcat
 import com.aidev.six.TerminalCommandBus
 import com.aidev.six.TerminalImeProxyEditText
 import com.aidev.six.TerminalShellAssets

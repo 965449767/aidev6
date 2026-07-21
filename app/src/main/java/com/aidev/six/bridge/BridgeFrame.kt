@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.bridge
 
 import org.json.JSONObject
 import java.io.IOException

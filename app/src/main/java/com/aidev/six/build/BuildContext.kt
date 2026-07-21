@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.build
 
 import android.content.Context
 import com.aidev.six.task.BuildProgress

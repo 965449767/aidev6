@@ -45,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 import com.aidev.six.PreferencesManager
-import com.aidev.six.ShizukuLogcat
+import com.aidev.six.shizuku.ShizukuLogcat
 import com.aidev.six.ui.components.AppRadioDialogContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

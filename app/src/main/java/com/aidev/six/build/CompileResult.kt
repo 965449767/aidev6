@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.build
 
 import java.io.File
 

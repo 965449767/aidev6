@@ -1,6 +1,10 @@
-package com.aidev.six
+package com.aidev.six.bridge
 
 import android.content.Context
+import com.aidev.six.build.BuildContext
+import com.aidev.six.build.BuildExecutor
+import com.aidev.six.build.BuildEnvironmentSetup
+import com.aidev.six.build.CompileResult
 import com.aidev.six.task.BuildProgress
 import com.aidev.six.task.BuildProgress.Phase
 import com.aidev.six.task.ProjectTaskLock

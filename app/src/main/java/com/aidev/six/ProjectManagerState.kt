@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import com.aidev.six.files.ProjectManager
 import com.aidev.six.terminal.ProotLauncher
 import com.aidev.six.files.ShizukuInstaller
+import com.aidev.six.shizuku.ShizukuLogcat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

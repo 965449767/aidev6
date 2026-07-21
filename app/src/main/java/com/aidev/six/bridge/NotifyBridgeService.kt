@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.bridge
 
 import kotlinx.coroutines.launch
 import org.json.JSONObject

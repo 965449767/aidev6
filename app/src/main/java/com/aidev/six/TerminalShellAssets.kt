@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Build
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import com.aidev.six.build.BuildPreflight
 import com.aidev.six.monitor.SystemMetricsCollector
 import java.io.File
 

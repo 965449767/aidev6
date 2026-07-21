@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.bridge
 
 import java.util.concurrent.ConcurrentHashMap
 

@@ -1,4 +1,4 @@
-package com.aidev.six
+package com.aidev.six.shizuku
 
 import android.content.pm.PackageManager
 import android.util.Log

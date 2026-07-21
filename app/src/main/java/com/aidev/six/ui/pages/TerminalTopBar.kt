@@ -26,7 +26,7 @@ import com.aidev.six.BuildConfig
 import com.aidev.six.EmbeddedTerminalPage
 import com.aidev.six.PathConfig
 import com.aidev.six.ProjectDetector
-import com.aidev.six.ShizukuLogcat
+import com.aidev.six.shizuku.ShizukuLogcat
 import com.aidev.six.SyncCoordinator
 import com.aidev.six.ui.components.AppChip
 import com.aidev.six.ui.theme.Spacing

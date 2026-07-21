@@ -5,7 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import com.aidev.six.PreferencesManager
-import com.aidev.six.ShizukuLogcat
+import com.aidev.six.shizuku.ShizukuLogcat
 
 internal data class MenuConfig(
     val title: String,
