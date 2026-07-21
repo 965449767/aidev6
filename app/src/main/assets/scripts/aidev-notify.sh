@@ -7,6 +7,7 @@
 #   aidev-notify -p high "消息内容"          # priority: low|default|high|max
 set -e
 . "$(dirname "$0")/lib/json-utils.sh"
+. "$(dirname "$0")/lib/bridge-common.sh"
 
 TITLE="AIDev Terminal"
 PRIORITY=""
@@ -40,17 +41,5 @@ PAYLOAD=$(cat <<EOF
 EOF
 )
 
-if command -v aidev-bridge >/dev/null 2>&1; then
-  ACK=$(aidev-bridge send notify "$PAYLOAD" 2>/dev/null)
-  if [ -n "$ACK" ]; then
-    echo "已通过 Socket 推送通知 (ack: $ACK)"
-    exit 0
-  fi
-fi
-
-# 文件通道兜底
-D="/host-home/.aidev-notify"
-mkdir -p "$D"
-ID="n_$(date +%s%N)_$$"
-printf '%s\n' "$PAYLOAD" > "$D/$ID.json"
-echo "Socket 不可用，已回退文件通道提交通知"
+bridge_send notify "$PAYLOAD" "/host-home/.aidev-notify" "n"
+exit 0

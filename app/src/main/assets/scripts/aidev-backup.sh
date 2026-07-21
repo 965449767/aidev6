@@ -8,14 +8,11 @@
 #   aidev-backup delete <name>
 
 set -e
+. "$(dirname "$0")/lib/logging.sh"
 
 BACKUP_DIR="${BACKUP_DIR:-/sdcard/AIDev/backups}"
 LOCK_FILE="$BACKUP_DIR/.aidev-backup.lock"
 SELF="$0"
-
-log()  { echo "[$(date '+%H:%M:%S')] $*"; }
-die()  { log "错误: $*"; exit 1; }
-warn() { echo "  ⚠ $*"; }
 
 cleanup() {
     rm -f "$LOCK_FILE"
