@@ -31,6 +31,16 @@ object TerminalShellAssets {
     private fun ensureInner(activity: Activity, home: File, errFile: File): TerminalShellAssetPaths {
         errFile.delete()
         File(home, "workspace").mkdirs()
+        // 部署 workspace AGENTS.md（开发环境手册），每次启动更新以保持最新。
+        // 部署后设为只读，防止 AI 代理或终端操作误删除/修改。
+        runCatching {
+            val agentsMd = File(home, "workspace/AGENTS.md")
+            if (agentsMd.exists()) agentsMd.setWritable(true)
+            activity.assets.open("AGENTS.md").use { input ->
+                agentsMd.outputStream().use { output -> input.copyTo(output) }
+            }
+            agentsMd.setReadOnly()
+        }.onFailure { Log.w("TerminalShellAssets", "deploy AGENTS.md failed", it) }
         val rc = File(home, ".aidevrc")
         val entry = File(home, ".aidev_shell_entry")
         val rootfs = File(home, "ubuntu-rootfs")
@@ -61,6 +71,7 @@ object TerminalShellAssets {
         if (needsDeploy) {
             runCatching {
                 installProotSupportLibraries(activity)
+                deployAapt2Wrapper(activity, home)
                 if (rootfs.isDirectory) {
                     deployLargeAssets(activity, rootfs)
                 }
@@ -180,6 +191,70 @@ object TerminalShellAssets {
             out.setReadable(true, false)
         }
         File(home, ".aidev_shell_fallback").delete()
+    }
+
+    /** 部署 aapt2 QEMU 包装器：自包含 x86_64 glibc sysroot + qemu-static + aapt2.real + 包装脚本。
+     *  包装器生成在 homeDir (→ /host-home/) 下，供 gradle.properties 的 aapt2FromMavenOverride 引用。
+     *  在此部署是因为：build-tools 的 aapt2 是动态 x86_64 ELF，ARM64 上靠 QEMU 运行时需显式 loader
+     *  + sysroot（见 docs/error-journal.md 2026-07-11 环境坑）。
+     *  全量验证：仅当 qemu + aapt2.real + lib 全部成功后才写包装脚本，否则不生成。 */
+    private fun deployAapt2Wrapper(activity: Activity, homeDir: File) {
+        val qemuStatic = "qemu-x86_64-static"
+        val x8664Dir = "x86_64"
+        var allOk = true
+
+        runCatching {
+            activity.assets.open("tools/$qemuStatic").use { input ->
+                File(homeDir, qemuStatic).outputStream().use { output -> input.copyTo(output) }
+            }
+            File(homeDir, qemuStatic).setExecutable(true)
+        }.onFailure {
+            Log.e("TerminalShellAssets", "deployAapt2Wrapper: qemu-x86_64-static failed", it)
+            allOk = false
+        }
+
+        val x86Dir = File(homeDir, x8664Dir).apply { mkdirs() }
+        runCatching {
+            activity.assets.open("tools/$x8664Dir/aapt2.real").use { input ->
+                File(x86Dir, "aapt2.real").outputStream().use { output -> input.copyTo(output) }
+            }
+            File(x86Dir, "aapt2.real").setExecutable(true)
+        }.onFailure {
+            Log.e("TerminalShellAssets", "deployAapt2Wrapper: aapt2.real failed", it)
+            allOk = false
+        }
+
+        val libDir = File(x86Dir, "lib").apply { mkdirs() }
+        runCatching {
+            val libEntries = activity.assets.list("tools/$x8664Dir/lib") ?: emptyArray()
+            for (entry in libEntries) {
+                activity.assets.open("tools/$x8664Dir/lib/$entry").use { input ->
+                    File(libDir, entry).outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+        }.onFailure {
+            Log.e("TerminalShellAssets", "deployAapt2Wrapper: lib copy failed", it)
+            allOk = false
+        }
+
+        if (allOk) {
+            val wrapper = File(x86Dir, "aapt2")
+            val wrapperContent = """
+                #!/bin/sh
+                export QEMU_LD_PREFIX=/host-home/$x8664Dir
+                exec /host-home/$qemuStatic /host-home/$x8664Dir/lib/ld-linux-x86-64.so.2 \
+                  --library-path /host-home/$x8664Dir/lib \
+                  /host-home/$x8664Dir/aapt2.real "${'$'}@"
+            """.trimIndent() + "\n"
+            runCatching {
+                wrapper.writeText(wrapperContent)
+                wrapper.setExecutable(true)
+            }.onFailure {
+                Log.e("TerminalShellAssets", "deployAapt2Wrapper: wrapper script failed", it)
+            }
+        } else {
+            Log.w("TerminalShellAssets", "deployAapt2Wrapper: skipping wrapper creation due to prior failures")
+        }
     }
 
     /** 部署大文件（curl/ca-certs），仅在 versionCode 变更时执行 */
@@ -321,29 +396,10 @@ object TerminalShellAssets {
      *  @param memAvailableMb 可用内存（MB）；低于看门狗阈值时下调 workers.max 以"时间换空间"。传 null 则按 CPU 核数。 */
     fun gradleInitScripts(memAvailableMb: Long? = null): Map<String, String> = mapOf(
             "wrap-native.gradle" to """
-                // AIDev: Auto-wrap aapt2 for ARM64 QEMU environment
+                // AIDev: ARM64 QEMU aapt2 wrapper — path set via gradle.properties
                 def arch = System.getProperty("os.arch", "")
                 if (!arch.contains("aarch64")) return
-                if (System.getProperty("android.aapt2DaemonMode") == null) {
-                    System.setProperty("android.aapt2DaemonMode", "false")
-                }
-                def aapt2 = System.getProperty("android.aapt2FromMavenOverride")
-                if (aapt2 == null) {
-                    def sdkDir = System.getenv("ANDROID_SDK_ROOT") ?: "/Android"
-                    def btDir = new File(sdkDir, "build-tools")
-                    if (btDir.exists()) {
-                        def dirs = btDir.listFiles().findAll { it.isDirectory() }.sort().reverse()
-                        for (d in dirs) {
-                            def f = new File(d, "aapt2")
-                            if (f.canExecute()) {
-                                System.setProperty("android.aapt2FromMavenOverride", f.absolutePath)
-                                aapt2 = f.absolutePath
-                                break
-                            }
-                        }
-                    }
-                }
-                logger.lifecycle "AIDev: ARM64 QEMU wrapper" + (aapt2 ? " (aapt2=" + aapt2 + ")" : "")
+                logger.lifecycle "AIDev: ARM64 architecture detected, using bundled aapt2 QEMU wrapper"
             """.trimIndent(),
             "copy-apk.gradle" to """
                 // AIDev: Copy built APKs to /sdcard/ for easy installation

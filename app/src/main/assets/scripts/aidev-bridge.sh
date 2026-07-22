@@ -11,7 +11,7 @@ set -e
 
 PORT=14096
 HOST=127.0.0.1
-TIMEOUT=30
+TIMEOUT=90
 
 # 桥接 Socket 共享密钥：从宿主写入的 token 文件读取（动态生成），不再硬编码。
 # 文件位于 aidev home 根目录（/host-home/.bridge-token），由 PreferencesManager.syncTokenToAidevHome 写入。
@@ -32,6 +32,7 @@ bridge, mid, payload, port, token = sys.argv[1], sys.argv[2], sys.argv[3], int(s
 try:
     frame = json.dumps({"b": bridge, "i": mid, "p": payload, "a": token}).encode()
     s = socket.create_connection(("127.0.0.1", port), timeout=5)
+    s.settimeout(None)  # 连接建立后切为阻塞模式，避免长时间操作（如安装 APK）被 5s 超时打断
     s.sendall(struct.pack(">I", len(frame)) + frame)
     hdr = b""
     while len(hdr) < 4:

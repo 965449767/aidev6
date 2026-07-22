@@ -59,6 +59,9 @@ if [ -z "$AAPT2" ] && [ -d "$HOME/.gradle/caches" ]; then
     AAPT2=$(find "$HOME/.gradle/caches" -name aapt2 -type f 2>/dev/null | head -1)
 fi
 
+if [ -z "$AAPT2" ] && [ -n "$ANDROID_SDK_ROOT" ] && [ -d "$ANDROID_SDK_ROOT/build-tools" ]; then
+    AAPT2=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt2 -type f 2>/dev/null | head -1)
+fi
 if [ -z "$AAPT2" ] && [ -f "local.properties" ]; then
     SDK_DIR=$(grep "^sdk.dir" local.properties 2>/dev/null | cut -d= -f2)
     if [ -n "$SDK_DIR" ] && [ -d "$SDK_DIR/build-tools" ]; then

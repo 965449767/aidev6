@@ -49,6 +49,20 @@ object UbuntuBootstrapScripts {
                 android.util.Log.w("AIDev", "无法复制脚本 $script: ${e.message}")
             }
         }
+        // 系统控制脚本（通知、截图、音量、亮度、剪贴板、代理），与 TerminalShellAssets.kt 的 writeSystemScript 保持同步。
+        // 部署到 rootfs /usr/local/bin/ 使 PRoot 内也可用（如 aidev-build-request 需 sysnotify 发通知）。
+        for (sysName in listOf("sysnotify", "screencap", "volume", "brightness", "sysclip", "aidev-proxy")) {
+            val dst = java.io.File(binDir, sysName)
+            try {
+                runCatching { dst.setWritable(true) }
+                dst.writeText(systemScriptContent(sysName) + "\n")
+                dst.setExecutable(true)
+                runCatching { dst.setReadOnly() }
+                android.util.Log.d("AIDev", "已复制系统脚本: $sysName -> ${dst.absolutePath}")
+            } catch (e: Exception) {
+                android.util.Log.w("AIDev", "无法复制系统脚本 $sysName: ${e.message}")
+            }
+        }
         // 公共 lib 目录：被 aidev-build-request / aidev-notify / aidev-anr / aidev-tombstone 等 source，
         // 必须与脚本同目录（/usr/local/bin/lib），否则这些命令会在 set -e 下崩溃（见脚本审计）。
         val libDir = java.io.File(binDir, "lib").apply { mkdirs() }
@@ -534,6 +548,7 @@ AIDEV_PWD_HOOK_EOF
                 if (exec) dst.setExecutable(true)
             }
             copyAssetRel("gradlew", gradlewDst, exec = true)
+            copyAssetRel("gradlew.real", java.io.File(templateRoot, "gradlew.real"), exec = true)
             copyAssetRel("gradlew.bat", java.io.File(templateRoot, "gradlew.bat"))
             val wrapperDir = java.io.File(templateRoot, "gradle/wrapper").apply { mkdirs() }
             copyAssetRel("gradle/wrapper/gradle-wrapper.jar", java.io.File(wrapperDir, "gradle-wrapper.jar"))

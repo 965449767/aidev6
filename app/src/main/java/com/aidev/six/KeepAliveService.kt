@@ -12,11 +12,14 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class KeepAliveService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var locksHeld = false
+    private var lockMonitorThread: Thread? = null
 
     companion object {
         @Volatile
@@ -64,6 +67,7 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        startBuildLockMonitor()
         if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             runCatching {
                 startForeground(NOTIFICATION_ID, notification())
@@ -81,7 +85,28 @@ class KeepAliveService : Service() {
         return START_STICKY
     }
 
+    private fun startBuildLockMonitor() {
+        lockMonitorThread = Thread {
+            val markerFile = File(filesDir, "home/.build-running")
+            while (!Thread.interrupted()) {
+                val shouldHold = markerFile.exists()
+                if (shouldHold && !locksHeld) {
+                    AIDevLogger.d(TAG, "build marker detected → acquire locks")
+                    acquireLocks()
+                    locksHeld = true
+                } else if (!shouldHold && locksHeld) {
+                    AIDevLogger.d(TAG, "build marker gone → release locks")
+                    releaseLocks()
+                    locksHeld = false
+                }
+                try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
+            }
+        }.apply { isDaemon = true; name = "build-lock-monitor"; start() }
+    }
+
     override fun onDestroy() {
+        lockMonitorThread?.interrupt()
+        lockMonitorThread = null
         releaseBuildLocks()
         super.onDestroy()
         instance = null

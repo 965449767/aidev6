@@ -5,6 +5,9 @@
 # 版本锁定（与 AGENTS.md「版本锁定」表格同步）:
 #   AGP ${AGP_VERSION} / Kotlin ${KOTLIN_VERSION} / Compose BOM ${COMPOSE_BOM}
 #   Gradle ${GRADLE_VERSION} / compileSdk ${COMPILE_SDK} / targetSdk ${TARGET_SDK} / minSdk ${MIN_SDK}
+# 每次生成新项目时,自动写入 .build-config.json（版本+SHA256 哈希）并 chmod 444 锁定
+# 6 个 Gradle 关键配置文件,防止 AI 代理或误操作篡改基础设施配置。构建时
+# aidev-build-request 触发 validate_build_config() 校验,不通过则拒绝构建。
 #
 # Options:
 #   -p, --package PACKAGE  包名（默认 com.example.<项目名小写>）
@@ -139,16 +142,17 @@ if [ -d "$PROJECT_DIR" ]; then
     fi
 fi
 
-# ─── JDK 说明（终端环境不负责编译，仅提示，不阻断）────────────
-# 实际编译在终端环境内进行，终端环境无需本地 Java。
-# 此处仅做信息提示，避免因找不到 java 而产生"环境损坏"的误判。
+# ─── JDK 检测（构建需要 JDK 17）────────────
 if command -v java >/dev/null 2>&1; then
     JAVA_VERSION=$(java -version 2>&1 | head -1)
-    if ! echo "$JAVA_VERSION" | grep -qi '17\.'; then
-        echo "  提示: 终端环境检测到 JDK 非 17 (${JAVA_VERSION})，但编译在隔离环境进行，不影响构建。"
+    if echo "$JAVA_VERSION" | grep -qi '17\.'; then
+        echo "  ✓ JDK 17 已就绪"
+    else
+        echo "  ⚠ 当前 JDK 非 17 (${JAVA_VERSION})，构建可能失败"
     fi
 else
-    echo "  提示: 终端环境未安装 Java（符合设计：编译在隔离环境进行，终端环境不负责编译）。"
+    echo "  ✗ 未检测到 Java，构建将失败"
+    echo "    运行: setup-dev-env --android"
 fi
 
 # ─── 模板校验 ────────────────────────────────────────────
@@ -201,17 +205,48 @@ else
     done
 fi
 
-# ARM64 → 寻找可用的 aapt2（从最新到最旧依次测试）
-AAPT2_OVERRIDE=""
-if [ "$IS_ARM64" = true ] && [ -n "$SDK_DIR" ]; then
+# ─── aapt2 检测（按优先级：原生 → QEMU 包装器 → 全局配置）──
+AAPT2_MODE=""
+AAPT2_PATH=""
+AAPT2_INFO=""
+if [ "$IS_ARM64" = true ]; then
+    # 1) 本地原生 aapt2（ARM64 版本，直接可运行）
     for _bt in "$SDK_DIR/build-tools"/*/; do
         [ -f "${_bt}aapt2" ] || continue
-        # 尝试运行，测试 wrapper 是否有效
         if "${_bt}aapt2" version >/dev/null 2>&1; then
-            AAPT2_OVERRIDE="${_bt}aapt2"
+            AAPT2_PATH="${_bt}aapt2"
+            AAPT2_MODE="native"
             break
         fi
     done
+    # 2) QEMU 包装器（自包含 x86_65 sysroot + aapt2.real）
+    if [ -z "$AAPT2_PATH" ] && [ -x /host-home/x86_64/aapt2 ]; then
+        if /host-home/x86_64/aapt2 version >/dev/null 2>&1; then
+            AAPT2_PATH="/host-home/x86_64/aapt2"
+            AAPT2_MODE="qemu-wrapper"
+        fi
+    fi
+    # 3) 全局 Gradle 配置已指定 override
+    if [ -z "$AAPT2_PATH" ]; then
+        _GH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        _GP="$_GH/gradle.properties"
+        if [ -f "$_GP" ]; then
+            _GLOBAL_OVERRIDE=$(grep '^android\.aapt2FromMavenOverride=' "$_GP" 2>/dev/null | tail -1 | cut -d= -f2-)
+            if [ -n "$_GLOBAL_OVERRIDE" ]; then
+                AAPT2_PATH="$_GLOBAL_OVERRIDE"
+                AAPT2_MODE="global-config"
+            fi
+        fi
+    fi
+    if [ -n "$AAPT2_PATH" ]; then
+        case "$AAPT2_MODE" in
+            native) AAPT2_INFO="${AAPT2_PATH} (native)" ;;
+            qemu-wrapper) AAPT2_INFO="/host-home/x86_64/aapt2 (QEMU wrapper)" ;;
+            global-config) AAPT2_INFO="from GRADLE_USER_HOME/gradle.properties (QEMU wrapper)" ;;
+        esac
+    else
+        AAPT2_INFO="未找到，构建时 AGP 将从 Maven 下载 ARM64 版"
+    fi
 fi
 
 # ─── 打印摘要 ────────────────────────────────────────────
@@ -229,10 +264,10 @@ echo "  Kotlin:    ${KOTLIN_VERSION}"
 echo "  Compose:   ${COMPOSE_BOM}"
 echo "  Gradle:    ${GRADLE_VERSION}"
 echo "  SDK:       ${COMPILE_SDK} / ${TARGET_SDK} / ${MIN_SDK}"
-echo "  JDK:       编译在隔离环境，终端环境无需本地 JDK"
+echo "  JDK:       local (JDK 17)"
 echo "  架构:      ${ARCH}"
-if [ "$IS_ARM64" = true ] && [ -n "$AAPT2_OVERRIDE" ]; then
-    echo "  AAPT2:     ${AAPT2_OVERRIDE} (QEMU wrapper)"
+if [ "$IS_ARM64" = true ]; then
+    echo "  AAPT2:     ${AAPT2_INFO}"
 fi
 echo ""
 if [ "$USE_LOCAL" = true ]; then
@@ -257,6 +292,7 @@ cd "$PROJECT_DIR"
 
 # ─── 复制模板 ────────────────────────────────────────────
 cp "$TEMPLATE_DIR/gradlew" gradlew
+[ -f "$TEMPLATE_DIR/gradlew.real" ] && cp "$TEMPLATE_DIR/gradlew.real" gradlew.real && chmod +x gradlew.real
 [ -f "$TEMPLATE_DIR/gradlew.bat" ] && cp "$TEMPLATE_DIR/gradlew.bat" gradlew.bat
 mkdir -p gradle/wrapper
 cp "$TEMPLATE_DIR/gradle/wrapper/gradle-wrapper.jar" gradle/wrapper/gradle-wrapper.jar
@@ -371,11 +407,11 @@ android.nonTransitiveRClass=true
 # 故必须关闭 built-in Kotlin，否则任何新项目都无法编译（见 error-journal / Google Issue 438711106）。
 android.builtInKotlin=false
 android.newDsl=false
+
+# ARM64: QEMU 下 aapt2 daemon 模式不可用，禁用
+android.aapt2DaemonMode=false
 GRADLE_PROPS
-# ARM64: 追加 aapt2 override 避免使用 AGP 捆绑的 x86_64 版本
-if [ "$IS_ARM64" = true ] && [ -n "$AAPT2_OVERRIDE" ]; then
-    echo "android.aapt2FromMavenOverride=${AAPT2_OVERRIDE}" >> gradle.properties
-fi
+# ARM64: aapt2 override 已由 GRADLE_USER_HOME/gradle.properties 全局配置覆盖，此处不重复写入
 
 # ─── local.properties ───────────────────────────────────
 if [ -n "$SDK_DIR" ]; then
@@ -516,14 +552,43 @@ build/
 .cxx/
 EOF
 
+# ─── .build-config.json（配置完整性清单）────────────
+cat > .build-config.json << EOF
+{
+  "version": 1,
+  "gradle": "${GRADLE_VERSION}",
+  "agp": "${AGP_VERSION}",
+  "kotlin": "${KOTLIN_VERSION}",
+  "composeBom": "${COMPOSE_BOM}",
+  "compileSdk": ${COMPILE_SDK},
+  "minSdk": ${MIN_SDK},
+  "targetSdk": ${TARGET_SDK},
+  "hashes": {
+    "gradle/wrapper/gradle-wrapper.properties": "$(sha256sum gradle/wrapper/gradle-wrapper.properties 2>/dev/null | cut -d' ' -f1 || echo 'skip')",
+    "build.gradle.kts": "$(sha256sum build.gradle.kts 2>/dev/null | cut -d' ' -f1 || echo 'skip')",
+    "app/build.gradle.kts": "$(sha256sum app/build.gradle.kts 2>/dev/null | cut -d' ' -f1 || echo 'skip')",
+    "settings.gradle.kts": "$(sha256sum settings.gradle.kts 2>/dev/null | cut -d' ' -f1 || echo 'skip')",
+    "gradle.properties": "$(sha256sum gradle.properties 2>/dev/null | cut -d' ' -f1 || echo 'skip')"
+  }
+}
+EOF
+
+# ─── 关键配置文件只读保护（防 AI 或误操作篡改）────────
+chmod 444 gradle/wrapper/gradle-wrapper.properties \
+          build.gradle.kts \
+          app/build.gradle.kts \
+          settings.gradle.kts \
+          gradle.properties \
+          .build-config.json 2>/dev/null || true
+
 # ─── 完成 ────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════"
 echo "  项目创建完成!"
 echo "═══════════════════════════════════════════"
 echo "  目录: ${PROJECT_DIR}"
-echo "  构建: aidev-build-request --project ${PROJECT_DIR}"
-echo "        （编译在隔离环境进行，构建成功后可 aidev-autoinstall --launch <包名> 安装并启动）"
+echo "  构建: cd ${PROJECT_DIR} && ./gradlew :app:assembleDebug"
+echo "        构建成功后可运行: aidev-autoinstall --launch ${PACKAGE} 安装并启动"
 echo ""
 echo "  提交构建并安装后，即可看到: \"Hello, ${APP_NAME}!\""
 echo "═══════════════════════════════════════════"

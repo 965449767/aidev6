@@ -2,10 +2,12 @@ package com.aidev.six.bridge
 
 import com.aidev.six.AIDevLogger
 import com.aidev.six.shizuku.ShizukuLogcat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 import java.io.File
@@ -36,7 +38,8 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         var hadWork = false
         reqDir.listFiles()?.filter {
             (it.name.startsWith("log_") || it.name.startsWith("camera_") ||
-             it.name.startsWith("exec_") || it.name.startsWith("hb_")) &&
+             it.name.startsWith("exec_") || it.name.startsWith("hb_") ||
+             it.name.startsWith("install_")) &&
             !it.name.endsWith(".processing")
         }?.forEach { file ->
             val claimed = claimFile(reqDir, file) ?: return@forEach
@@ -68,6 +71,7 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
         AIDevLogger.i("ShizukuBridge", "dispatch type=$type")
         return when (type) {
             "exec" -> runBlocking { computeExec(fields["COMMAND"] ?: "") }
+            "install" -> runBlocking { computeInstall(fields["APK_PATH"] ?: "") }
             else -> runBlocking { computeLog(fields) }
         }
     }
@@ -86,6 +90,7 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
             // 请求文件缺 TYPE 时按文件名兜底，避免被误判为 log 请求而返回 logcat（假成功）
             type = when {
                 origName.startsWith("exec_") || origName.startsWith("hb_") -> "exec"
+                origName.startsWith("install_") -> "install"
                 else -> ""
             }
         }
@@ -93,6 +98,7 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
 
         val out = when (type) {
             "exec" -> computeExec(fields["COMMAND"] ?: "")
+            "install" -> computeInstall(fields["APK_PATH"] ?: "")
             else -> computeLogToFile(resFile, fields)
         }
         atomicWriteText(resFile, out)
@@ -177,6 +183,44 @@ object ShizukuBridgeService : BridgeService("ShizukuBridge") {
                 appendLine("ERROR: exit=${result.exitCode}")
                 if (result.stderr.isNotBlank()) appendLine("stderr: ${result.stderr}")
                 if (result.stdout.isNotBlank()) appendLine("stdout: ${result.stdout}")
+            }
+        }
+    }
+
+    /**
+     * 安装 APK：
+     * 1. 检查 Shizuku 是否已授权，未授权则提前报错
+     * 2. 复制 APK 到 /data/local/tmp/（shell 进程可写，system_server 可读，绕过 FUSE SELinux 限制）
+     * 3. pm install -r -d --user 0（简单路径安装，不依赖 session，避免 HyperOS 弹窗阻塞）
+     * 4. 清理临时文件（; rm -f 确保无论 pm 成功/失败均执行）
+     */
+    private suspend fun computeInstall(apkPath: String): String = withContext(Dispatchers.IO) {
+        val file = File(apkPath)
+        if (!file.isFile) return@withContext "ERROR: 文件不存在: $apkPath"
+
+        if (!ShizukuLogcat.isAvailable()) {
+            return@withContext "ERROR: Shizuku 未授权或不可用（${ShizukuLogcat.statusText()}），无法执行特权安装"
+        }
+
+        val absPath = file.absolutePath.replace("'", "'\\''")
+        val tmpName = "aidev-install-${file.name.hashCode()}-${System.nanoTime()}.apk"
+        val tmpPath = "/data/local/tmp/$tmpName"
+        val size = file.length()
+        AIDevLogger.i("ShizukuBridge", "Installing APK: $apkPath ($size bytes)")
+
+        // cp + pm install + cleanup（用 ; 确保即使 pm 失败也清理临时文件）
+        val cmd = "cp '$absPath' '$tmpPath' && pm install -r -d --user 0 '$tmpPath'; rm -f '$tmpPath'"
+
+        val result = ShizukuLogcat.executeCommand(cmd)
+        buildString {
+            if (result.exitCode == 0) {
+                append("→ 安装成功")
+                if (result.stdout.isNotBlank()) appendLine("\n${result.stdout.take(500)}")
+            } else {
+                appendLine("ERROR: 安装失败 (exit=${result.exitCode})")
+                appendLine(ShizukuLogcat.pmInstallErrorHint(result))
+                if (result.stderr.isNotBlank()) appendLine("stderr: ${result.stderr.take(1000)}")
+                if (result.stdout.isNotBlank()) appendLine("stdout: ${result.stdout.take(1000)}")
             }
         }
     }

@@ -95,11 +95,11 @@ internal fun systemScriptContent(name: String): String = when (name) {
             "sysclip" -> """#!/bin/sh
                 # AIDev clipboard script
                 # Usage: sysclip set <text>
-                #        sysclip get
+                #        sysclip get  (仅 API 31+/前台 Activity 可用，当前环境不支持读取)
                 CMD="${'$'}{1:-}"
                 if [ "${'$'}CMD" = "get" ]; then
-                    /system/bin/service call clipboard 2 2>/dev/null || echo '{"status":"error","error":"clipboard read not supported"}'
-                    exit 0
+                    echo '{"status":"error","error":"clipboard read not supported on this device (Android 安全限制)"}'
+                    exit 1
                 fi
                 shift 2>/dev/null
                 TEXT="${'$'}*"

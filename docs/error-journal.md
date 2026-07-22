@@ -1106,3 +1106,53 @@ PRoot 以 `-0`（root）启动（`ProotLauncher.kt:42`），终端内是 root。
 3. **静态规则要精不要宽**：裸词误赋值（`out rc`）与函数调用（`detect "a"`）静态无法区分，硬扫会误报阻断 CI；改由专项测试用 dash 实跑暴露。精准的「函数外 local / pipefail」规则零误报且高价值。
 4. **dash 基线顺带挖出旧雷**：`setup-dev-env.sh` 函数外 local 在多轮人工/批量扫描中漏网，dash 静态规则首次自动命中——证明基线对齐能持续提升存量脚本质量。
 5. **逃生通道与只读不矛盾**：出厂脚本只读（防智能体篡改安装/部署逻辑）+ 用户覆盖层（用户/智能体在可写区自救），是「防篡改 + 不死锁」的唯一折中。
+
+---
+
+## 2026-07-21 - 构建前配置校验体系（Gradle 防 AI 篡改）
+
+**Problem**：OpenCode 等 AI 代理在触发构建时，可能自行修改 `gradle-wrapper.properties`（改 Gradle 版本）、`build.gradle.kts`（改 SDK 版本）、`gradle.properties`（改 aapt2/JVM 参数）来"修复"感知到的环境问题，导致构建产物不可靠。
+
+**Root Cause**：AI 代理不具备 Gradle 基础设施的判断能力；"好心"的修改往往会破坏环境稳定性。此前仅有 AGENTS.md 策略禁令（纯软约束），缺乏代码级防护。
+
+### Fix（本轮）
+
+在三个层面实施防护：
+
+0. **自动自愈**（`aidev-build-request.sh`）：
+   - 新增 `auto_heal()` 函数：每次构建前自动检查和修复常见 AI 篡改
+     - gradle.properties 缺失 `android.aapt2DaemonMode=false` → 自动补回
+     - gradle-wrapper.properties 版本被改 → 自动恢复为 `9.1.0`（保留 .bak 备份）
+     - 无 `.build-config.json` 时自动调用 `lock_project()` 生成并锁定
+   - 新增 `lock_project()` 函数：生成 `.build-config.json` + `chmod 444` 锁定
+   - 新增 `restore_from_manifest()` 函数：SHA256 校验失败时尝试从基线恢复
+   - 构建流程改为：auto_heal → lock (if needed) → validate → (if fail) restore → auto_heal → validate → build
+   - 新增 `--lock-project <dir>` 和 `--unlock-project <dir>` 手动锁定/解锁入口
+
+1. **`create-compose-project.sh`**（生成阶段）：
+   - 生成 `.build-config.json` 记录版本常量 + SHA256 哈希
+   - `chmod 444` 锁定 6 个关键配置文件（gradle-wrapper.properties、build.gradle.kts × 2、settings.gradle.kts、gradle.properties、.build-config.json）
+
+2. **`aidev-build-request.sh`**（构建阶段）：
+   - 新增 `validate_build_config()` 函数，在调用 Gradle 前执行 5 项校验：
+     - gradle-wrapper.properties Gradle 版本
+     - build.gradle.kts 插件版本（AGP/Kotlin）
+     - app/build.gradle.kts SDK 版本（compileSdk/minSdk/targetSdk）
+     - gradle.properties 关键设置（aapt2DaemonMode/useAndroidX/nonTransitiveRClass）
+     - .build-config.json SHA256 哈希（可选）
+   - 校验失败先尝试 `restore_from_manifest()` + `auto_heal()` 恢复，仍失败 → `exit 2`
+   - 无逃生出口（不提供 `--no-validate`，AI 代理不应知道后门）
+
+3. **`--validate-test` / `--heal-test`**：隐藏参数供单元测试调用
+
+### 验证
+- `bash app/src/test/sh/run.sh`：233 passed, 0 failed（含 27 项 aixdev-build-request 专项测试：13 validate + 4 auto_heal + 4 lock/unlock + 6 restore + 原有 4）
+- 构建 b170 SUCCESSFUL
+- 单元测试涵盖：标准项目通过、缺失文件、版本错误、SDK 篡改、属性删除、哈希不匹配、auto_heal 补回属性、auto_heal 恢复版本、lock/unlock 循环
+
+### 关键教训
+1. **策略层约束不可靠**：AGENTS.md 的"禁止修改"禁令在执行层面无法阻止 AI 代理修改。必须代码化。
+2. **校验要逐层递进**：内容匹配（grep 版本号）→ 哈希校验（SHA256），前者抗 AI"聪明改"（知道要改的版本号），后者抗任意篡改。
+3. **只读是速度 bump 不是锁**：`chmod 444` 可被 `chmod +w` 绕过，但迫使 AI 显式决策"我要改基础设施"，增加有意义的摩擦。
+4. **执行路径唯一化**：`create-compose-project` 生成的 `gradlew` 始终重定向到 `aidev-build-request`，没有绕过校验的入口。
+5. **自愈比预防更实用**：纯预防（chmod + 校验）在 root 下能被突破，且对导入项目无效。auto_heal 在每次构建前自动修复常见篡改，对 AI 完全透明，是「防不住但永远正常」的最佳实践。对于结构级篡改（compileSdk/build.gradle.kts），auto_heal 无法修复，此时 validate + SHA256 作为最后的守门员。

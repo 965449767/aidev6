@@ -120,14 +120,14 @@ build_index() {
     echo "" >> "$tmp/index.json"
     echo '  ],' >> "$tmp/index.json"
 
-    # resources
+    # resources (合并 layout/strings/resources)
     echo '  "resources": [' >> "$tmp/index.json"
+    cat "$tmp/layout.txt" "$tmp/strings.txt" "$tmp/resources.txt" 2>/dev/null > "$tmp/res_combined.txt"
     first=true
     while IFS='|' read -r type name path; do
         $first || echo "," >> "$tmp/index.json"
         first=false
         printf '    {"type":"%s","name":"%s","file":"%s"}' "$(json_escape "$type")" "$(json_escape "$name")" "$(json_escape "${path#$SRC_DIR/res/}")" >> "$tmp/index.json"
-    cat "$tmp/layout.txt" "$tmp/strings.txt" "$tmp/resources.txt" 2>/dev/null > "$tmp/res_combined.txt"
     done < "$tmp/res_combined.txt"
     rm -f "$tmp/res_combined.txt"
     echo "" >> "$tmp/index.json"

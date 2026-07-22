@@ -1,7 +1,7 @@
 #!/bin/sh
-# aidev-autoinstall: 全自动 APK 安装
+# aidev-autoinstall: Shizuku 静默安装 APK
 # 在 Android 项目目录内自动安装当前项目产出物；在项目外需指定 APK 路径。
-# 检测 Shizuku 状态，可用则静默安装，不可用则降级到系统安装界面（手机确认）。
+# 仅支持 Shizuku 静默安装，失败直接报错退出（无系统安装器降级）。
 # 用法: aidev-autoinstall [options] [apk_path]
 set -e
 
@@ -35,8 +35,7 @@ usage() {
 安装策略:
   1. 检测 Shizuku 桥接状态
   2. 桥接正常 → 静默安装（Shizuku）
-  3. 静默失败 → 自动降级，打开系统安装界面（需在手机上确认）
-  4. 桥接断开 → 提示在 AIDev 应用内手动安装
+  3. 失败 → 输出错误信息退出
 
 示例:
   aidev-autoinstall                         # 在项目目录内自动安装
@@ -71,12 +70,28 @@ find_project_root() {
     return 1
 }
 
+is_valid_apk() {
+    local f="$1"
+    [ -f "$f" ] || return 1
+    local size
+    size=$(stat -c%s "$f" 2>/dev/null) || return 1
+    [ "$size" -gt 102400 ] || return 1
+    local hex
+    hex=$(od -A n -t x1 -N 4 "$f" 2>/dev/null | tr -d ' \n')
+    [ "$hex" = "504b0304" ] || return 1
+    return 0
+}
+
 discover_project_apk() {
     for pattern in \
         "$PROJECT_ROOT/app/build/outputs/apk/debug/"*.apk \
         "$PROJECT_ROOT/app/build/outputs/apk/"*.apk; do
         for f in $pattern; do
-            [ -f "$f" ] && { echo "$f"; return 0; }
+            case "$f" in *.apk) ;; *) continue ;; esac
+            if [ -f "$f" ] && is_valid_apk "$f"; then
+                echo "$f"
+                return 0
+            fi
         done
     done
     echo ""
@@ -94,9 +109,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ "$OUTPUT_JSON" = true ]; then
-    trap 'if [ "$INSTALL_OK" != true ]; then emit_json false false null "aidev-autoinstall 异常退出(rc=$?)"; fi' EXIT
-fi
+# 统一 EXIT trap：JSON 输出 + 临时文件清理（无论成功/失败/异常退出均触发）
+trap '
+    if [ "$OUTPUT_JSON" = true ] && [ "$INSTALL_OK" != true ]; then
+        emit_json false false null "aidev-autoinstall 异常退出(rc=$?)"
+    fi
+    if [ "$CLEANUP" = true ]; then
+        rm -f "$TMP_APK" 2>/dev/null || true
+    fi
+' EXIT
 
 # ── APK 路径发现 ───────────────────────────────────────
 if [ -z "$APK_PATH" ]; then
@@ -155,13 +176,6 @@ case "$APK_PATH" in
         ;;
 esac
 
-cleanup() {
-    if [ "$CLEANUP" = true ]; then
-        [ "$OUTPUT_JSON" != true ] && echo "→ 清理临时文件: $TMP_APK"
-        rm -f "$TMP_APK" 2>/dev/null || true
-    fi
-}
-
 shizuku_available() {
     if command -v aidev-shizuku >/dev/null 2>&1; then
         if aidev-shizuku status >/dev/null 2>&1; then
@@ -195,9 +209,10 @@ install_silent() {
     out=$(aidev-shizuku install "$APK_PATH" 2>&1)
     rc=$?
     set -e
-    [ "$OUTPUT_JSON" != true ] && echo "$out"
+    # 输出完整日志以便排查
+    echo "$out" >&2
     if [ "$rc" -ne 0 ]; then
-        ERR_MSG="Shizuku 安装桥返回非零 (rc=$rc)"
+        ERR_MSG="Shizuku 安装失败 (rc=$rc): $(echo "$out" | tail -5 | tr '\n' ' ')"
         return 1
     fi
     if echo "$out" | grep -qiE "Failure|INSTALL_FAILED|error|Exception"; then
@@ -208,74 +223,21 @@ install_silent() {
     return 0
 }
 
-install_fallback() {
-    [ "$OUTPUT_JSON" != true ] && echo "→ 降级: 打开系统安装界面（请在手机上确认安装）..."
-    out=""
-    rc=0
-    set +e
-    out=$(aidev-shizuku exec "am start -a android.intent.action.VIEW -d file://$APK_PATH -t application/vnd.android.package-archive" 2>&1)
-    rc=$?
-    set -e
-    [ "$OUTPUT_JSON" != true ] && echo "$out"
-    if [ "$rc" -ne 0 ]; then
-        ERR_MSG="系统安装器启动失败"
-        return 1
-    fi
-    if echo "$out" | grep -qiE "Error:|Exception|No Activity"; then
-        ERR_MSG="系统安装器不可用: $(echo "$out" | head -c 200)"
-        return 1
-    fi
-    [ "$OUTPUT_JSON" != true ] && echo "→ 系统安装界面已打开，请在手机上确认安装"
-    return 0
-}
-
 # ── 主流程 ─────────────────────────────────────────────
-if shizuku_available; then
-    if install_silent; then
-        INSTALL_OK=true
-        [ "$OUTPUT_JSON" != true ] && echo "✓ 静默安装完成"
-        # 静默安装成功后清理临时文件
-        if [ "$CLEANUP" = true ]; then
-            trap - EXIT
-            cleanup
-        fi
-    else
-        [ "$OUTPUT_JSON" != true ] && echo "⚠ 静默安装失败，降级到系统安装器..."
-        if install_fallback; then
-            INSTALL_OK=true
-            # 降级场景：保留临时文件，不清理（am start 异步，文件还要用）
-            if [ "$CLEANUP" = true ]; then
-                CLEANUP=false
-                [ "$OUTPUT_JSON" != true ] && echo "APK 已保留: $APK_PATH（安装完成后可手动删除）"
-            fi
-        else
-            [ "$OUTPUT_JSON" != true ] && echo "错误: 所有安装方式均失败: $ERR_MSG"
-            # 安装完全失败后清理临时文件
-            if [ "$CLEANUP" = true ]; then
-                trap - EXIT
-                cleanup
-            fi
-        fi
-    fi
-else
-    ERR_MSG="Shizuku 未就绪，无法安装"
-    [ "$OUTPUT_JSON" != true ] && cat <<EOF
-错误: Shizuku 未就绪，无法自动安装。
-请在 AIDev 应用内打开项目面板，点击「安装APK」按钮手动安装。
-或先执行 aidev-shizuku status 排查桥接问题。
-EOF
-    # Shizuku 不可用时也清理临时文件
-    if [ "$CLEANUP" = true ]; then
-        trap - EXIT
-        cleanup
-    fi
-fi
-
-if [ "$INSTALL_OK" != true ] && [ "$OUTPUT_JSON" = true ]; then
-    emit_json false false null "$ERR_MSG"
+if ! shizuku_available; then
+    ERR_MSG="Shizuku 未就绪，无法静默安装"
+    [ "$OUTPUT_JSON" != true ] && echo "错误: Shizuku 未就绪，无法静默安装。"
+    [ "$OUTPUT_JSON" != true ] && echo "请先在 AIDev 应用内确保 Shizuku 桥接正常（aidev-shizuku status）。"
+    if [ "$OUTPUT_JSON" = true ]; then emit_json false false null "$ERR_MSG"; fi
     exit 1
 fi
-if [ "$INSTALL_OK" != true ]; then
+
+if install_silent; then
+    INSTALL_OK=true
+    [ "$OUTPUT_JSON" != true ] && echo "✓ 静默安装完成"
+else
+    [ "$OUTPUT_JSON" != true ] && echo "✗ 静默安装失败: $ERR_MSG"
+    if [ "$OUTPUT_JSON" = true ]; then emit_json false false null "$ERR_MSG"; fi
     exit 1
 fi
 

@@ -71,6 +71,24 @@ else
 fi
 echo
 
+# ---- JDK 版本确认（仅 --android / --ndk）----
+if [ "$WANT_ANDROID" = 1 ]; then
+  echo "  ├─ 验证 JDK..."
+  if command -v java >/dev/null 2>&1; then
+    JAVA_VER=$(java -version 2>&1 | head -1)
+    if echo "$JAVA_VER" | grep -q 'openjdk.*17\.\|"17\.'; then
+      echo "  │  ✓ $JAVA_VER"
+    else
+      echo "  │  ⚠ 当前 JDK: $JAVA_VER"
+      echo "  │    AGP 9 要求 JDK 17，如版本不匹配请运行: apt install openjdk-17-jdk-headless"
+    fi
+  else
+    echo "  │  ✗ java 未找到（openjdk-17-jdk-headless 安装可能失败）"
+    echo "  │    请运行: repair-dev-env"
+  fi
+  echo
+fi
+
 # ---- Android SDK（仅 --android / --ndk）----
 SDK_DIR="${AIDEV_HOME:-$HOME}/android-sdk"
 CMDLINE_TOOLS="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
@@ -107,13 +125,70 @@ if [ "$WANT_ANDROID" = 1 ]; then
     echo "  cmdline-tools 已存在"
   fi
   if [ -f "$CMDLINE_TOOLS" ]; then
-    yes | "$CMDLINE_TOOLS" --licenses >/dev/null 2>&1
+    SDK_MGR="$CMDLINE_TOOLS --sdk_root=$SDK_DIR"
+    echo "  接受许可证..."
+    yes | $SDK_MGR --licenses 2>&1 | tail -1 || true
     for pkg in "platform-tools" "platforms;android-36" "build-tools;36.1.0" "build-tools;34.0.0"; do
       echo "  安装 $pkg ..."
-      yes | "$CMDLINE_TOOLS" "$pkg" >/dev/null 2>&1 && echo "    ✓" || echo "    ✗（可手动重试：sdkmanager \"$pkg\"）"
+      result=$($SDK_MGR "$pkg" 2>&1) && echo "    ✓" || {
+        echo "    ✗ 失败输出:"
+        echo "$result" | sed 's/^/      /'
+        echo "    ℹ️ 若 SDK 组件未完整安装，Gradle 首次构建时会自动从 Maven 下载缺失组件（需联网）。"
+      }
     done
+    # ── SDK 安装验证 ──
+    echo "  验证 SDK 安装..."
+    _MISSING=""
+    [ -d "$SDK_DIR/platforms/android-36" ] && echo "    ✓ platforms;android-36" || _MISSING="$_MISSING platforms;android-36"
+    [ -d "$SDK_DIR/build-tools/36.1.0" ]   && echo "    ✓ build-tools;36.1.0"   || _MISSING="$_MISSING build-tools;36.1.0"
+    [ -d "$SDK_DIR/build-tools/34.0.0" ]   && echo "    ✓ build-tools;34.0.0"   || _MISSING="$_MISSING build-tools;34.0.0"
+    [ -f "$SDK_DIR/platform-tools/adb" ]   && echo "    ✓ platform-tools"        || _MISSING="$_MISSING platform-tools"
+    if [ -n "$_MISSING" ]; then
+      echo "    ⚠ 以下组件未完整安装:$_MISSING"
+      echo "      首次构建时 Gradle 会自动从 Maven 补充下载。"
+      echo "      若需离线构建，请运行: repair-dev-env"
+    fi
   fi
   echo
+
+  # ── ARM64: aapt2 兼容性检查与说明（仅检测+提示，不自动部署） ──
+  if [ "$(uname -m)" = "aarch64" ]; then
+    echo "  检查 aapt2 ARM64 兼容性..."
+    _aapt2_found=""
+    for _bt in "$SDK_DIR/build-tools"/*/; do
+      [ -f "${_bt}aapt2" ] && { _aapt2_found="${_bt}aapt2"; break; }
+    done
+    if [ -n "$_aapt2_found" ]; then
+      if "${_aapt2_found}" version >/dev/null 2>&1; then
+        echo "    ✓ aapt2 可原生运行（ARM64 原生兼容）"
+      else
+        echo "    ℹ️ 当前 aapt2 为 x86_64 架构，无法在 ARM64 上直接运行。"
+        echo "       请重启 AIDev 终端触发 QEMU 包装器部署，或在终端内运行: repair-dev-env"
+      fi
+    else
+      echo "    ℹ️ 未找到 aapt2（build-tools 未安装），Gradle 构建时会从 Maven 获取。"
+    fi
+  fi
+
+  # ── 全局 Gradle 配置：写入 GRADLE_USER_HOME/gradle.properties ──
+  echo "  配置全局 Gradle 属性..."
+  GH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+  mkdir -p "$GH"
+  GRADLE_PROPS="$GH/gradle.properties"
+  [ -f "$GRADLE_PROPS" ] || touch "$GRADLE_PROPS"
+  _added=0
+  for _line in "android.aapt2FromMavenOverride=/host-home/x86_64/aapt2" \
+               "android.aapt2DaemonMode=false"; do
+    if ! grep -qxF "$_line" "$GRADLE_PROPS" 2>/dev/null; then
+      echo "$_line" >> "$GRADLE_PROPS"
+      _added=1
+    fi
+  done
+  if [ "$_added" = 1 ]; then
+    echo "    ✓ 全局 Gradle 属性已写入 $GRADLE_PROPS"
+  else
+    echo "    ✓ 全局 Gradle 属性已存在"
+  fi
 fi
 
 # ---- Android NDK（仅 --ndk）----

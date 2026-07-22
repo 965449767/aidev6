@@ -72,6 +72,60 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 ./gradlew :app:assembleDebug
 - No camera/mic/contacts/SMS/location permissions
 - Edge-to-edge temporarily opted out (`windowOptOutEdgeToEdgeEnforcement`)
 
+## 构建配置防篡改（Gradle 文件保护）
+
+`aidev-build-request.sh` 在每次构建前调用 `validate_build_config()` 校验关键配置文件的完整性。**任何对 Gradle 基础设施文件的修改都会导致构建被拒绝。**
+
+### 校验内容
+
+| 文件 | 校验项 | 级别 |
+|---|---|---|
+| `gradle/wrapper/gradle-wrapper.properties` | Gradle 版本 = `9.1.0` | 拒绝构建 |
+| `build.gradle.kts`（根） | AGP `9.0.1` / Kotlin `2.0.21` | 拒绝构建 |
+| `app/build.gradle.kts` | compileSdk/minSdk/targetSdk | 拒绝构建 |
+| `gradle.properties` | aapt2DaemonMode / useAndroidX / nonTransitiveRClass | 拒绝构建 |
+| `.build-config.json` | SHA256 哈希（可选） | 拒绝构建 |
+
+### 防护机制（4 层）
+
+1. **自动自愈**（`auto_heal()`）：每次构建前自动检查并修复被 AI 篡改的配置，**对 AI 完全透明**。
+   - `gradle.properties` 缺少 `android.aapt2DaemonMode=false` → 自动补回
+   - `gradle-wrapper.properties` 版本被改 → 自动恢复为 `9.1.0`
+   - `build-config.json` 缺失 → 首次构建时自动生成
+2. **文件只读**（`lock_project()` / `create-compose-project.sh`）：生成项目或首次构建时 `chmod 444` 锁定 6 个关键配置文件，AI 需要显式 `chmod +w` + `--unlock-project` 才能修改。
+3. **构建前校验**（`validate_build_config()`）：每次构建前比对版本常量与文件内容，不通过则触发 `restore_from_manifest()` 尝试恢复，仍失败则拒绝构建。
+4. **SHA256 完整性**：`.build-config.json` 记录首次生成时各文件的哈希值，构建时校验是否被篡改。SHA256 不匹配自动触发恢复流程。
+
+### 场景演示
+
+| 场景 | AI 动作 | 系统反应 |
+|---|---|---|
+| AI 删 `android.aapt2DaemonMode=false` | 认为 aapt2 daemon 设置导致问题 | `auto_heal` 自动补回，AI 无法感知 |
+| AI 改 Gradle 版本 | 升级到"更新"版本 | `auto_heal` 自动恢复为 9.1.0 |
+| AI 改 compileSdk | 修改 SDK 版本兼容性 | `validate_build_config` 拒绝 + 恢复 |
+| 用户导入外部项目 | 首次构建无 `.build-config.json` | 自动锁定：生成基线 + 只读保护 |
+| 人类手动升级 Gradle | 修改 gradle-wrapper.properties | 先 `--unlock-project`，改完再 `--lock-project` |
+
+### 手动锁定/解锁
+
+```sh
+# 锁定（生成 .build-config.json + chmod 444）
+aidev-build-request --lock-project /workspace/MyApp
+
+# 解锁（删除 .build-config.json + chmod +w）
+aidev-build-request --unlock-project /workspace/MyApp
+```
+
+### Gradle 配置修改权限
+
+| 角色 | 权限 |
+|---|---|
+| `create-compose-project.sh` | ✅ 初始生成 |
+| `setup-dev-env.sh` / `repair-dev-env.sh` | ✅ 环境级修复 |
+| `TerminalShellAssets.kt` | ✅ 运行时部署 |
+| 人类开发者 | ✅ 手动 `chmod +w` 后修改 |
+| OpenCode / AI 代理 | ❌ **禁止**（只写源码，不碰基础设施） |
+
 ## Session workflow
 
 1. **Start**: `current-task.md` → `.harness/session-state.json` → `.harness/session-log.md` → `docs/verification.md` → `docs/decisions.md` → `docs/error-journal.md`

@@ -43,14 +43,17 @@ internal object BuildProjectScaffolder {
         val pkg = derivePackage(projectName)
         val pkgPath = pkg.replace('.', '/')
 
-        val gradlewDest = File(projectDir, "gradlew")
         runCatching {
             ctx.assets.open("scripts/gradlew").use { input ->
-                gradlewDest.outputStream().use { output -> input.copyTo(output) }
+                File(projectDir, "gradlew").outputStream().use { output -> input.copyTo(output) }
             }
-            gradlewDest.setExecutable(true)
+            File(projectDir, "gradlew").setExecutable(true)
+            ctx.assets.open("scripts/gradlew.real").use { input ->
+                File(projectDir, "gradlew.real").outputStream().use { output -> input.copyTo(output) }
+            }
+            File(projectDir, "gradlew.real").setExecutable(true)
         }.onFailure {
-            AIDevLogger.e("BuildBridge", "Failed to copy gradlew from assets", it)
+            AIDevLogger.e("BuildBridge", "Failed to copy gradlew/gradlew.real from assets", it)
         }
 
         File(projectDir, "gradle/wrapper").mkdirs()

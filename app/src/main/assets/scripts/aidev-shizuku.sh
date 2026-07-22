@@ -88,19 +88,22 @@ case "$SUBCOMMAND" in
       exit 1
     fi
     APK_PATH=$(readlink -f "$APK_PATH")
-    SAFE_NAME=$(basename "$APK_PATH" | sed 's/[^a-zA-Z0-9._-]/_/g')
-    # 直接使用源文件名的净化版作 tmp 名，避免重复前缀（如 aidev-install-aidev-install-*.apk）
-    TMP_PATH="/data/local/tmp/$SAFE_NAME"
-    # 转义单引号防止 shell 逃逸
     APK_PATH_ESC=$(printf '%s' "$APK_PATH" | sed "s/'/'\\\\''/g")
-    TMP_PATH_ESC=$(printf '%s' "$TMP_PATH" | sed "s/'/'\\\\''/g")
-    # HyperOS/MIUI: pm install 需 --user 0 否则查用户报 MANAGE_USERS 权限错。
-    # 安全护栏禁止 shell 元字符，故 cp 与 pm install 拆成两次独立请求。
-    echo "→ 复制到 $TMP_PATH"
-    shizuku_exec "cp '$APK_PATH_ESC' '$TMP_PATH_ESC'" || exit 1
-    echo "→ 静默安装 (Shizuku)..."
-    shizuku_exec "pm install -r -d --user 0 '$TMP_PATH_ESC'" || exit 1
-    echo "→ 安装完成"
+
+    # 通过 Shizuku Bridge 的 TYPE=install 处理安装。
+    # Bridge 端复制 APK 到 /data/local/tmp/ 后执行 pm install -r -d --user 0，
+    # 绕过 FUSE SELinux 限制，避免 session-based 安装的 HyperOS 弹窗问题。
+    echo "→ 静默安装 (Shizuku Bridge)..."
+    _RESP=$(aidev-bridge send shizuku "TYPE=install
+APK_PATH=$APK_PATH_ESC" 2>/dev/null) || true
+    if [ -z "$_RESP" ]; then
+      echo "ERROR: 桥接无响应。请确认 Shizuku 已授权并在 AIDev 中启动桥接服务。"
+      exit 1
+    fi
+    echo "$_RESP"
+    case "$_RESP" in
+      ERROR:*) exit 1 ;;
+    esac
     exit 0
     ;;
   input)

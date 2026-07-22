@@ -19,9 +19,18 @@ detect_project() {
         echo "请在 Android 项目根目录运行"
         exit 1
     fi
+    # AGP 8+ 不再在 AndroidManifest.xml 写 package，改用 build.gradle.kts 的 namespace
     PKG_NAME=$(grep 'package=' "$manifest" | sed 's/.*package="\([^"]*\)".*/\1/')
+    if [ -z "$PKG_NAME" ]; then
+        local buildKts="$PROJECT_DIR/app/build.gradle.kts"
+        if [ -f "$buildKts" ]; then
+            PKG_NAME=$(grep "^namespace " "$buildKts" | sed 's/.*namespace\s*=\s*"\([^"]*\)".*/\1/')
+        fi
+    fi
     [ -n "$PKG_NAME" ] || {
-        echo "错误: 无法从 AndroidManifest.xml 提取包名"
+        echo "错误: 无法提取包名"
+        echo "在 AndroidManifest.xml 中未找到 package 属性，且在 app/build.gradle.kts 中未找到 namespace 定义"
+        echo "请确保项目有正确的命名空间配置"
         exit 1
     }
     SRC_DIR="$PROJECT_DIR/app/src/main/java/$(echo "$PKG_NAME" | tr '.' '/')"
@@ -92,7 +101,7 @@ case "$SUBCOMMAND" in
             echo "警告: $ACTIVITY_FILE 已存在，跳过"
         else
             cat > "$ACTIVITY_FILE" <<EOF
-package ${PACKAGE}
+package ${PKG_NAME}
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
@@ -141,7 +150,7 @@ EOF
             echo "警告: $FRAGMENT_FILE 已存在，跳过"
         else
             cat > "$FRAGMENT_FILE" <<EOF
-package ${PACKAGE}
+package ${PKG_NAME}
 
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -188,7 +197,7 @@ EOF
             echo "警告: $VM_FILE 已存在，跳过"
         else
             cat > "$VM_FILE" <<EOF
-package ${PACKAGE}
+package ${PKG_NAME}
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

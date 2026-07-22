@@ -113,12 +113,15 @@ internal object BuildExecutor {
         }
 
         runCatching {
-            val gradlewDest = File(projectDir, "gradlew")
             ctx.assets.open("scripts/gradlew").use { input ->
-                gradlewDest.outputStream().use { output -> input.copyTo(output) }
+                File(projectDir, "gradlew").outputStream().use { output -> input.copyTo(output) }
             }
-            gradlewDest.setExecutable(true)
-        }.onFailure { AIDevLogger.e("BuildBridge", "刷新 gradlew 失败", it) }
+            File(projectDir, "gradlew").setExecutable(true)
+            ctx.assets.open("scripts/gradlew.real").use { input ->
+                File(projectDir, "gradlew.real").outputStream().use { output -> input.copyTo(output) }
+            }
+            File(projectDir, "gradlew.real").setExecutable(true)
+        }.onFailure { AIDevLogger.e("BuildBridge", "刷新 gradlew/gradlew.real 失败", it) }
         runCatching { BuildProjectScaffolder.writeSettingsGradle(projectDir) }
             .onFailure { AIDevLogger.e("BuildBridge", "刷新 settings.gradle.kts 失败", it) }
         runCatching { TerminalShellAssets.installGradleUserHomeInit(File(PathConfig.aidevHome(ctx), "gradle-cache")) }
